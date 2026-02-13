@@ -320,7 +320,7 @@ def render_json_arrays_container(json_arrays: list[dict]):
                         key=f"select_json_array_btn_{json_array_id or idx}",
                         type="primary" if is_selected else "secondary",
                         use_container_width=True,
-                        help="Select json-array",
+                        help="Select json-array"
                     ):
                         st.session_state[SELECTED_JSON_ARRAY_ID_KEY] = str(json_array_id)
                         if (

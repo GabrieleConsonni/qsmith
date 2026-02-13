@@ -54,11 +54,41 @@
 
 ---
 
-## QSM-020 - Scenarios
-- [x] Pagina scenarios
-- [x] Caricamento elenco scenari
-- [x] Esecuzione scenario selezionato
-- [ ] Gestione completa CRUD scenari/step/operations da UI
+## QSM-017 - CRUD Scenarios
+- [x] Modificare la pagina scenarios
+    - prendere ad esempio la maschera dei json array
+    - a sinistra l'elenco degli scenari esistenti
+    - a destra l'edit\creazione degli scenari
+    - nella destra elenco degli scenario_step con expander con bottoni aggiungi in basso, delete e modifica per ogni container
+    - dentro ogni expander step elenco delle step_operation con bottoni aggiungi in basso, delete e modifica per ogni container
+
+---
+
+## QSM-018 - Gestione Scenario_steps
+- [x] Nella crud degli scenari, per ogni container di scenario sulla sinistra, mettere bottone esegui
+- [ ] In fase di aggiunta di uno step aprire dialog:
+    - mettere selectbox con scelta steps esistenti
+    - + per eventuale nuovo step
+    - in caso di scelta di step esistente:
+        - mostrare i dati dello step in sola lettura 
+        - abilitare bottone con `add` 
+    - in caso di scelta nuovo step 
+        - abilitare i campi per l'inserimento (seguire ConfigurationStepDto)
+        - abilitare bottone `save and add`
+    - al salvataggio renderizzare nuovo step
+
+---
+
+## QSM-019 - Gestione  Step_operations 
+- [ ] Nella crud degli scenari, in fase di aggiunta di un'operazione ad uno step aprire dialog:
+    - mettere selectbox con scelta operazioni esistenti
+    - + per eventuale nuova operazione
+    - in caso di scelta di operazione esistente:
+        - mostrare i dati dell'operazione in sola lettura 
+        - abilitare bottone con `add` 
+    - in caso di scelta nuova operazione 
+        - abilitare i campi per l'inserimento ( seguire ConfigurationOperationDto)
+        - abilitare bottone `save and add`  
 
 ---
 
@@ -89,4 +119,4 @@
 - [x] Riallineamento `AGENT.md` ai path reali
 - [x] Riallineamento `docs/CODEX_CONTEXT.md`
 - [x] Aggiornamento `docs/SPEC.md`
-- [ ] Stesura documentazione funzionale su Confluence
+- [x] Stesura documentazione funzionale su Confluence

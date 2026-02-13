@@ -1,7 +1,7 @@
 # Qsmith - Contesto Progetto per Codex
 
 **Panoramica**
-Qsmith e un queue manager composto da backend FastAPI e UI Streamlit. Gestisce broker SQS (ElasticMQ/Amazon), queue, sorgenti dati JSON array e orchestrazione di scenari (step/operations). Usa PostgreSQL come storage principale e puo inizializzare le queue ElasticMQ all'avvio.
+Qsmith e un queue manager composto da backend FastAPI e UI Streamlit. Gestisce broker SQS (ElasticMQ/Amazon), queue, connessioni database, sorgenti dati JSON array/table e orchestrazione di scenari (step/operations). Usa PostgreSQL come storage principale e puo inizializzare le queue ElasticMQ all'avvio.
 
 **Stack Tecnologico**
 - Python 3.13
@@ -31,17 +31,19 @@ Qsmith e un queue manager composto da backend FastAPI e UI Streamlit. Gestisce b
 - Entry point: `app/ui/Qsmith.py`
 - Pagine principali:
   - `app/ui/pages/Brokers.py`
+  - `app/ui/pages/DatabaseConnections.py`
   - `app/ui/pages/Queues.py`
   - `app/ui/pages/QueueDetails.py`
   - `app/ui/pages/JsonArray.py`
+  - `app/ui/pages/DatabaseDataSources.py`
   - `app/ui/pages/Scenarios.py`
   - `app/ui/pages/Logs.py`
   - `app/ui/pages/Tools.py`
 
 **Router API principali**
 - `/broker` (connection e queue operations)
-- `/data-source` (json-array)
-- `/database` (database connections)
+- `/data-source` (json-array, database datasources)
+- `/database` (database connections, test, objects metadata, preview)
 - `/elaborations` (scenari, step, operations)
 - `/logs`
 - `/json_utils`

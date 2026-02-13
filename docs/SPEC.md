@@ -10,9 +10,11 @@ L'applicazione e composta da:
 ## 2. Scope Funzionale
 La soluzione copre:
 - configurazione broker SQS (ElasticMQ/Amazon)
+- configurazione connessioni database (Postgres/Oracle/MSSQL)
 - gestione queue per broker
 - operazioni runtime su queue (test connessione, send, receive, ack)
 - gestione datasource JSON array
+- gestione datasource database (table/view)
 - visualizzazione log applicativi
 - gestione scenari di elaborazione (esecuzione scenario)
 
@@ -23,9 +25,11 @@ Non copre (stato attuale):
 ## 3. Routing UI
 Pagine disponibili:
 - `Brokers`
+- `Database Connections`
 - `Queues`
 - `Queue details`
 - `Json Array`
+- `Database Datasources`
 - `Scenarios`
 - `Logs`
 - `Tools`
@@ -98,10 +102,25 @@ Obiettivi:
 Stato attuale:
 - pagina placeholder "Utility operative in arrivo."
 
+### 4.8 Database Connections
+Obiettivi:
+- elenco connessioni database
+- CRUD connessioni (Postgres/Oracle/MSSQL)
+- test connessione configurata
+
+### 4.9 Database Datasources
+Obiettivi:
+- elenco datasource tabellari
+- CRUD datasource database
+- scelta tabella/view da connessione tramite dialog con tree tables/views
+- preview dati tabella/view configurata
+
 ## 5. API Funzionali Principali
 - `/broker/connection` CRUD broker connection
 - `/broker/{broker_id}/queue` CRUD queue e operazioni queue/messages
 - `/data-source/json-array` CRUD JSON array datasource
+- `/data-source/database` CRUD datasource database
+- `/database/connection` CRUD connessioni database + test + metadata objects/preview
 - `/elaborations/scenario` elenco/gestione scenari ed esecuzione
 - `/logs/` elenco log
 - `/logs/{days}` pulizia log

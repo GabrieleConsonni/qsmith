@@ -1,11 +1,21 @@
 from data_sources.models.database_connection_config_types import DatabaseConnectionConfigTypes
+from data_sources.models.oracle_connection_config import OracleConnectionConfig
 from data_sources.models.postgres_connection_config import PostgresConnectionConfig
+from data_sources.models.sqlserver_connection_config import SqlServerConnectionConfig
+from sqlalchemy_utils.engine_factory.oracle_sqlalchemy_engine_factory import (
+    OracleSQLAlchemyEngineFactory,
+)
 from sqlalchemy_utils.engine_factory.postgres_sqlalchemy_engine_factory import \
     PostgresSQLAlchemyEngineFactory
 from sqlalchemy_utils.engine_factory.sqlalchemy_engine_factory import SQLAlchemyEngineFactory
+from sqlalchemy_utils.engine_factory.sqlserver_sqlalchemy_engine_factory import (
+    SqlServerSQLAlchemyEngineFactory,
+)
 
 _CONNECTOR_MAPPING: dict[type[DatabaseConnectionConfigTypes], type[SQLAlchemyEngineFactory]] = {
     PostgresConnectionConfig: PostgresSQLAlchemyEngineFactory,
+    OracleConnectionConfig: OracleSQLAlchemyEngineFactory,
+    SqlServerConnectionConfig: SqlServerSQLAlchemyEngineFactory,
 }
 
 def create_sqlalchemy_engine(connection_cfg: DatabaseConnectionConfigTypes):

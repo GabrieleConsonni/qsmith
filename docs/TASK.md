@@ -66,7 +66,7 @@
 
 ## QSM-018 - Gestione Scenario_steps
 - [x] Nella crud degli scenari, per ogni container di scenario sulla sinistra, mettere bottone esegui
-- [ ] In fase di aggiunta di uno step aprire dialog:
+- [x] In fase di aggiunta di uno step aprire dialog:
     - mettere selectbox con scelta steps esistenti
     - + per eventuale nuovo step
     - in caso di scelta di step esistente:
@@ -80,7 +80,7 @@
 ---
 
 ## QSM-019 - Gestione  Step_operations 
-- [ ] Nella crud degli scenari, in fase di aggiunta di un'operazione ad uno step aprire dialog:
+- [x] Nella crud degli scenari, in fase di aggiunta di un'operazione ad uno step aprire dialog:
     - mettere selectbox con scelta operazioni esistenti
     - + per eventuale nuova operazione
     - in caso di scelta di operazione esistente:
@@ -89,6 +89,24 @@
     - in caso di scelta nuova operazione 
         - abilitare i campi per l'inserimento ( seguire ConfigurationOperationDto)
         - abilitare bottone `save and add`  
+
+---
+
+## QSM-020 - Gestione database connections
+- [x] Aggiungere una pagina sotto Configurations per la gestione delle connessioni a db
+- [x] la crud è uguale a quella dei brokers eccezion fatta per `open queues`
+- [x] Al momento gestiamo solo connessioni Postgres, aggiungi Oracle e MSSQL
+
+---
+
+## QSM-020 - Gestione database datasources
+- [x] Aggiungere una pagina sotto datasources per la gestione dei sorgenti di tipo db (tabelle)
+- [x] la crud è uguale a quella fatta per Json array eccezzion fatta per la parte sinistra in cui vediamo la preview della tabella configurata
+- [x] quando aggiungiamo una tabella si apre un dialog in cui:
+ - si sceglie code e descrizione
+ - si sceglie la connessione
+ - viene mostrato un tree in cui ci sono tabelle e views
+ - scelta la tabella\view si clicca `add` e viene creato il db datasource
 
 ---
 
@@ -113,10 +131,3 @@
 - [ ] Utility operative reali da definire
 
 ---
-
-## QSM-050 - Documentazione
-- [x] Riallineamento `README.md` alla codebase
-- [x] Riallineamento `AGENT.md` ai path reali
-- [x] Riallineamento `docs/CODEX_CONTEXT.md`
-- [x] Aggiornamento `docs/SPEC.md`
-- [x] Stesura documentazione funzionale su Confluence

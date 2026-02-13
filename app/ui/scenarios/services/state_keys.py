@@ -8,6 +8,12 @@ SCENARIO_BASELINE_PAYLOAD_KEY = "scenario_baseline_payload"
 SCENARIO_EDITOR_NONCE_KEY = "scenario_editor_nonce"
 SCENARIO_FEEDBACK_KEY = "scenarios_feedback"
 PENDING_SCENARIO_SWITCH_KEY = "pending_scenario_switch"
+ADD_SCENARIO_STEP_DIALOG_OPEN_KEY = "add_scenario_step_dialog_open"
+ADD_SCENARIO_STEP_DIALOG_CREATE_NEW_KEY = "add_scenario_step_dialog_create_new"
+ADD_SCENARIO_STEP_DIALOG_NONCE_KEY = "add_scenario_step_dialog_nonce"
+ADD_STEP_OPERATION_DIALOG_OPEN_KEY = "add_step_operation_dialog_open"
+ADD_STEP_OPERATION_DIALOG_CREATE_NEW_KEY = "add_step_operation_dialog_create_new"
+ADD_STEP_OPERATION_DIALOG_NONCE_KEY = "add_step_operation_dialog_nonce"
+ADD_STEP_OPERATION_DIALOG_TARGET_STEP_UI_KEY = "add_step_operation_dialog_target_step_ui_key"
 
 ON_FAILURE_OPTIONS = ["ABORT", "CONTINUE"]
-

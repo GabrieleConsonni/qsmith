@@ -236,8 +236,44 @@ def render_json_arrays_container(json_arrays: list[dict]):
     editing_or_creating = creating_new_item or editing_selected_item
     show_import_button = creating_new_item
 
-    add_col, button_tools = st.columns([3, 4], gap="small", vertical_alignment="center")
-    with add_col:
+    list_col, preview_col = st.columns([2, 5], gap="medium", vertical_alignment="top")
+    with list_col:
+        if not json_arrays:
+            st.info("Nessun json-array configurato.")
+        else:
+            for idx, json_array_item in enumerate(json_arrays):
+                json_array_id = json_array_item.get("id")
+                code = json_array_item.get("code") or "-"
+                description = json_array_item.get("description") or code
+                is_selected = str(json_array_id) == str(selected_id)
+
+                with st.container(border=True):
+                    row_cols = st.columns([6, 1], gap="small", vertical_alignment="center")
+                    with row_cols[0]:
+                        if st.button(
+                            description,
+                            key=f"select_json_array_btn_{json_array_id or idx}",
+                            type="primary" if is_selected else "secondary",
+                            use_container_width=True,
+                            help="Select json-array"
+                        ):
+                            st.session_state[SELECTED_JSON_ARRAY_ID_KEY] = str(json_array_id)
+                            if (
+                                st.session_state.get(INLINE_EDIT_JSON_ARRAY_ID_KEY)
+                                and str(st.session_state.get(INLINE_EDIT_JSON_ARRAY_ID_KEY))
+                                != str(json_array_id)
+                            ) or creating_new_item:
+                                _stop_inline_edit()
+                            st.rerun()
+                    with row_cols[1]:
+                        if st.button(
+                            "",
+                            key=f"delete_json_array_btn_{json_array_id or idx}",
+                            type="secondary",
+                            help="Delete json-array",
+                            icon=":material/delete:",
+                        ):
+                            delete_json_array_dialog(json_array_item)
         if st.button(
             "",
             key="add_json_array_btn",
@@ -247,9 +283,38 @@ def render_json_arrays_container(json_arrays: list[dict]):
             _start_inline_create()
             st.rerun()
 
-    with button_tools:
-        tool_cols = st.columns([2, 1, 1], gap="small", vertical_alignment="center")
-        with tool_cols[0]:
+    with preview_col:
+        with st.container(border=True):
+            if creating_new_item:
+                st.text_input(
+                    "Code",
+                    key=INLINE_EDIT_JSON_ARRAY_CODE_KEY,
+                )
+                st.text_input(
+                    "Description",
+                    key=INLINE_EDIT_JSON_ARRAY_DESCRIPTION_KEY,
+                )
+                st.text_area(
+                    "Body",
+                    key=INLINE_EDIT_JSON_ARRAY_BODY_KEY,
+                    height=420,
+                )
+            elif not selected_item:
+                st.info("Seleziona un json-array dalla lista a sinistra.")
+            else:
+                st.subheader(selected_item.get("description") or "-")
+                st.caption(selected_item.get("code") or "-")
+                if editing_selected_item:
+                    st.text_area(
+                        "Body",
+                        key=INLINE_EDIT_JSON_ARRAY_BODY_KEY,
+                        height=420,
+                    )
+                else:
+                    st.json(selected_item.get("payload") or [], expanded=True)
+
+        tool_cols = st.columns([3, 2, 1, 1], gap="small", vertical_alignment="bottom")
+        with tool_cols[1]:
             if show_import_button and st.button(
                 "Import CSV",
                 key="json_array_import_from_csv",
@@ -258,7 +323,7 @@ def render_json_arrays_container(json_arrays: list[dict]):
                 use_container_width=True,
             ):
                 import_csv_dialog()
-        with tool_cols[1]:
+        with tool_cols[2]:
             if editing_or_creating and st.button(
                 "Beautify",
                 key=(
@@ -277,7 +342,7 @@ def render_json_arrays_container(json_arrays: list[dict]):
                     st.error(error)
                 else:
                     st.session_state[INLINE_EDIT_JSON_ARRAY_BODY_KEY] = _pretty_json(payload)
-        with tool_cols[2]:
+        with tool_cols[3]:
             edit_btn_label = "Save" if editing_or_creating else ""
             edit_btn_icon = (
                 ":material/save:" if editing_or_creating else ":material/edit:"
@@ -302,75 +367,3 @@ def render_json_arrays_container(json_arrays: list[dict]):
                 else:
                     _start_inline_edit(selected_item or {})
                     st.rerun()
-
-    list_col, preview_col = st.columns([2, 5], gap="medium", vertical_alignment="top")
-    with list_col:
-        if not json_arrays:
-            st.info("Nessun json-array configurato.")
-        else:
-            for idx, json_array_item in enumerate(json_arrays):
-                json_array_id = json_array_item.get("id")
-                code = json_array_item.get("code") or "-"
-                description = json_array_item.get("description") or "-"
-                is_selected = str(json_array_id) == str(selected_id)
-
-                with st.container(border=True):
-                    if st.button(
-                        code,
-                        key=f"select_json_array_btn_{json_array_id or idx}",
-                        type="primary" if is_selected else "secondary",
-                        use_container_width=True,
-                        help="Select json-array"
-                    ):
-                        st.session_state[SELECTED_JSON_ARRAY_ID_KEY] = str(json_array_id)
-                        if (
-                            st.session_state.get(INLINE_EDIT_JSON_ARRAY_ID_KEY)
-                            and str(st.session_state.get(INLINE_EDIT_JSON_ARRAY_ID_KEY))
-                            != str(json_array_id)
-                        ) or creating_new_item:
-                            _stop_inline_edit()
-                        st.rerun()
-                    st.caption(description)
-                    action_cols = st.columns([7, 1], gap="small", vertical_alignment="center")
-                    with action_cols[1]:
-                        if st.button(
-                            "",
-                            key=f"delete_json_array_btn_{json_array_id or idx}",
-                            type="secondary",
-                            help="Delete json-array",
-                            icon=":material/delete:",
-                        ):
-                            delete_json_array_dialog(json_array_item)
-
-    with preview_col:
-        with st.container(border=True):
-            if creating_new_item:
-                st.text_input(
-                    "Code",
-                    key=INLINE_EDIT_JSON_ARRAY_CODE_KEY,
-                )
-                st.text_input(
-                    "Description",
-                    key=INLINE_EDIT_JSON_ARRAY_DESCRIPTION_KEY,
-                )
-                st.text_area(
-                    "Body",
-                    key=INLINE_EDIT_JSON_ARRAY_BODY_KEY,
-                    height=420,
-                )
-                return
-
-            if not selected_item:
-                st.info("Seleziona un json-array dalla lista a sinistra.")
-                return
-
-            st.subheader(selected_item.get("code") or "-")
-            st.caption(selected_item.get("description") or "-")
-            if editing_selected_item:
-                st.text_area(
-                    "Body",
-                    key=INLINE_EDIT_JSON_ARRAY_BODY_KEY,
-                    height=420,
-                )
-            else:
-                st.json(selected_item.get("payload") or [], expanded=True)

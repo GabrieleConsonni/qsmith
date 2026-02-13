@@ -30,27 +30,7 @@ def render_queues_container(broker: dict):
     load_queues(broker_id)
     queues = st.session_state.get("queues", [])
 
-    bar_cols = st.columns([3, 3, 1, 1], gap="small", vertical_alignment="bottom")
-    with bar_cols[0]:
-        st.caption("Queue list")
-
-    with bar_cols[2]:
-        st.button(
-            "",
-            key="refresh_queues_btn",
-            on_click=lambda: load_queues(broker_id),
-            use_container_width=True,
-            icon=":material/refresh:",
-        )
-    with bar_cols[3]:
-        if st.button(
-            "",
-            key="add_queue_btn",
-            use_container_width=True,
-            disabled=not bool(broker_id),
-            icon=":material/add:",
-        ):
-            add_queue_dialog(broker)
+    st.caption("Queue list")
 
     if not queues:
         st.info("No queues configured for this broker.")
@@ -97,6 +77,23 @@ def render_queues_container(broker: dict):
 
     loaded_at = st.session_state.get("queues_loaded_at")
     timestamp_label = format_last_update(loaded_at) if loaded_at else "-"
-    footer_cols = st.columns([6, 1], gap="small", vertical_alignment="center")
-    with footer_cols[1]:
+    footer_cols = st.columns([5, 2, 1, 1], gap="small", vertical_alignment="bottom")
+    with footer_cols[0]:
         st.caption(f"Updated at: {timestamp_label}")
+    with footer_cols[2]:
+        st.button(
+            "",
+            key="refresh_queues_btn",
+            on_click=lambda: load_queues(broker_id),
+            use_container_width=True,
+            icon=":material/refresh:",
+        )
+    with footer_cols[3]:
+        if st.button(
+            "",
+            key="add_queue_btn",
+            use_container_width=True,
+            disabled=not bool(broker_id),
+            icon=":material/add:",
+        ):
+            add_queue_dialog(broker)

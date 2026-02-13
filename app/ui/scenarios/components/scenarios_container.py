@@ -466,21 +466,20 @@ def _render_left_scenarios_list(scenarios: list[dict]):
     for idx, scenario in enumerate(scenarios):
         scenario_id = str(scenario.get("id") or "")
         code = scenario.get("code") or "-"
-        description = scenario.get("description") or "-"
+        description = scenario.get("description") or code
         is_selected = mode != "create" and str(selected_id) == scenario_id
         with st.container(border=True):
-            if st.button(
-                code,
-                key=f"select_scenario_btn_{scenario_id or idx}",
-                type="primary" if is_selected else "secondary",
-                use_container_width=True,
-                help="Select scenario",
-            ):
-                _request_select_scenario(scenario_id)
-            st.caption(description)
-
-            action_cols = st.columns([8, 1, 1], gap="small", vertical_alignment="center")
-            with action_cols[1]:
+            row_cols = st.columns([6, 1, 1], gap="small", vertical_alignment="center")
+            with row_cols[0]:
+                if st.button(
+                    description,
+                    key=f"select_scenario_btn_{scenario_id or idx}",
+                    type="primary" if is_selected else "secondary",
+                    use_container_width=True,
+                    help="Select scenario",
+                ):
+                    _request_select_scenario(scenario_id)
+            with row_cols[1]:
                 if st.button(
                     "",
                     key=f"execute_scenario_btn_{scenario_id or idx}",
@@ -489,7 +488,7 @@ def _render_left_scenarios_list(scenarios: list[dict]):
                     use_container_width=True,
                 ):
                     _execute_scenario(scenario_id)
-            with action_cols[2]:
+            with row_cols[2]:
                 if st.button(
                     "",
                     key=f"delete_scenario_btn_{scenario_id or idx}",

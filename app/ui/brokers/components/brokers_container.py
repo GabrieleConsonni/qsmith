@@ -19,18 +19,6 @@ def _open_queues_page(broker_id: str | None):
 
 
 def render_brokers_container(brokers: list[dict]):
-
-    action_cols = st.columns([10, 1], gap="small", vertical_alignment="center")
-    with action_cols[1]:
-        if st.button(
-            "",
-            key="add_broker_btn",
-            help="Add broker connection",
-            use_container_width=True,
-            icon=":material/add:",
-        ):
-            add_broker_dialog()
-
     for idx, broker_item in enumerate(brokers):
         broker_id = broker_item.get("id")
         broker_description = broker_item.get("description", "No name")
@@ -74,3 +62,14 @@ def render_brokers_container(brokers: list[dict]):
                     icon=":material/delete:",
                 ):
                     delete_broker_dialog(broker_item)
+
+    action_cols = st.columns([10, 1], gap="small", vertical_alignment="bottom")
+    with action_cols[1]:
+        if st.button(
+            "",
+            key="add_broker_btn",
+            help="Add broker connection",
+            use_container_width=True,
+            icon=":material/add:",
+        ):
+            add_broker_dialog()

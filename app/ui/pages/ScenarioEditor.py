@@ -1,0 +1,4 @@
+from scenarios.components.scenarios_container import render_scenario_editor_page
+
+
+render_scenario_editor_page()

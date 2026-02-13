@@ -30,8 +30,6 @@ def render_queues_container(broker: dict):
     load_queues(broker_id)
     queues = st.session_state.get("queues", [])
 
-    st.caption("Queue list")
-
     if not queues:
         st.info("No queues configured for this broker.")
     else:
@@ -51,7 +49,7 @@ def render_queues_container(broker: dict):
                         type="secondary",
                         use_container_width=True,
                         help="Open queue page",
-                        icon=":material/open_in_new:",
+                        icon=":material/clear_all:",
                     ):
                         _open_queue_page(broker_id, queue_item.get("id"))
                 with row_cols[4]:

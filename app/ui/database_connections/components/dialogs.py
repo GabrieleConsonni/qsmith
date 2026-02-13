@@ -144,8 +144,8 @@ def _render_connection_form(prefix: str, payload: dict | None = None) -> tuple[d
 @st.dialog("Aggiungi connessione database")
 def add_database_connection_dialog():
     default_payload = {
-        "database_type": "postgres",
-        "port": 5432,
+        "database_type": "",
+        "port": "",
         "host": "",
         "database": "",
         "db_schema": "public",
@@ -154,7 +154,7 @@ def add_database_connection_dialog():
     }
     for field_name in ("code", "description", "host", "database", "db_schema", "user", "password"):
         st.session_state.setdefault(f"add_db_conn_{field_name}", "")
-    st.session_state.setdefault("add_db_conn_database_type", "Postgres")
+        
     feedback_key = "add_db_conn_test_feedback"
     st.session_state.setdefault(feedback_key, None)
 

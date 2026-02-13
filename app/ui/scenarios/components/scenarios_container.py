@@ -7,6 +7,7 @@ import streamlit as st
 
 from scenarios.services.data_loader_service import (
     load_operations_catalog,
+    load_scenarios,
     load_scenarios_context,
     load_steps_catalog,
 )
@@ -60,6 +61,9 @@ OPERATION_TYPE_OPTIONS = [
     OPERATION_TYPE_SAVE_INTERNAL_DB,
     OPERATION_TYPE_SAVE_EXTERNAL_DB,
 ]
+
+SCENARIOS_LIST_PAGE_PATH = "pages/Scenarios.py"
+SCENARIO_EDITOR_PAGE_PATH = "pages/ScenarioEditor.py"
 
 
 def _safe_int(value: object, default: int = 0) -> int:
@@ -459,6 +463,91 @@ def _execute_scenario(scenario_id: str):
 
     st.session_state[SCENARIO_FEEDBACK_KEY] = "Scenario avviato."
     st.rerun()
+
+
+def _update_scenario_description(scenario_id: str, new_description: str):
+    scenario_id = str(scenario_id or "").strip()
+    if not scenario_id:
+        st.error("Scenario non valido.")
+        return
+
+    draft = _build_scenario_draft(scenario_id)
+    if not isinstance(draft, dict):
+        st.error("Errore caricamento scenario.")
+        return
+
+    draft["description"] = str(new_description or "")
+    payload = _build_scenario_payload(draft)
+
+    try:
+        update_scenario(
+            {
+                "id": scenario_id,
+                **payload,
+            },
+        )
+    except Exception as exc:
+        st.error(f"Errore aggiornamento descrizione: {str(exc)}")
+        return
+
+    load_scenarios(force=True)
+    st.session_state[SCENARIO_FEEDBACK_KEY] = "Descrizione scenario aggiornata."
+    st.rerun()
+
+
+@st.dialog("Modifica descrizione")
+def _edit_scenario_description_list_dialog(
+    scenario_id: str,
+    current_description: str,
+    dialog_suffix: str,
+):
+    input_key = f"scenario_list_edit_description_input_{dialog_suffix}"
+    new_description = st.text_area(
+        "Description",
+        value=current_description,
+        key=input_key,
+        height=180,
+    )
+
+    action_cols = st.columns([2, 2, 6], gap="small", vertical_alignment="center")
+    with action_cols[0]:
+        if st.button(
+            "Save",
+            key=f"scenario_list_edit_description_save_{dialog_suffix}",
+            icon=":material/save:",
+            type="secondary",
+            use_container_width=True,
+        ):
+            _update_scenario_description(scenario_id, new_description)
+    with action_cols[1]:
+        if st.button(
+            "Cancel",
+            key=f"scenario_list_edit_description_cancel_{dialog_suffix}",
+            use_container_width=True,
+        ):
+            st.rerun()
+
+
+def _open_scenario_editor_for_creation():
+    st.session_state[SELECTED_SCENARIO_ID_KEY] = None
+    _set_editor_draft(_new_scenario_draft(), "create")
+    st.switch_page(SCENARIO_EDITOR_PAGE_PATH)
+
+
+def _open_scenario_editor_for_edit(scenario_id: str):
+    scenario_id = str(scenario_id or "").strip()
+    if not scenario_id:
+        st.error("Scenario non valido.")
+        return
+
+    st.session_state[SELECTED_SCENARIO_ID_KEY] = scenario_id
+    draft = _build_scenario_draft(scenario_id)
+    if draft is None:
+        st.error("Errore caricamento dettaglio scenario.")
+        return
+
+    _set_editor_draft(draft, "edit")
+    st.switch_page(SCENARIO_EDITOR_PAGE_PATH)
 
 
 def _start_create_mode():
@@ -1500,7 +1589,6 @@ def _render_editor():
     if not isinstance(draft, dict):
         return
 
-    mode = str(st.session_state.get(SCENARIO_EDITOR_MODE_KEY, "edit"))
     nonce = int(st.session_state.get(SCENARIO_EDITOR_NONCE_KEY, 0))
     step_catalog = st.session_state.get(STEPS_CATALOG_KEY, [])
     operation_catalog = st.session_state.get(OPERATIONS_CATALOG_KEY, [])
@@ -1515,19 +1603,6 @@ def _render_editor():
         for item in operation_catalog
         if item.get("id")
     }
-
-    draft["code"] = st.text_input(
-        "Code",
-        value=str(draft.get("code") or ""),
-        key=f"scenario_{nonce}_code",
-    ).strip()
-    draft["description"] = st.text_input(
-        "Description",
-        value=str(draft.get("description") or ""),
-        key=f"scenario_{nonce}_description",
-    )
-    if mode == "create":
-        st.caption("Scenario in creazione.")
 
     st.markdown("**Scenario steps**")
     steps = draft.get("steps") or []
@@ -1559,53 +1634,220 @@ def _render_editor():
         _add_step_operation_dialog(draft, operation_catalog, operation_labels_by_id)
 
 
-def render_scenarios_page():
-    _ensure_editor_context()
+@st.dialog("Modifica descrizione scenario")
+def _edit_scenario_description_dialog(current_description: str, dialog_suffix: str):
+    input_key = f"scenario_edit_description_input_{dialog_suffix}"
+    edited_description = st.text_area(
+        "Description",
+        value=current_description,
+        key=input_key,
+        height=180,
+    )
 
-    st.header("Scenarios")
-    st.caption("Configure scenarios, scenario steps and step operations.")
-    
-    _render_pending_switch_warning()
-    st.divider()
+    action_cols = st.columns([2, 2, 6], gap="small", vertical_alignment="center")
+    with action_cols[0]:
+        if st.button(
+            "Save",
+            key=f"scenario_edit_description_save_{dialog_suffix}",
+            icon=":material/save:",
+            type="secondary",
+            use_container_width=True,
+        ):
+            draft = st.session_state.get(SCENARIO_DRAFT_KEY)
+            if isinstance(draft, dict):
+                draft["description"] = edited_description
+            st.rerun()
+    with action_cols[1]:
+        if st.button(
+            "Cancel",
+            key=f"scenario_edit_description_cancel_{dialog_suffix}",
+            use_container_width=True,
+        ):
+            st.rerun()
 
-    left_col, right_col = st.columns([2, 5], gap="medium", vertical_alignment="top")
-    with left_col:
-        _render_left_scenarios_list(st.session_state.get(SCENARIOS_KEY, []))
-        add_cols = st.columns([1, 7], gap="small", vertical_alignment="center")
-        with add_cols[0]:
-            if st.button(
-                "",
-                key="add_scenario_btn",
-                help="Add scenario",
-                icon=":material/add:",
-                use_container_width=True,
-            ):
-                _request_create_mode()
-    with right_col:
-        with st.container(border=True):
-            _render_editor()
 
-    if _is_editor_dirty():
-        action_cols = st.columns([8, 1, 1], gap="small", vertical_alignment="center")
-        with action_cols[1]:
-            if st.button(
-                "Save",
-                key="save_scenario_btn",
-                icon=":material/save:",
-                type="secondary",
-                use_container_width=True,
-            ):
-                _save_draft()
-        with action_cols[2]:
-            if st.button(
-                "Undo",
-                key="undo_scenario_btn",
-                icon=":material/undo:",
-                type="secondary",
-                use_container_width=True,
-            ):
-                _undo_changes()
+def _render_editor_main_fields():
+    draft = st.session_state.get(SCENARIO_DRAFT_KEY)
+    if not isinstance(draft, dict):
+        return
 
+    mode = str(st.session_state.get(SCENARIO_EDITOR_MODE_KEY, "edit"))
+    nonce = int(st.session_state.get(SCENARIO_EDITOR_NONCE_KEY, 0))
+    scenario_id = str(draft.get("id") or "")
+    is_existing_scenario = mode == "edit" and bool(scenario_id)
+
+    if is_existing_scenario:
+        description = str(draft.get("description") or "").strip() or "-"
+        st.title(description)
+        return
+
+    draft["code"] = st.text_input(
+        "Code",
+        value=str(draft.get("code") or ""),
+        key=f"scenario_{nonce}_code",
+    ).strip()
+    draft["description"] = st.text_input(
+        "Description",
+        value=str(draft.get("description") or ""),
+        key=f"scenario_{nonce}_description",
+    )
+    if mode == "create":
+        st.caption("Scenario in creazione.")
+
+
+def _render_editor_actions():
+    if not _is_editor_dirty():
+        return
+
+    action_cols = st.columns([8, 1, 1], gap="small", vertical_alignment="center")
+    with action_cols[1]:
+        if st.button(
+            "Save",
+            key="save_scenario_btn",
+            icon=":material/save:",
+            type="secondary",
+            use_container_width=True,
+        ):
+            _save_draft()
+    with action_cols[2]:
+        if st.button(
+            "Undo",
+            key="undo_scenario_btn",
+            icon=":material/undo:",
+            type="secondary",
+            use_container_width=True,
+        ):
+            _undo_changes()
+
+
+def _render_feedback():
     feedback_message = st.session_state.pop(SCENARIO_FEEDBACK_KEY, None)
     if feedback_message:
-        st.success(feedback_message,icon="✅")
+        st.success(feedback_message, icon=":material/check_circle:")
+
+
+def render_scenarios_list_page():
+    load_scenarios(force=False)
+    scenarios = st.session_state.get(SCENARIOS_KEY, [])
+
+    st.header("Scenarios")
+    st.caption("Lista scenari con azioni rapide.")
+    st.divider()
+
+    header_cols = st.columns([8, 1, 1], gap="small", vertical_alignment="center")
+    with header_cols[1]:
+        if st.button(
+            "",
+            key="refresh_scenarios_list_btn",
+            icon=":material/refresh:",
+            help="Refresh scenarios",
+            use_container_width=True,
+        ):
+            load_scenarios(force=True)
+            st.rerun()
+    with header_cols[2]:
+        if st.button(
+            "",
+            key="add_scenario_list_btn",
+            icon=":material/add:",
+            help="Nuovo scenario",
+            use_container_width=True,
+        ):
+            _open_scenario_editor_for_creation()
+
+    if not scenarios:
+        st.info("Nessuno scenario configurato.")
+        _render_feedback()
+        return
+
+    for idx, scenario in enumerate(scenarios):
+        scenario_id = str(scenario.get("id") or "")
+        code = str(scenario.get("code") or "-")
+        description = str(scenario.get("description") or code)
+        label = f"{description} ({code})" if description != code else code
+
+        with st.container(border=True):
+            row_cols = st.columns([7, 1, 1, 1, 1], gap="small", vertical_alignment="center")
+            with row_cols[0]:
+                st.write(label)
+            with row_cols[1]:
+                if st.button(
+                    "",
+                    key=f"execute_scenario_list_btn_{scenario_id or idx}",
+                    icon=":material/play_arrow:",
+                    help="Avvia scenario",
+                    use_container_width=True,
+                ):
+                    _execute_scenario(scenario_id)
+            with row_cols[2]:
+                if st.button(
+                    "",
+                    key=f"edit_scenario_description_list_btn_{scenario_id or idx}",
+                    icon=":material/edit:",
+                    help="Modifica descrizione",
+                    use_container_width=True,
+                ):
+                    _edit_scenario_description_list_dialog(
+                        scenario_id=scenario_id,
+                        current_description=str(scenario.get("description") or ""),
+                        dialog_suffix=f"{scenario_id or idx}",
+                    )
+            with row_cols[3]:
+                if st.button(
+                    "",
+                    key=f"edit_scenario_list_btn_{scenario_id or idx}",
+                    icon=":material/settings:",
+                    help="Modifica scenario",
+                    use_container_width=True,
+                ):
+                    _open_scenario_editor_for_edit(scenario_id)
+            with row_cols[4]:
+                if st.button(
+                    "",
+                    key=f"delete_scenario_list_btn_{scenario_id or idx}",
+                    icon=":material/delete:",
+                    help="Elimina scenario",
+                    use_container_width=True,
+                ):
+                    _delete_scenario(scenario_id)
+
+    _render_feedback()
+
+
+def render_scenario_editor_page():
+    _ensure_editor_context()
+
+    header_cols = st.columns([8, 2], gap="small", vertical_alignment="center")
+    with header_cols[1]:
+        if st.button(
+            "Back",
+            key="scenario_editor_back_btn",
+            icon=":material/arrow_back:",
+            use_container_width=True,
+        ):
+            st.switch_page(SCENARIOS_LIST_PAGE_PATH)
+
+    if not isinstance(st.session_state.get(SCENARIO_DRAFT_KEY), dict):
+        st.info("Nessuno scenario selezionato.")
+        if st.button(
+            "Nuovo scenario",
+            key="scenario_editor_create_btn",
+            icon=":material/add:",
+            type="secondary",
+        ):
+            _open_scenario_editor_for_creation()
+        _render_feedback()
+        return
+
+    _render_editor_main_fields()
+    st.divider()
+
+    with st.container(border=True):
+        _render_editor()
+
+    _render_editor_actions()
+    _render_feedback()
+
+
+def render_scenarios_page():
+    render_scenarios_list_page()

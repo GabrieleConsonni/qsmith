@@ -15,7 +15,17 @@ build:
   rules:
     - if: $CI_PIPELINE_SOURCE == "push"
   variables:
-    IMAGE: akeron-qsmith:coll
+    IMAGE: akeron-qsmith:dev
     REGISTRY: aknregistry.azurecr.io
     DOCKERFILE: ./docker/Dockerfile
+  extends: .build-docker-image
+
+build-ui:
+  stage: build
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+  variables:
+    IMAGE: akeron-qsmith-ui:dev
+    REGISTRY: aknregistry.azurecr.io
+    DOCKERFILE: ./docker/Dockerfile-ui
   extends: .build-docker-image

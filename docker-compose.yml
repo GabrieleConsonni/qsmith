@@ -24,7 +24,7 @@ services:
   qsmith-ui:
     build:
       context: .
-      dockerfile: docker/Dockerfile.ui
+      dockerfile: docker/Dockerfile-ui
     environment:
       - QSMITH_API_BASE_URL=http://qsmith:9082
       - STREAMLIT_SERVER_RUN_ON_SAVE=true

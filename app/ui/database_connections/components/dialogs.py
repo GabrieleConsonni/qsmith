@@ -116,12 +116,21 @@ def _render_connection_form(prefix: str, payload: dict | None = None) -> tuple[d
         )
         st.session_state[port_type_key] = selected_type
 
-    form_values = {
-        "code": st.text_input("Code", key=f"{prefix}_code"),
-        "description": st.text_input("Description", key=f"{prefix}_description"),
-        "database_type": selected_type,
-        "host": st.text_input("Host", key=f"{prefix}_host"),
-        "port": int(
+    st.divider()
+    left_col, right_col = st.columns(2, gap="medium")
+
+    with left_col:
+        code = st.text_input("Code", key=f"{prefix}_code")
+        host = st.text_input("Host", key=f"{prefix}_host")
+        database = st.text_input(
+            "Database / Service",
+            key=f"{prefix}_database",
+        )
+        user = st.text_input("User", key=f"{prefix}_user")
+
+    with right_col:
+        description = st.text_input("Description", key=f"{prefix}_description")
+        port = int(
             st.number_input(
                 "Port",
                 min_value=1,
@@ -129,14 +138,20 @@ def _render_connection_form(prefix: str, payload: dict | None = None) -> tuple[d
                 step=1,
                 key=port_key,
             )
-        ),
-        "database": st.text_input(
-            "Database / Service",
-            key=f"{prefix}_database",
-        ),
-        "db_schema": st.text_input("Schema", key=f"{prefix}_db_schema"),
-        "user": st.text_input("User", key=f"{prefix}_user"),
-        "password": st.text_input("Password", type="password", key=f"{prefix}_password"),
+        )
+        db_schema = st.text_input("Schema", key=f"{prefix}_db_schema")
+        password = st.text_input("Password", type="password", key=f"{prefix}_password")
+
+    form_values = {
+        "code": code,
+        "description": description,
+        "database_type": selected_type,
+        "host": host,
+        "port": port,
+        "database": database,
+        "db_schema": db_schema,
+        "user": user,
+        "password": password,
     }
     return form_values, selected_type_label
 

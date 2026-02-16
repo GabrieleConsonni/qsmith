@@ -101,7 +101,7 @@ def queue_test_connection_dialog(broker_id: str, queue_id: str):
 
 
 @st.dialog("Select datasource",width="large")
-def queue_select_datasource_dialog(queue_id: str):
+def open_select_json_array_dialog(queue_id: str):
     try:
         json_arrays = load_json_arrays()
     except Exception as exc:
@@ -165,7 +165,7 @@ def queue_write_json_array_dialog(queue_id: str):
 
 
 @st.dialog("Save json-array")
-def queue_save_json_array_dialog(queue_id: str):
+def open_save_json_array_dialog(queue_id: str):
     body = st.session_state.get(_send_body_key(queue_id), "[]")
     payload, error = _parse_json_array(body)
     if error:
@@ -316,7 +316,7 @@ def render_queue_details_container(queue_data: dict, broker_id: str, queue_id: s
                     use_container_width=True,
                     help="Select json-array from datasource",
                 ):
-                    queue_select_datasource_dialog(queue_id)
+                    open_select_json_array_dialog(queue_id)
 
                 if st.button(
                     "",
@@ -325,7 +325,7 @@ def render_queue_details_container(queue_data: dict, broker_id: str, queue_id: s
                     use_container_width=True,
                     help="Save json-array to datasource",
                 ):
-                    queue_save_json_array_dialog(queue_id)
+                    open_save_json_array_dialog(queue_id)
 
             with col_preview:
                 st.caption("Preview")
@@ -355,15 +355,27 @@ def render_queue_details_container(queue_data: dict, broker_id: str, queue_id: s
                             st.error(f"Errore invio messaggi: {str(exc)}")
                         else:
                             st.session_state[results_key] = results if isinstance(results, list) else [results]
+                            st.session_state[body_key] = "[]"
                             st.rerun()
                 if st.button(
-                        "View results",
+                        "",
                         key=f"queue_view_results_{queue_id}",
-                        icon=":material/visibility:",
+                        icon=":material/search_check:",
                         use_container_width=True,
                         help="View send results",
                     ):
                     queue_send_results_dialog(queue_id)
+                send_body_has_value = st.session_state.get(body_key, "[]").strip() not in ("", "[]")
+                if st.button(
+                    "",
+                    key=f"queue_send_clean_preview_{queue_id}",
+                    icon=":material/delete_sweep:",
+                    help="Clean preview",
+                    disabled=not send_body_has_value,
+                    use_container_width=True,
+                ):
+                    st.session_state[body_key] = "[]"
+                    st.rerun()
         
 
         with tab_receive:

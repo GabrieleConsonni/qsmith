@@ -1,6 +1,6 @@
-from _alembic.models.queue_entity import QueueEntity
-from _alembic.services.session_context_manager import managed_session
-from brokers.services.alembic.queue_service import QueueService
+from app._alembic.models.queue_entity import QueueEntity
+from app._alembic.services.session_context_manager import managed_session
+from app.brokers.services.alembic.queue_service import QueueService
 
 
 def test_queue_service(alembic_container):

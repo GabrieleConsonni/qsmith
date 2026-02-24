@@ -4,17 +4,17 @@ from typing import Any
 
 from sqlalchemy import create_engine
 
-from _alembic.models.queue_entity import QueueEntity
-from _alembic.services.alembic_config_service import url_from_env
-from _alembic.services.session_context_manager import managed_session
-from brokers.models.connections.broker_connection_config_types import BrokerConnectionConfigTypes
-from brokers.models.connections.connection_config import ConnectionConfig
-from brokers.services.alembic.queue_service import QueueService
-from brokers.services.connections.queue.queue_connection_service import QueueConnectionService, LONG_VISIBILITY_TIMEOUT
-from brokers.services.elaborations.queue_reader_thread import QueueReaderThread
-from brokers.services.elaborations.queue_writer_thread import QueueWriterThread
-from logs.services.alembic.log_service import LogService
-from sqlalchemy_utils.database_table_reader import DatabaseTableReader, ReadTableConfig
+from app._alembic.models.queue_entity import QueueEntity
+from app._alembic.services.alembic_config_service import url_from_env
+from app._alembic.services.session_context_manager import managed_session
+from app.brokers.models.connections.broker_connection_config_types import BrokerConnectionConfigTypes
+from app.brokers.models.connections.connection_config import ConnectionConfig
+from app.brokers.services.alembic.queue_service import QueueService
+from app.brokers.services.connections.queue.queue_connection_service import QueueConnectionService, LONG_VISIBILITY_TIMEOUT
+from app.brokers.services.elaborations.queue_reader_thread import QueueReaderThread
+from app.brokers.services.elaborations.queue_writer_thread import QueueWriterThread
+from app.logs.services.alembic.log_service import LogService
+from app.sqlalchemy_utils.database_table_reader import DatabaseTableReader, ReadTableConfig
 
 
 SHORT_TIMEOUT = 20

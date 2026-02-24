@@ -1,21 +1,21 @@
 import json
 import unittest
 
-from _alembic.models.operation_entity import OperationEntity
-from _alembic.models.scenario_entity import ScenarioEntity
-from _alembic.models.scenario_step_entity import ScenarioStepEntity
-from _alembic.models.step_entity import StepEntity
-from _alembic.models.step_operation_entity import StepOperationEntity
-from _alembic.services.session_context_manager import managed_session
-from elaborations.models.enums.operation_type import OperationType
-from elaborations.models.enums.step_type import StepType
-from elaborations.services.alembic.operation_service import OperationService
-from elaborations.services.alembic.scenario_service import ScenarioService
-from elaborations.services.alembic.scenario_step_service import ScenarioStepService
-from elaborations.services.alembic.step_operation_service import StepOperationService
-from elaborations.services.alembic.step_service import StepService
-from elaborations.services.scenarios.scenario_executor_thread import ScenarioExecutionInput, _execute
-from logs.services.alembic.log_service import LogService
+from app._alembic.models.operation_entity import OperationEntity
+from app._alembic.models.scenario_entity import ScenarioEntity
+from app._alembic.models.scenario_step_entity import ScenarioStepEntity
+from app._alembic.models.step_entity import StepEntity
+from app._alembic.models.step_operation_entity import StepOperationEntity
+from app._alembic.services.session_context_manager import managed_session
+from app.elaborations.models.enums.operation_type import OperationType
+from app.elaborations.models.enums.step_type import StepType
+from app.elaborations.services.alembic.operation_service import OperationService
+from app.elaborations.services.alembic.scenario_service import ScenarioService
+from app.elaborations.services.alembic.scenario_step_service import ScenarioStepService
+from app.elaborations.services.alembic.step_operation_service import StepOperationService
+from app.elaborations.services.alembic.step_service import StepService
+from app.elaborations.services.scenarios.scenario_executor_thread import ScenarioExecutionInput, _execute
+from app.logs.services.alembic.log_service import LogService
 
 
 def test_execution(alembic_container):
@@ -34,6 +34,7 @@ def test_execution(alembic_container):
         operation_id = OperationService().insert(
             session,
             OperationEntity(
+                code="operation_1",
                 operation_type=OperationType.SAVE_INTERNAL_DB.value,
                 configuration_json={
                     "operationType": "save-internal-db",

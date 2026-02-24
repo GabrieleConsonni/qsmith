@@ -1,19 +1,20 @@
 # Qsmith
-
 Qsmith e un queue manager con backend FastAPI e UI Streamlit.
-
-## Repository Map
-- `app/`: backend FastAPI e codice UI Streamlit
-- `app/main.py`: entrypoint API
-- `app/ui/Qsmith.py`: entrypoint UI Streamlit
-- `alembic/`: migrazioni database
-- `docker/`: Dockerfile API/UI
-- `elasticmq/`: compose e configurazione ElasticMQ locale
-- `docs/`: documentazione funzionale e operativa
 
 ## Prerequisiti
 - Docker Desktop
 - Python 3.13 (solo se vuoi eseguire tool/test fuori dai container)
+- ElasticMQ
+
+## ElasticMQ locale (opzionale)
+Per avviare solo ElasticMQ in locale:
+```bash
+cd elasticmq
+docker compose up -d
+```
+
+- SQS endpoint: `http://localhost:9324`
+- Console web: `http://localhost:9325`
 
 ## Avvio (docker-compose)
 Avvio stack API + UI:
@@ -31,6 +32,15 @@ Script alternativo Windows:
 docker-run-dev.bat
 ```
 
+## Repository Map
+- `app/`: backend FastAPI e codice UI Streamlit
+- `app/main.py`: entrypoint API
+- `app/ui/Qsmith.py`: entrypoint UI Streamlit
+- `alembic/`: migrazioni database
+- `docker/`: Dockerfile API/UI
+- `elasticmq/`: compose e configurazione ElasticMQ locale
+- `docs/`: documentazione funzionale e operativa
+
 ## Endpoint utili
 - UI Streamlit: `http://localhost:8501`
 - API FastAPI: `http://localhost:9082`
@@ -38,22 +48,15 @@ docker-run-dev.bat
 - OpenAPI JSON: `http://localhost:9082/openapi.json`
 - Debugpy: `localhost:5678` (container `qsmith`)
 
-## ElasticMQ locale (opzionale)
-Per avviare solo ElasticMQ in locale:
+### Installazione in locale
+
+## Environment Python
 ```bash
-cd elasticmq
-docker compose up -d
+python -m venv .venv
 ```
-
-- SQS endpoint: `http://localhost:9324`
-- Console web: `http://localhost:9325`
-
-## Test
 ```bash
-pytest app/test
+.\.venv\Scripts\Activate.ps1
 ```
-
-Nota: i test usano Testcontainers (Docker richiesto).
 
 ## Dipendenze
 Installazione dipendenze ambiente Python locale:
@@ -65,6 +68,13 @@ Rigenerazione `docker-requirements.txt` da `requirements.in`:
 ```bash
 docker compose -f docker-compose-compile-requirements.yml run --rm compiler
 ```
+
+## Test
+```bash
+pytest app/test
+```
+
+Nota: i test usano Testcontainers (Docker richiesto).
 
 ## Alembic
 Esempi comandi:

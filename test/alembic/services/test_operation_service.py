@@ -1,9 +1,10 @@
-from _alembic.models.operation_entity import OperationEntity
-from _alembic.services.session_context_manager import managed_session
-from elaborations.models.enums.operation_type import OperationType
-from elaborations.services.alembic.operation_service import OperationService
+from app._alembic.models.operation_entity import OperationEntity
+from app._alembic.services.session_context_manager import managed_session
+from app.elaborations.models.enums.operation_type import OperationType
+from app.elaborations.services.alembic.operation_service import OperationService
 
 entity = OperationEntity(
+    code="operation_1",
     operation_type=OperationType.PUBLISH.value,
     configuration_json={"key": "value"}
 )

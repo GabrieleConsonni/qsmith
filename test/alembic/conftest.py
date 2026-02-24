@@ -1,9 +1,8 @@
 import os
-
 import pytest
 from testcontainers.postgres import PostgresContainer
+from app.alembic_runner import run_alembic_migrations
 
-from alembic_runner import run_alembic_migrations
 
 
 @pytest.fixture(scope="session")

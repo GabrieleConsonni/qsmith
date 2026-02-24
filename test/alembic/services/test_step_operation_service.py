@@ -1,23 +1,22 @@
 import unittest
 
-from _alembic.models.operation_entity import OperationEntity
-from _alembic.models.scenario_entity import ScenarioEntity
-from _alembic.models.scenario_step_entity import ScenarioStepEntity
-from _alembic.models.step_entity import StepEntity
-from _alembic.models.step_operation_entity import StepOperationEntity
-from _alembic.services.session_context_manager import managed_session
-from elaborations.models.dtos.configuration_operation_dto import SaveInternalDBConfigurationOperationDto
-from elaborations.models.dtos.configuration_step_dtos import SleepConfigurationStepDto
-from elaborations.models.dtos.create_scenario_dto import CreateScenarioDto, CreateScenarioStepDto, \
+from app._alembic.models.operation_entity import OperationEntity
+from app._alembic.models.scenario_entity import ScenarioEntity
+from app._alembic.models.scenario_step_entity import ScenarioStepEntity
+from app._alembic.models.step_entity import StepEntity
+from app._alembic.models.step_operation_entity import StepOperationEntity
+from app._alembic.services.session_context_manager import managed_session
+from app.elaborations.models.dtos.configuration_operation_dto import SaveInternalDBConfigurationOperationDto
+from app.elaborations.models.dtos.configuration_step_dtos import SleepConfigurationStepDto
+from app.elaborations.models.dtos.create_scenario_dto import CreateScenarioDto, CreateScenarioStepDto, \
     CreateStepOperationDto
-from elaborations.models.enums.operation_type import OperationType
-from elaborations.models.enums.step_type import StepType
-from elaborations.services.alembic.operation_service import OperationService
-from elaborations.services.alembic.scenario_service import ScenarioService
-from elaborations.services.alembic.step_service import StepService
-from elaborations.services.alembic.scenario_step_service import ScenarioStepService
-from elaborations.services.alembic.step_operation_service import StepOperationService
-from elaborations.services.scenarios.scenario_dto_service import insert_scenario
+from app.elaborations.models.enums.operation_type import OperationType
+from app.elaborations.models.enums.step_type import StepType
+from app.elaborations.services.alembic.operation_service import OperationService
+from app.elaborations.services.alembic.scenario_service import ScenarioService
+from app.elaborations.services.alembic.step_service import StepService
+from app.elaborations.services.alembic.scenario_step_service import ScenarioStepService
+from app.elaborations.services.alembic.step_operation_service import StepOperationService
 
 
 def test_delete(alembic_container):
@@ -33,6 +32,7 @@ def test_delete(alembic_container):
         operation_id = OperationService().insert(
             session,
             OperationEntity(
+                code="operation_1",
                 operation_type=OperationType.SAVE_INTERNAL_DB.value,
                 configuration_json={"table_name": "test_table"}
             )
@@ -64,10 +64,10 @@ def test_delete(alembic_container):
         deleted = ScenarioService().delete_by_id(session, scenario_id)
         assert deleted == 1
 
-        steps = ScenarioStepService().get_all(session)
-        assert 0 == len(steps)
+        step = ScenarioStepService().get_by_id(session, scenario_step_id)
+        assert step is None
 
-        operations = StepOperationService().get_all(session)
+        operations = StepOperationService().get_all_by_step(session, scenario_step_id)
         assert 0 == len(operations)
 
 if __name__ == "__main__":

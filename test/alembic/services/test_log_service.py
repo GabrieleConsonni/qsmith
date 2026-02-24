@@ -1,12 +1,13 @@
-from _alembic.models.log_entity import LogEntity
-from _alembic.services.session_context_manager import managed_session
+from app._alembic.models.log_entity import LogEntity
+from app._alembic.services.session_context_manager import managed_session
 
-from logs.models.enums.log_level import LogLevel
-from logs.models.enums.log_subject_type import LogSubjectType
-from logs.services.alembic.log_service import LogService
+from app.logs.models.enums.log_level import LogLevel
+from app.logs.models.enums.log_subject_type import LogSubjectType
+from app.logs.services.alembic.log_service import LogService
 
 def test_log_service(alembic_container):
     ids: list[str] = []
+    baseline_count = _get_logs_count()
 
     ids.append(_verify_log(LogEntity(
         subject_type=LogSubjectType.SERVICE.value,
@@ -35,7 +36,7 @@ def test_log_service(alembic_container):
         ]
     ))
 
-    _verify_get_logs(expected_count=3)
+    _verify_get_logs(expected_count=baseline_count + 3)
 
     _verify_clean_logs(3)
 
@@ -83,3 +84,8 @@ def _verify_clean_logs(expected_deleted_count: int = 0):
         service = LogService()
         deleted = service.clean_logs(session, 0)
         assert deleted >= expected_deleted_count
+
+
+def _get_logs_count() -> int:
+    with managed_session() as session:
+        return len(LogService().get_logs(session))

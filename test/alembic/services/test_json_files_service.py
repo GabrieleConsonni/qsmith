@@ -1,8 +1,8 @@
-from _alembic.models.json_payload_entity import JsonPayloadEntity
-from _alembic.services.session_context_manager import managed_session
-from json_utils.models.enums.json_type import JsonType
+from app._alembic.models.json_payload_entity import JsonPayloadEntity
+from app._alembic.services.session_context_manager import managed_session
+from app.json_utils.models.enums.json_type import JsonType
 
-from json_utils.services.alembic.json_files_service import JsonFilesService
+from app.json_utils.services.alembic.json_files_service import JsonFilesService
 
 entity = JsonPayloadEntity(
     code="test_code",

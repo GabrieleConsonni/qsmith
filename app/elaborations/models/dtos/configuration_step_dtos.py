@@ -20,12 +20,7 @@ class DataConfigurationStepDTO(ConfigurationStepDto):
 
 class DataFromDbConfigurationStepDto(ConfigurationStepDto):
     stepType: str = StepType.DATA_FROM_DB.value
-    connection_id: str
-    table_name: str
-    query: str | None = None
-    order_by: list[str] | None = None
-    stream: bool = True
-    chunk_size: int = 100
+    data_source_id: str | None = None
 
 class DataFromQueueConfigurationStepDto(ConfigurationStepDto):
     stepType: str = StepType.DATA_FROM_QUEUE.value
@@ -54,11 +49,7 @@ def convert_to_config_step_type(data: dict):
         )
     elif step_type == StepType.DATA_FROM_DB.value:
         return DataFromDbConfigurationStepDto(
-            connection_id=data.get("connection_id"),
-            table_name=data.get("table_name"),
-            query=data.get("query"),
-            order_by=data.get("order_by"),
-            chunk_size=data.get("chunk_size", 100)
+            data_source_id=data.get("data_source_id")
         )
     elif step_type == StepType.DATA_FROM_QUEUE.value:
         return DataFromQueueConfigurationStepDto(

@@ -9,6 +9,8 @@ from scenarios.services.data_loader_service import (
     load_operations_catalog,
     load_scenarios,
     load_scenarios_context,
+    load_step_editor_context,
+    load_step_editor_queues_for_broker,
     load_steps_catalog,
 )
 from scenarios.services.scenario_api_service import (
@@ -38,6 +40,9 @@ from scenarios.services.state_keys import (
     SCENARIO_EDITOR_NONCE_KEY,
     SCENARIO_FEEDBACK_KEY,
     SELECTED_SCENARIO_ID_KEY,
+    STEP_EDITOR_BROKERS_KEY,
+    STEP_EDITOR_DATABASE_DATASOURCES_KEY,
+    STEP_EDITOR_JSON_ARRAYS_KEY,
     STEPS_CATALOG_KEY,
 )
 
@@ -134,6 +139,33 @@ def _operation_catalog_label(operation_item: dict) -> str:
     return f"{code} ({description})"
 
 
+def _json_array_catalog_label(json_array_item: dict) -> str:
+    return str(json_array_item.get("description") or json_array_item.get("code") or "-")
+
+
+def _database_datasource_label(datasource_item: dict) -> str:
+    return str(datasource_item.get("description") or datasource_item.get("code") or "-")
+
+
+def _broker_label(broker_item: dict) -> str:
+    return str(broker_item.get("description") or broker_item.get("code") or "-")
+
+
+def _queue_label(queue_item: dict) -> str:
+    return str(queue_item.get("description") or queue_item.get("code") or "-")
+
+
+def _normalize_select_key(key: str, options: list[str]):
+    if not key:
+        return
+    if not options:
+        st.session_state[key] = ""
+        return
+    current_value = str(st.session_state.get(key) or "")
+    if current_value not in options:
+        st.session_state[key] = options[0]
+
+
 def _step_type_label(step_type: str) -> str:
     labels = {
         STEP_TYPE_SLEEP: "sleep",
@@ -178,13 +210,21 @@ def _parse_json_object(value: str) -> tuple[dict | None, str | None]:
     return parsed, None
 
 
-def _open_add_scenario_step_dialog():
+def _open_add_scenario_step_dialog(create_new: bool):
     _close_add_step_operation_dialog()
     st.session_state[ADD_SCENARIO_STEP_DIALOG_OPEN_KEY] = True
-    st.session_state[ADD_SCENARIO_STEP_DIALOG_CREATE_NEW_KEY] = False
+    st.session_state[ADD_SCENARIO_STEP_DIALOG_CREATE_NEW_KEY] = create_new
     st.session_state[ADD_SCENARIO_STEP_DIALOG_NONCE_KEY] = (
         int(st.session_state.get(ADD_SCENARIO_STEP_DIALOG_NONCE_KEY, 0)) + 1
     )
+
+
+def _open_add_new_scenario_step_dialog():
+    _open_add_scenario_step_dialog(create_new=True)
+
+
+def _open_import_scenario_step_dialog():
+    _open_add_scenario_step_dialog(create_new=False)
 
 
 def _close_add_scenario_step_dialog():
@@ -994,39 +1034,19 @@ def _build_step_creation_payload(dialog_nonce: int) -> tuple[dict | None, str | 
             "json_array_id": json_array_id,
         }
     elif step_type == STEP_TYPE_DATA_FROM_DB:
-        connection_id = str(
-            st.session_state.get(f"scenario_add_step_connection_id_{dialog_nonce}") or ""
+        selected_datasource_id = str(
+            st.session_state.get(f"scenario_add_step_db_datasource_id_{dialog_nonce}") or ""
         ).strip()
-        table_name = str(
-            st.session_state.get(f"scenario_add_step_table_name_{dialog_nonce}") or ""
-        ).strip()
-        query = str(st.session_state.get(f"scenario_add_step_query_{dialog_nonce}") or "").strip()
-        order_by_raw = str(
-            st.session_state.get(f"scenario_add_step_order_by_{dialog_nonce}") or ""
-        )
-        order_by_values = [item.strip() for item in order_by_raw.split(",") if item.strip()]
-        stream = bool(
-            st.session_state.get(f"scenario_add_step_stream_{dialog_nonce}", True)
-        )
-        chunk_size = _safe_int(
-            st.session_state.get(f"scenario_add_step_chunk_size_{dialog_nonce}"), 100
-        )
-        if not connection_id:
-            return None, "Il campo Connection id e' obbligatorio."
-        if not table_name:
-            return None, "Il campo Table name e' obbligatorio."
-        if chunk_size <= 0:
-            return None, "Il campo Chunk size deve essere maggiore di zero."
+        if not selected_datasource_id:
+            return None, "Il campo Dataset e' obbligatorio."
         cfg = {
             "stepType": STEP_TYPE_DATA_FROM_DB,
-            "connection_id": connection_id,
-            "table_name": table_name,
-            "query": query or None,
-            "order_by": order_by_values or None,
-            "stream": stream,
-            "chunk_size": chunk_size,
+            "data_source_id": selected_datasource_id,
         }
     elif step_type == STEP_TYPE_DATA_FROM_QUEUE:
+        broker_id = str(
+            st.session_state.get(f"scenario_add_step_broker_id_{dialog_nonce}") or ""
+        ).strip()
         queue_id = str(
             st.session_state.get(f"scenario_add_step_queue_id_{dialog_nonce}") or ""
         ).strip()
@@ -1037,6 +1057,8 @@ def _build_step_creation_payload(dialog_nonce: int) -> tuple[dict | None, str | 
         max_messages = _safe_int(
             st.session_state.get(f"scenario_add_step_max_messages_{dialog_nonce}"), 1000
         )
+        if not broker_id:
+            return None, "Il campo Broker e' obbligatorio."
         if not queue_id:
             return None, "Il campo Queue id e' obbligatorio."
         if retry < 0:
@@ -1095,72 +1117,76 @@ def _render_readonly_step_preview(selected_step: dict, dialog_nonce: int):
     )
 
 
-@st.dialog("Add scenario step", width="large")
-def _add_scenario_step_dialog(draft: dict, step_catalog: list[dict], step_labels_by_id: dict[str, str]):
+def _render_import_scenario_step_dialog(
+    draft: dict,
+    step_catalog: list[dict],
+    step_labels_by_id: dict[str, str],
+):
     dialog_nonce = int(st.session_state.get(ADD_SCENARIO_STEP_DIALOG_NONCE_KEY, 0))
-    create_new = bool(st.session_state.get(ADD_SCENARIO_STEP_DIALOG_CREATE_NEW_KEY, False))
     step_ids = [str(item.get("id")) for item in step_catalog if item.get("id")]
     step_by_id = {str(item.get("id")): item for item in step_catalog if item.get("id")}
 
-    selection_cols = st.columns([8, 1], gap="small", vertical_alignment="bottom")
     selected_step_id = ""
-    with selection_cols[0]:
-        if step_ids:
-            selected_step_id = st.selectbox(
-                "Existing step",
-                options=step_ids,
-                format_func=lambda _id: step_labels_by_id.get(_id, f"Unknown ({_id})"),
-                key=f"scenario_add_step_existing_select_{dialog_nonce}",
-                disabled=create_new,
-            )
-    with selection_cols[1]:
-        if create_new:
-            if st.button(
-                "",
-                key=f"scenario_add_step_use_existing_{dialog_nonce}",
-                icon=":material/list:",
-                help="Use existing step",
-                use_container_width=True,
-                disabled=not bool(step_ids),
-            ):
-                st.session_state[ADD_SCENARIO_STEP_DIALOG_CREATE_NEW_KEY] = False
-                st.rerun()
-        else:
-            if st.button(
-                "",
-                key=f"scenario_add_step_create_new_{dialog_nonce}",
-                icon=":material/add:",
-                help="Create new step",
-                use_container_width=True,
-            ):
-                st.session_state[ADD_SCENARIO_STEP_DIALOG_CREATE_NEW_KEY] = True
-                st.rerun()
+    if step_ids:
+        selected_step_id = st.selectbox(
+            "Existing step",
+            options=step_ids,
+            format_func=lambda _id: step_labels_by_id.get(_id, f"Unknown ({_id})"),
+            key=f"scenario_add_step_existing_select_{dialog_nonce}",
+        )
+    else:
+        st.info("Nessuno step disponibile da importare.")
 
-    if not create_new:
-        _render_readonly_step_preview(step_by_id.get(selected_step_id), dialog_nonce)
-        action_cols = st.columns([7, 2, 2], gap="small")
-        with action_cols[1]:
-            if st.button(
-                "Add",
-                key=f"scenario_add_step_add_existing_{dialog_nonce}",
-                icon=":material/add:",
-                type="secondary",
-                use_container_width=True,
-                disabled=not bool(selected_step_id),
-            ):
-                _append_step_to_draft(draft, selected_step_id)
-                _close_add_scenario_step_dialog()
-                st.session_state[SCENARIO_FEEDBACK_KEY] = "Scenario step aggiunto."
-                st.rerun()
-        with action_cols[2]:
-            if st.button(
-                "Cancel",
-                key=f"scenario_add_step_cancel_existing_{dialog_nonce}",
-                use_container_width=True,
-            ):
-                _close_add_scenario_step_dialog()
-                st.rerun()
-        return
+    _render_readonly_step_preview(step_by_id.get(selected_step_id), dialog_nonce)
+    action_cols = st.columns([7, 2, 2], gap="small")
+    with action_cols[1]:
+        if st.button(
+            "Add",
+            key=f"scenario_add_step_add_existing_{dialog_nonce}",
+            icon=":material/add:",
+            type="secondary",
+            use_container_width=True,
+            disabled=not bool(selected_step_id),
+        ):
+            _append_step_to_draft(draft, selected_step_id)
+            _close_add_scenario_step_dialog()
+            st.session_state[SCENARIO_FEEDBACK_KEY] = "Scenario step aggiunto."
+            st.rerun()
+    with action_cols[2]:
+        if st.button(
+            "Cancel",
+            key=f"scenario_add_step_cancel_existing_{dialog_nonce}",
+            use_container_width=True,
+        ):
+            _close_add_scenario_step_dialog()
+            st.rerun()
+
+
+def _render_add_new_scenario_step_dialog(draft: dict):
+    dialog_nonce = int(st.session_state.get(ADD_SCENARIO_STEP_DIALOG_NONCE_KEY, 0))
+    load_step_editor_context(force=False)
+    json_arrays = st.session_state.get(STEP_EDITOR_JSON_ARRAYS_KEY, [])
+    database_datasources = st.session_state.get(STEP_EDITOR_DATABASE_DATASOURCES_KEY, [])
+    brokers = st.session_state.get(STEP_EDITOR_BROKERS_KEY, [])
+    if not isinstance(json_arrays, list):
+        json_arrays = []
+    if not isinstance(database_datasources, list):
+        database_datasources = []
+    if not isinstance(brokers, list):
+        brokers = []
+
+    json_array_ids = [str(item.get("id")) for item in json_arrays if item.get("id")]
+    json_array_by_id = {
+        str(item.get("id")): item for item in json_arrays if item.get("id")
+    }
+    database_datasource_ids = [
+        str(item.get("id")) for item in database_datasources if item.get("id")
+    ]
+    database_datasource_by_id = {
+        str(item.get("id")): item for item in database_datasources if item.get("id")
+    }
+    broker_ids = [str(item.get("id")) for item in brokers if item.get("id")]
+    broker_by_id = {str(item.get("id")): item for item in brokers if item.get("id")}
 
     st.markdown("**New step**")
     st.text_input(
@@ -1195,45 +1221,94 @@ def _add_scenario_step_dialog(draft: dict, step_catalog: list[dict], step_labels
             key=data_key,
             height=220,
         )
+        if st.button(
+            "Beautify",
+            key=f"scenario_add_step_data_beautify_{dialog_nonce}",
+            icon=":material/auto_fix_high:",
+            type="secondary",
+            use_container_width=True,
+        ):
+            data_payload, parse_error = _parse_json_list(
+                str(st.session_state.get(data_key) or "[]")
+            )
+            if parse_error:
+                st.error(parse_error)
+            else:
+                st.session_state[data_key] = _pretty_json(data_payload or [])
     elif step_type == STEP_TYPE_DATA_FROM_JSON_ARRAY:
-        st.text_input(
-            "Json array id",
-            key=f"scenario_add_step_json_array_id_{dialog_nonce}",
+        json_array_select_key = f"scenario_add_step_json_array_id_{dialog_nonce}"
+        _normalize_select_key(json_array_select_key, json_array_ids or [""])
+        selected_json_array_id = st.selectbox(
+            "Json array",
+            options=json_array_ids or [""],
+            format_func=lambda _id: (
+                _json_array_catalog_label(json_array_by_id.get(_id, {}))
+                if _id
+                else "Nessun json-array disponibile"
+            ),
+            key=json_array_select_key,
+            disabled=not bool(json_array_ids),
         )
+        if not json_array_ids:
+            st.info("Nessun json-array configurato.")
+        else:
+            selected_json_array = json_array_by_id.get(selected_json_array_id, {})
+            st.markdown("**Preview json-array**")
+            st.json(selected_json_array.get("payload") or [], expanded=True)
     elif step_type == STEP_TYPE_DATA_FROM_DB:
-        st.text_input(
-            "Connection id",
-            key=f"scenario_add_step_connection_id_{dialog_nonce}",
+        datasource_select_key = f"scenario_add_step_db_datasource_id_{dialog_nonce}"
+        _normalize_select_key(datasource_select_key, database_datasource_ids or [""])
+        st.selectbox(
+            "Dataset",
+            options=database_datasource_ids or [""],
+            format_func=lambda _id: (
+                _database_datasource_label(database_datasource_by_id.get(_id, {}))
+                if _id
+                else "Nessun dataset disponibile"
+            ),
+            key=datasource_select_key,
+            disabled=not bool(database_datasource_ids),
         )
-        st.text_input(
-            "Table name",
-            key=f"scenario_add_step_table_name_{dialog_nonce}",
-        )
-        st.text_input(
-            "Query (optional)",
-            key=f"scenario_add_step_query_{dialog_nonce}",
-        )
-        st.text_input(
-            "Order by (comma separated, optional)",
-            key=f"scenario_add_step_order_by_{dialog_nonce}",
-        )
-        st.checkbox(
-            "Stream",
-            key=f"scenario_add_step_stream_{dialog_nonce}",
-            value=True,
-        )
-        st.number_input(
-            "Chunk size",
-            min_value=1,
-            value=100,
-            step=1,
-            key=f"scenario_add_step_chunk_size_{dialog_nonce}",
-        )
+        if not database_datasource_ids:
+            st.info("Nessun dataset database configurato.")
     elif step_type == STEP_TYPE_DATA_FROM_QUEUE:
-        st.text_input(
-            "Queue id",
-            key=f"scenario_add_step_queue_id_{dialog_nonce}",
+        broker_select_key = f"scenario_add_step_broker_id_{dialog_nonce}"
+        _normalize_select_key(broker_select_key, broker_ids or [""])
+        selected_broker_id = st.selectbox(
+            "Broker",
+            options=broker_ids or [""],
+            format_func=lambda _id: (
+                _broker_label(broker_by_id.get(_id, {}))
+                if _id
+                else "Nessun broker disponibile"
+            ),
+            key=broker_select_key,
+            disabled=not bool(broker_ids),
         )
+        queues = (
+            load_step_editor_queues_for_broker(selected_broker_id, force=False)
+            if selected_broker_id
+            else []
+        )
+        queue_ids = [str(item.get("id")) for item in queues if item.get("id")]
+        queue_by_id = {str(item.get("id")): item for item in queues if item.get("id")}
+        queue_select_key = f"scenario_add_step_queue_id_{dialog_nonce}"
+        _normalize_select_key(queue_select_key, queue_ids or [""])
+        st.selectbox(
+            "Queue",
+            options=queue_ids or [""],
+            format_func=lambda _id: (
+                _queue_label(queue_by_id.get(_id, {}))
+                if _id
+                else "Nessuna queue disponibile"
+            ),
+            key=queue_select_key,
+            disabled=not bool(queue_ids),
+        )
+        if not broker_ids:
+            st.info("Nessun broker configurato.")
+        elif selected_broker_id and not queue_ids:
+            st.info("Nessuna queue configurata per il broker selezionato.")
         st.number_input(
             "Retry",
             min_value=0,
@@ -1294,6 +1369,20 @@ def _add_scenario_step_dialog(draft: dict, step_catalog: list[dict], step_labels
         ):
             _close_add_scenario_step_dialog()
             st.rerun()
+
+
+@st.dialog("Import step", width="large")
+def _import_scenario_step_dialog(
+    draft: dict,
+    step_catalog: list[dict],
+    step_labels_by_id: dict[str, str],
+):
+    _render_import_scenario_step_dialog(draft, step_catalog, step_labels_by_id)
+
+
+@st.dialog("Add new step", width="large")
+def _add_new_scenario_step_dialog(draft: dict):
+    _render_add_new_scenario_step_dialog(draft)
 
 
 def _build_operation_creation_payload(dialog_nonce: int) -> tuple[dict | None, str | None]:
@@ -1619,17 +1708,32 @@ def _render_editor():
             operation_labels_by_id,
         )
 
-    if st.button(
-        "Add scenario step",
-        key=f"scenario_{nonce}_add_step",
-        icon=":material/add:",
-        use_container_width=True,
-    ):
-        _open_add_scenario_step_dialog()
-        st.rerun()
+    add_step_cols = st.columns(2, gap="small")
+    with add_step_cols[0]:
+        if st.button(
+            "Add new step",
+            key=f"scenario_{nonce}_add_new_step",
+            icon=":material/add:",
+            use_container_width=True,
+        ):
+            _open_add_new_scenario_step_dialog()
+            st.rerun()
+    with add_step_cols[1]:
+        if st.button(
+            "Import step",
+            key=f"scenario_{nonce}_import_step",
+            icon=":material/download:",
+            use_container_width=True,
+        ):
+            _open_import_scenario_step_dialog()
+            st.rerun()
 
     if st.session_state.get(ADD_SCENARIO_STEP_DIALOG_OPEN_KEY, False):
-        _add_scenario_step_dialog(draft, step_catalog, step_labels_by_id)
+        create_new = bool(st.session_state.get(ADD_SCENARIO_STEP_DIALOG_CREATE_NEW_KEY, False))
+        if create_new:
+            _add_new_scenario_step_dialog(draft)
+        else:
+            _import_scenario_step_dialog(draft, step_catalog, step_labels_by_id)
     if st.session_state.get(ADD_STEP_OPERATION_DIALOG_OPEN_KEY, False):
         _add_step_operation_dialog(draft, operation_catalog, operation_labels_by_id)
 

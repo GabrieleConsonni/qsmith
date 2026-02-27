@@ -1,6 +1,6 @@
 import streamlit as st
 
-from queues.components.queue_details_container import render_queue_details_container
+from queues.components.queue_details_component import render_queue_details_component
 from queues.services.queue_service import (
     load_queue_data,
     resolve_queue_context,
@@ -28,4 +28,5 @@ if not queue_data:
     st.error("Errore caricamento dettaglio queue.")
     st.stop()
 
-render_queue_details_container(queue_data, broker_id, queue_id)
+render_queue_details_component(queue_data, broker_id, queue_id)
+

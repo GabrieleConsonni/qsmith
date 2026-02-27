@@ -1,6 +1,6 @@
 import streamlit as st
 
-from brokers.components.brokers_container import render_brokers_container
+from brokers.components.brokers_component import render_brokers_component
 from brokers.services.data_loader_service import load_brokers
 
 load_brokers()
@@ -23,4 +23,5 @@ st.subheader("Brokers list")
 st.caption("Configure brokers and queues to start sending messages and testing scenarios.")
 st.divider()
 
-render_brokers_container(brokers)
+render_brokers_component(brokers)
+

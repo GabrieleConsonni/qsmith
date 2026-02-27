@@ -19,7 +19,7 @@ def _open_queue_page(broker_id: str | None, queue_id: str | None):
     st.switch_page("pages/QueueDetails.py")
 
 
-def render_queues_container(broker: dict):
+def render_queues_component(broker: dict):
     if not broker:
         st.info("Nessun broker configurato.")
         return None
@@ -95,3 +95,4 @@ def render_queues_container(broker: dict):
             icon=":material/add:",
         ):
             add_queue_dialog(broker)
+

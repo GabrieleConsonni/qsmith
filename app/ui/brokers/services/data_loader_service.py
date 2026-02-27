@@ -27,13 +27,3 @@ def load_queues(broker_id: str | None):
         st.error("Errore caricamento code")
 
 
-def get_configured_queues_count(broker_id: str | None) -> int | None:
-    if not broker_id:
-        return None
-    try:
-        queues = api_get(f"/broker/{broker_id}/queue")
-    except Exception:
-        return None
-    if isinstance(queues, list):
-        return len(queues)
-    return None

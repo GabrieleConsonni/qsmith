@@ -20,7 +20,7 @@ class DataConfigurationStepDTO(ConfigurationStepDto):
 
 class DataFromDbConfigurationStepDto(ConfigurationStepDto):
     stepType: str = StepType.DATA_FROM_DB.value
-    data_source_id: str | None = None
+    dataset_id: str | None = None
 
 class DataFromQueueConfigurationStepDto(ConfigurationStepDto):
     stepType: str = StepType.DATA_FROM_QUEUE.value

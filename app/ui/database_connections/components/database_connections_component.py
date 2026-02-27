@@ -7,7 +7,7 @@ from database_connections.components.dialogs import (
 )
 
 
-def render_database_connections_container(connections: list[dict]):
+def render_database_connections_component(connections: list[dict]):
     if not connections:
         st.info("Nessuna connessione database configurata.")
 
@@ -22,10 +22,10 @@ def render_database_connections_container(connections: list[dict]):
         with st.container(border=True):
             row_cols = st.columns([1, 7, 1, 1], gap="small", vertical_alignment="center")
             with row_cols[0]:
-                st.markdown(f"{connection_label}")
-
-            with row_cols[1]:
                 st.markdown(f"[ {connection_item.get('payload', {}).get('database_type', '').upper()} ]")
+                
+            with row_cols[1]:
+                st.markdown(f"{connection_label}")
 
             with row_cols[2]:
                 if st.button(
@@ -56,3 +56,4 @@ def render_database_connections_container(connections: list[dict]):
             use_container_width=True,
         ):
             add_database_connection_dialog()
+

@@ -5,7 +5,6 @@ from brokers.components.dialogs import (
     delete_broker_dialog,
     edit_broker_dialog,
 )
-from brokers.services.data_loader_service import get_configured_queues_count
 
 
 def _open_queues_page(broker_id: str | None):
@@ -18,19 +17,18 @@ def _open_queues_page(broker_id: str | None):
     st.switch_page("pages/Queues.py")
 
 
-def render_brokers_container(brokers: list[dict]):
+def render_brokers_component(brokers: list[dict]):
     for idx, broker_item in enumerate(brokers):
         broker_id = broker_item.get("id")
         broker_description = broker_item.get("description", "No name")
-        queues_count = get_configured_queues_count(broker_id)
         with st.container(border=True):
             row_cols = st.columns([1,6, 1, 1, 1], gap="small", vertical_alignment="center")
 
             with row_cols[0]:
-                st.markdown(f" {broker_description}")
+                st.markdown(f"[ {broker_item.get('payload', {}).get('sourceType', '').upper()} ]")
                 
             with row_cols[1]:
-                st.markdown(f"[ {broker_item.get('payload', {}).get('sourceType', '').upper()} ]")
+                st.markdown(f" {broker_description}")
 
             with row_cols[2]:
                 if st.button(
@@ -73,3 +71,4 @@ def render_brokers_container(brokers: list[dict]):
             icon=":material/add:",
         ):
             add_broker_dialog()
+

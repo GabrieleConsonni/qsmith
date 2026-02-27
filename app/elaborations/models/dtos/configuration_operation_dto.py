@@ -18,8 +18,7 @@ class SaveInternalDBConfigurationOperationDto(ConfigurationOperationDto):
 
 class SaveToExternalDBConfigurationOperationDto(ConfigurationOperationDto):
     operationType: str = OperationType.SAVE_EXTERNAL_DB.value
-    connection_id: str
-    table_name: str
+    dataset_id: str
 
 ConfigurationOperationTypes = PublishConfigurationOperationDto | SaveInternalDBConfigurationOperationDto | SaveToExternalDBConfigurationOperationDto
 
@@ -35,8 +34,7 @@ def convert_to_config_operation_type(data: dict):
         )
     elif operation_type == OperationType.SAVE_EXTERNAL_DB.value:
         return SaveToExternalDBConfigurationOperationDto(
-            connection_id=data.get("connection_id"),
-            table_name=data.get("table_name")
+            dataset_id=data.get("dataset_id")
         )
     else:
         raise ValueError(f"Unsupported operation type: {operation_type}")

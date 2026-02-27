@@ -122,23 +122,36 @@
 - [v] Sostituire il bottone `+ Add Scenario Step` con : 
     - [v] `+ Add new step` -> apre dialog con code, description, stepType etc..
     - [v] `iconaImport Import step` -> apre dialog con selectbox e preview dei dati dello step selezionato
+    - [v] `iconaImport Import step` -> apre dialog con selectbox e preview dei dati dello step selezionato
 
 ---
 
-## QSM-023 - Modifiche editor step 
-- [x] Se nel dialog di aggiunta step l'utente sceglie come stepType `DATA_FROM_JSON_ARRAY` allora viene mostrata selectbox su json array configurati
-    - [x] scelto il json appare preview del json
-    - [x] la select box mostra solo le descrizioni 
-- [x] Se nel dialog di aggiunta step l'utente sceglie come stepType `DATA` allora viene mostrata una textbox per scrivere un json e pulsante beautify per formattare il testo
-- [x] Se nel dialog di aggiunta step l'utente sceglie come stepType `DATA_FROM_DB` allora viene mostrata una selectbox su dataset configurati
-    - [x] la selectbox contiene solo le descrizioni
-    - [x] togliere connection id e table name
-    - [x] togliere la query e order by
-    - [x] togliere i parametri anche da DataFromDbConfigurationStepDto (gestiremo poi l'elaborazione)
-- [x] Se nel dialog di aggiunta step l'utente sceglie come stepType `DATA_FROM_QUEUE` allora viene mostrata una selectbox su brokers configurati. Scelto il broker si attiva seconda selectbox su queue del broker
-    - [x] le selectbox contengono solo le descrizioni
+## QSM-023 - Modifiche ScenarioEditor - editor steps 
+- [v] Se nel dialog di aggiunta step l'utente sceglie come stepType `DATA_FROM_JSON_ARRAY` allora viene mostrata selectbox su json array configurati
+    - [v] scelto il json appare preview del json
+    - [v] la select box mostra solo le descrizioni 
+- [v] Se nel dialog di aggiunta step l'utente sceglie come stepType `DATA` allora viene mostrata una textbox per scrivere un json e pulsante beautify per formattare il testo
+- [v] Se nel dialog di aggiunta step l'utente sceglie come stepType `DATA_FROM_DB` allora viene mostrata una selectbox su dataset configurati
+    - [v] la selectbox contiene solo le descrizioni
+    - [v] togliere connection id e table name
+    - [v] togliere la query e order by
+    - [v] togliere i parametri anche da DataFromDbConfigurationStepDto (gestiremo poi l'elaborazione)
+- [v] Se nel dialog di aggiunta step l'utente sceglie come stepType `DATA_FROM_QUEUE` allora viene mostrata una selectbox su brokers configurati. Scelto il broker si attiva seconda selectbox su queue del broker
+    - [v] le selectbox contengono solo le descrizioni
 
 ---
+
+## QSM-024 - Modifiche ScenarioEditor - editor operations
+- [v] Nel container dello step sostituire il bottone `+ Add operation` con : 
+    - [v] `+ Add new operation` -> apre dialog con code, description, operationType etc..
+    - [v] `iconaImport Import operation` -> apre dialog con selectbox e preview dei dati dell'operation selezionato
+- [v] Se nel dialog di aggiunta operation l'utente sceglie come operationType `PUBLISH` allora viene mostrata una selectbox su brokers configurati. 
+      Scelto il broker si attiva seconda selectbox su queue del broker la parte template_id e template_params lo svilupperemo in un secondo momento.
+- [v] Se nel dialog di aggiunta operation l'utente sceglie come operationType `SAVE_INTERNAL_DB` allora viene mostrata una textbox per il nome tabella.
+- [v] Se nel dialog di aggiunta operation l'utente sceglie come operationType `SAVE_EXTERNAL_DB` allora viene mostrata una selectbox su dataset configurati
+
+
+
 
 ## QSM-030 - Home & Quick Actions
 - [ ] Home page dedicata

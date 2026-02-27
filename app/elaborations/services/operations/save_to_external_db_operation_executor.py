@@ -13,7 +13,7 @@ from sqlalchemy_utils.engine_factory.sqlalchemy_engine_factory_composite import 
 class SaveToExternalDbOperationExecutor(OperationExecutor):
 
     def execute(self, session:Session, operation_id:str, cfg: SaveToExternalDBConfigurationOperationDto, data:list[dict])->ExecutionResultDto:
-        connection:DatabaseConnectionConfigTypes = self.load_database_connection(session,cfg.connection_id)
+        connection:DatabaseConnectionConfigTypes = self.load_database_connection(session,cfg.dataset_id)
 
         engine = create_sqlalchemy_engine(connection)
 

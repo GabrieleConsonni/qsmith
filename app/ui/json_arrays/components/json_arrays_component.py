@@ -222,7 +222,7 @@ def _find_selected_json_array(json_arrays: list[dict], selected_id: str | None) 
     )
 
 
-def render_json_arrays_container(json_arrays: list[dict]):
+def render_json_arrays_component(json_arrays: list[dict]):
     selected_id = _resolve_selected_json_array_id(json_arrays)
     selected_item = _find_selected_json_array(json_arrays, selected_id)
     if not selected_item:
@@ -372,3 +372,4 @@ def render_json_arrays_container(json_arrays: list[dict]):
                 else:
                     _start_inline_edit(selected_item or {})
                     st.rerun()
+

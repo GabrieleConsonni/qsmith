@@ -243,7 +243,7 @@ def queue_ack_received_messages_dialog(messages_count: int):
     st.write(f"Messages confirmed: **{messages_count}**")
 
 
-def render_queue_details_container(queue_data: dict, broker_id: str, queue_id: str):
+def render_queue_details_component(queue_data: dict, broker_id: str, queue_id: str):
     
     queue_label = queue_data.get("description") or queue_data.get("code") or queue_id
     st.header(f"Queue [{queue_label}]")
@@ -452,3 +452,4 @@ def render_queue_details_container(queue_data: dict, broker_id: str, queue_id: s
                 ):
                     st.session_state[received_messages_key] = []
                     st.rerun()
+

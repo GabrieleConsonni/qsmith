@@ -54,7 +54,7 @@ def datasource_info_dialog(selected_item: dict, connection_label: str):
 
 
 
-def render_database_datasources_container(
+def render_database_datasources_component(
     datasources: list[dict],
     connections: list[dict],
 ):
@@ -69,6 +69,50 @@ def render_database_datasources_container(
     }
 
     list_col, preview_col = st.columns([2, 5], gap="medium", vertical_alignment="top")
+
+    with list_col:
+        with st.container(border=True):
+            if datasources:
+                for idx, datasource_item in enumerate(datasources):
+                    datasource_id = str(datasource_item.get("id") or "")
+                    description = (
+                        datasource_item.get("description")
+                        or datasource_item.get("code")
+                        or datasource_id
+                        or "-"
+                    )
+                    is_selected = str(selected_id) == datasource_id
+                    row_cols = st.columns([6, 1], gap="small", vertical_alignment="center")
+                    with row_cols[0]:
+                        if st.button(
+                            description,
+                            key=f"select_database_datasource_btn_{datasource_id or idx}",
+                            type="primary" if is_selected else "secondary",
+                            use_container_width=True,
+                        ):
+                            st.session_state[SELECTED_DATABASE_DATASOURCE_ID_KEY] = datasource_id
+                            st.rerun()
+                    with row_cols[1]:
+                        if st.button(
+                            "",
+                            key=f"delete_database_datasource_btn_{datasource_id or idx}",
+                            icon=":material/delete:",
+                            help="Delete datasource",
+                            use_container_width=True,
+                            type="tertiary"
+                        ):
+                            delete_database_datasource_dialog(datasource_item)
+
+        if st.button(
+            "Add new dataset",
+            key="add_database_datasource_btn",
+            icon=":material/add:",
+            help="Add database datasource",
+            use_container_width=True,
+            type="tertiary"
+        ):
+            add_database_datasource_dialog()
+
 
     with preview_col:
         with st.container(border=True):
@@ -132,43 +176,5 @@ def render_database_datasources_container(
                 if selected_item:
                     edit_database_datasource_dialog(selected_item)
 
-    with list_col:
-        if datasources:
-            for idx, datasource_item in enumerate(datasources):
-                datasource_id = str(datasource_item.get("id") or "")
-                description = (
-                    datasource_item.get("description")
-                    or datasource_item.get("code")
-                    or datasource_id
-                    or "-"
-                )
-                is_selected = str(selected_id) == datasource_id
-                with st.container(border=True):
-                    row_cols = st.columns([6, 1], gap="small", vertical_alignment="center")
-                    with row_cols[0]:
-                        if st.button(
-                            description,
-                            key=f"select_database_datasource_btn_{datasource_id or idx}",
-                            type="primary" if is_selected else "secondary",
-                            use_container_width=True,
-                        ):
-                            st.session_state[SELECTED_DATABASE_DATASOURCE_ID_KEY] = datasource_id
-                            st.rerun()
-                    with row_cols[1]:
-                        if st.button(
-                            "",
-                            key=f"delete_database_datasource_btn_{datasource_id or idx}",
-                            icon=":material/delete:",
-                            help="Delete datasource",
-                            use_container_width=True,
-                        ):
-                            delete_database_datasource_dialog(datasource_item)
 
-        if st.button(
-            "",
-            key="add_database_datasource_btn",
-            icon=":material/add:",
-            help="Add database datasource",
-            use_container_width=True,
-        ):
-            add_database_datasource_dialog()
+

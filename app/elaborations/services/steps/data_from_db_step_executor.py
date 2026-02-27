@@ -20,7 +20,7 @@ class DataFromDbStepExecutor(StepExecutor):
                 cfg: DataFromDbConfigurationStepDto) -> list[dict[str, str]]:
         connection_id = ""
         table_name = ""
-        data_source_id = str(cfg.data_source_id or "").strip()
+        data_source_id = str(cfg.dataset_id or "").strip()
         if data_source_id:
             datasource_payload = self.load_database_datasource_payload(session, data_source_id)
             connection_id = str(datasource_payload.get("connection_id") or "").strip()

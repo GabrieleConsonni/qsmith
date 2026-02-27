@@ -4,6 +4,10 @@ from uuid import uuid4
 
 import streamlit as st
 
+from database_connections.services.data_loader_service import (
+    DATABASE_CONNECTIONS_KEY,
+    load_database_connections,
+)
 from scenarios.services.data_loader_service import (
     load_operations_catalog,
     load_step_editor_context,
@@ -15,7 +19,6 @@ from scenarios.services.state_keys import (
     ADD_STEP_OPERATION_DIALOG_TARGET_STEP_UI_KEY,
     SCENARIO_FEEDBACK_KEY,
     STEP_EDITOR_BROKERS_KEY,
-    STEP_EDITOR_DATABASE_DATASOURCES_KEY,
 )
 
 OPERATION_TYPE_PUBLISH = "publish"
@@ -61,10 +64,6 @@ def _operation_type_label(operation_type: str) -> str:
     return labels.get(operation_type, operation_type or "-")
 
 
-def _database_datasource_label(datasource_item: dict) -> str:
-    return str(datasource_item.get("description") or datasource_item.get("code") or "-")
-
-
 def _broker_label(broker_item: dict) -> str:
     return str(broker_item.get("description") or broker_item.get("code") or "-")
 
@@ -86,6 +85,136 @@ def _normalize_select_key(key: str, options: list[str]):
 
 def _pretty_json(value: object) -> str:
     return json.dumps(value, indent=2, ensure_ascii=True)
+
+
+def _safe_dict(value: object) -> dict:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+
+def _safe_list(value: object) -> list[dict]:
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    return []
+
+
+def _map_by_id(items: list[dict]) -> dict[str, dict]:
+    return {str(item.get("id")): item for item in items if item.get("id")}
+
+
+def _resolve_configuration_value(configuration_json: dict, *keys: str):
+    for key in keys:
+        value = configuration_json.get(key)
+        if value is None:
+            continue
+        if isinstance(value, str) and not value.strip():
+            continue
+        return value
+    return None
+
+def _connection_label(connection_item: dict) -> str:
+    return str(connection_item.get("description") or connection_item.get("code") or "-")
+
+
+def _reload_step_operations(scenario_step: dict):
+    operations = scenario_step.get("operations")
+    if not isinstance(operations, list):
+        return
+    indexed_operations = list(enumerate(operations))
+    indexed_operations.sort(
+        key=lambda item: (_safe_int(item[1].get("order"), item[0] + 1), item[0])
+    )
+    scenario_step["operations"] = [operation for _, operation in indexed_operations]
+
+
+def _find_queue_and_broker_by_queue_id(
+    queue_id: str,
+    brokers_by_id: dict[str, dict],
+) -> tuple[dict, dict]:
+    queue_id_value = str(queue_id or "").strip()
+    if not queue_id_value:
+        return {}, {}
+
+    def _find_queue_in_items(items: list[dict], target_queue_id: str) -> dict:
+        return next(
+            (
+                item
+                for item in items
+                if str(item.get("id") or "").strip() == target_queue_id
+            ),
+            {},
+        )
+
+    for current_broker_id, broker_item in brokers_by_id.items():
+        queues = load_step_editor_queues_for_broker(str(current_broker_id), force=False)
+        queue_item = _find_queue_in_items(queues, queue_id_value)
+        if queue_item:
+            return queue_item, broker_item
+
+    return {}, {}
+
+
+def _render_operation_details(operation_item: dict):
+    if not isinstance(operation_item, dict):
+        st.caption("Operation non trovata nel catalogo.")
+        return
+
+    operation_type = str(operation_item.get("operation_type") or "").strip()
+    configuration_json = _safe_dict(operation_item.get("configuration_json") or {})
+
+    if operation_type == OPERATION_TYPE_PUBLISH:
+        load_step_editor_context(force=False)
+        brokers = _safe_list(st.session_state.get(STEP_EDITOR_BROKERS_KEY, []))
+        brokers_by_id = _map_by_id(brokers)
+        queue_id = str(
+            _resolve_configuration_value(configuration_json, "queue_id", "queueId") or ""
+        ).strip()
+        queue_item, broker_item = _find_queue_and_broker_by_queue_id(queue_id, brokers_by_id)
+        queue_label = str(queue_item.get("description") or queue_item.get("code") or queue_id or "-")
+        broker_label = str(broker_item.get("description") or broker_item.get("code") or "-")
+        st.write(f"Queue: {queue_label} [ {broker_label} ]")
+        return
+
+    if operation_type == OPERATION_TYPE_SAVE_INTERNAL_DB:
+        table_name = str(
+            _resolve_configuration_value(configuration_json, "table_name", "tableName") or "-"
+        ).strip()
+        st.write(f"Table: {table_name or '-'}")
+        return
+
+    if operation_type == OPERATION_TYPE_SAVE_EXTERNAL_DB:
+        load_database_connections(force=False)
+        connections = _safe_list(st.session_state.get(DATABASE_CONNECTIONS_KEY, []))
+        connections_by_id = _map_by_id(connections)
+        connection_id = str(
+            _resolve_configuration_value(
+                configuration_json,
+                "connection_id",
+                "connectionId",
+                "dataset_id",
+            )
+            or ""
+        ).strip()
+        connection_item = connections_by_id.get(connection_id, {})
+        table_name = str(
+            _resolve_configuration_value(configuration_json, "table_name", "tableName") or "-"
+        ).strip()
+        connection_label = _connection_label(connection_item)
+        if connection_label == "-" and connection_id:
+            connection_label = connection_id
+        st.write(f"Connection: {connection_label}")
+        st.write(f"Table: {table_name or '-'}")
+        return
+
+    st.code(_pretty_json(configuration_json), language="json")
 
 
 def _new_draft_operation(
@@ -144,64 +273,6 @@ def _edit_step_operation_dialog(
         )
     )
 
-    current_operation_id = str(operation.get("operation_id") or "").strip()
-    selected_operation_id = current_operation_id
-    selected_operation: dict | None = None
-    operation_options = [str(item.get("id")) for item in operation_catalog if item.get("id")]
-    operation_by_id = {
-        str(item.get("id")): item for item in operation_catalog if item.get("id")
-    }
-
-    if operation_options:
-        if current_operation_id and current_operation_id not in operation_options:
-            operation_options.insert(0, current_operation_id)
-        selected_operation_id = st.selectbox(
-            "Operation",
-            options=operation_options,
-            index=(
-                operation_options.index(current_operation_id)
-                if current_operation_id in operation_options
-                else 0
-            ),
-            format_func=lambda _id: operation_labels_by_id.get(_id, f"Unknown ({_id})"),
-            key=f"scenario_{nonce}_step_{step_ui_key}_operation_select_{operation_ui_key}",
-        )
-        selected_operation = operation_by_id.get(str(selected_operation_id))
-    else:
-        selected_operation_id = st.text_input(
-            "Operation id",
-            value=current_operation_id,
-            key=f"scenario_{nonce}_step_{step_ui_key}_operation_input_{operation_ui_key}",
-        ).strip()
-
-    if isinstance(selected_operation, dict):
-        preview_operation_id = str(selected_operation.get("id") or "")
-        st.text_input(
-            "Code",
-            value=str(selected_operation.get("code") or ""),
-            key=f"scenario_{nonce}_step_{step_ui_key}_operation_edit_preview_code_{operation_ui_key}_{preview_operation_id}",
-            disabled=True,
-        )
-        st.text_input(
-            "Description",
-            value=str(selected_operation.get("description") or ""),
-            key=f"scenario_{nonce}_step_{step_ui_key}_operation_edit_preview_description_{operation_ui_key}_{preview_operation_id}",
-            disabled=True,
-        )
-        st.text_input(
-            "Operation type",
-            value=_operation_type_label(str(selected_operation.get("operation_type") or "")),
-            key=f"scenario_{nonce}_step_{step_ui_key}_operation_edit_preview_type_{operation_ui_key}_{preview_operation_id}",
-            disabled=True,
-        )
-        st.text_area(
-            "Configuration",
-            value=_pretty_json(selected_operation.get("configuration_json") or {}),
-            key=f"scenario_{nonce}_step_{step_ui_key}_operation_edit_preview_cfg_{operation_ui_key}_{preview_operation_id}",
-            disabled=True,
-            height=220,
-        )
-
     action_cols = st.columns([4, 2, 2, 2], gap="small", vertical_alignment="center")
     with action_cols[1]:
         if st.button(
@@ -212,7 +283,7 @@ def _edit_step_operation_dialog(
             use_container_width=True,
         ):
             operation["order"] = selected_order
-            operation["operation_id"] = str(selected_operation_id or "").strip()
+            _reload_step_operations(scenario_step)
             st.rerun()
     with action_cols[2]:
         if st.button(
@@ -234,6 +305,12 @@ def _edit_step_operation_dialog(
         ):
             st.rerun()
 
+def _operation_type_label(operation_type: str) -> str:
+    normalized_type = str(operation_type or "").strip().replace("_", "-").lower()
+    if not normalized_type:
+        return "-"
+    label = normalized_type.replace("-", " ")
+    return f"{label}" if label else "-"
 
 def render_operation_component(
     scenario_step: dict,
@@ -247,16 +324,29 @@ def render_operation_component(
     operation_ui_key = operation.get("_ui_key") or f"{step_ui_key}_op_{op_idx}"
     operation["_ui_key"] = operation_ui_key
     operation_id = str(operation.get("operation_id") or "").strip()
+    selected_operation = next(
+        (
+            item
+            for item in operation_catalog
+            if str(item.get("id") or "").strip() == operation_id
+        ),
+        None,
+    )
+    
     operation_description = _resolve_operation_description(
         operation_id,
         operation_catalog,
         operation_labels_by_id,
     )
 
+    operation_type = _operation_type_label(str(selected_operation.get("operation_type") or "") if isinstance(selected_operation, dict) else "")
+    
     operation_action_cols = st.columns([1, 20, 1], gap="small", vertical_alignment="center")
     with operation_action_cols[1]:
         with st.container(border=True):
-            st.write(operation_description)
+            st.markdown(f"**{operation_description}**")
+            st.markdown(f"*{operation_type} operation*")
+            _render_operation_details(selected_operation)
     with operation_action_cols[2]:
         if st.button(
             "",
@@ -333,14 +423,21 @@ def build_operation_creation_payload(dialog_nonce: int) -> tuple[dict | None, st
             "table_name": table_name,
         }
     elif operation_type == OPERATION_TYPE_SAVE_EXTERNAL_DB:
-        dataset_id = str(
-            st.session_state.get(f"scenario_add_operation_dataset_id_{dialog_nonce}") or ""
+        connection_id = str(
+            st.session_state.get(f"scenario_add_operation_connection_id_{dialog_nonce}") or ""
         ).strip()
-        if not dataset_id:
-            return None, "Il campo Dataset e' obbligatorio."
+        table_name = str(
+            st.session_state.get(f"scenario_add_operation_external_table_name_{dialog_nonce}")
+            or ""
+        ).strip()
+        if not connection_id:
+            return None, "Il campo Connection e' obbligatorio."
+        if not table_name:
+            return None, "Il campo Table name e' obbligatorio."
         cfg = {
             "operationType": OPERATION_TYPE_SAVE_EXTERNAL_DB,
-            "dataset_id": dataset_id,
+            "connection_id": connection_id,
+            "table_name": table_name,
         }
     else:
         return None, f"Operation type non supportato: {operation_type}"
@@ -475,20 +572,21 @@ def render_add_new_step_operation_dialog(draft: dict, close_add_step_operation_d
         return
 
     load_step_editor_context(force=False)
+    load_database_connections(force=False)
     brokers = st.session_state.get(STEP_EDITOR_BROKERS_KEY, [])
-    database_datasources = st.session_state.get(STEP_EDITOR_DATABASE_DATASOURCES_KEY, [])
+    database_connections = st.session_state.get(DATABASE_CONNECTIONS_KEY, [])
     if not isinstance(brokers, list):
         brokers = []
-    if not isinstance(database_datasources, list):
-        database_datasources = []
+    if not isinstance(database_connections, list):
+        database_connections = []
 
     broker_ids = [str(item.get("id")) for item in brokers if item.get("id")]
     broker_by_id = {str(item.get("id")): item for item in brokers if item.get("id")}
-    database_datasource_ids = [
-        str(item.get("id")) for item in database_datasources if item.get("id")
+    database_connection_ids = [
+        str(item.get("id")) for item in database_connections if item.get("id")
     ]
-    database_datasource_by_id = {
-        str(item.get("id")): item for item in database_datasources if item.get("id")
+    database_connection_by_id = {
+        str(item.get("id")): item for item in database_connections if item.get("id")
     }
 
     st.markdown("**New operation**")
@@ -551,21 +649,25 @@ def render_add_new_step_operation_dialog(draft: dict, close_add_step_operation_d
             key=f"scenario_add_operation_internal_table_name_{dialog_nonce}",
         )
     elif operation_type == OPERATION_TYPE_SAVE_EXTERNAL_DB:
-        datasource_select_key = f"scenario_add_operation_dataset_id_{dialog_nonce}"
-        _normalize_select_key(datasource_select_key, database_datasource_ids or [""])
+        connection_select_key = f"scenario_add_operation_connection_id_{dialog_nonce}"
+        _normalize_select_key(connection_select_key, database_connection_ids or [""])
         st.selectbox(
-            "Dataset",
-            options=database_datasource_ids or [""],
+            "Connection",
+            options=database_connection_ids or [""],
             format_func=lambda _id: (
-                _database_datasource_label(database_datasource_by_id.get(_id, {}))
+                _connection_label(database_connection_by_id.get(_id, {}))
                 if _id
-                else "Nessun dataset disponibile"
+                else "Nessuna connection disponibile"
             ),
-            key=datasource_select_key,
-            disabled=not bool(database_datasource_ids),
+            key=connection_select_key,
+            disabled=not bool(database_connection_ids),
         )
-        if not database_datasource_ids:
-            st.info("Nessun dataset database configurato.")
+        st.text_input(
+            "Table name",
+            key=f"scenario_add_operation_external_table_name_{dialog_nonce}",
+        )
+        if not database_connection_ids:
+            st.info("Nessuna connection database configurata.")
 
     create_cols = st.columns([6, 3, 3], gap="small")
     with create_cols[1]:

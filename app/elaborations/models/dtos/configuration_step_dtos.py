@@ -49,7 +49,7 @@ def convert_to_config_step_type(data: dict):
         )
     elif step_type == StepType.DATA_FROM_DB.value:
         return DataFromDbConfigurationStepDto(
-            data_source_id=data.get("data_source_id")
+            dataset_id=data.get("dataset_id") or data.get("data_source_id")
         )
     elif step_type == StepType.DATA_FROM_QUEUE.value:
         return DataFromQueueConfigurationStepDto(

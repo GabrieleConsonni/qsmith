@@ -9,7 +9,7 @@ from scenarios.components.scenario_operation_component import (
     render_import_step_operation_dialog as operation_render_import_dialog,
     render_operation_component as operation_render_component,
 )
-from scenarios.components.scenario_step_component import (
+from steps.step_component import (
     render_add_new_scenario_step_dialog as step_render_add_new_dialog,
     render_import_scenario_step_dialog as step_render_import_dialog,
     render_step_component as step_render_component,

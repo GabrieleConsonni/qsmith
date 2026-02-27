@@ -125,6 +125,7 @@ def _resolve_operation_description(
 
 @st.dialog("Modify operation", width="large")
 def _edit_step_operation_dialog(
+    scenario_step: dict,
     operation: dict,
     op_idx: int,
     step_ui_key: str,
@@ -201,7 +202,7 @@ def _edit_step_operation_dialog(
             height=220,
         )
 
-    action_cols = st.columns([6, 2, 2], gap="small", vertical_alignment="center")
+    action_cols = st.columns([4, 2, 2, 2], gap="small", vertical_alignment="center")
     with action_cols[1]:
         if st.button(
             "Save",
@@ -214,6 +215,18 @@ def _edit_step_operation_dialog(
             operation["operation_id"] = str(selected_operation_id or "").strip()
             st.rerun()
     with action_cols[2]:
+        if st.button(
+            "Delete",
+            key=f"scenario_{nonce}_step_{step_ui_key}_operation_edit_delete_{operation_ui_key}",
+            icon=":material/delete:",
+            type="secondary",
+            use_container_width=True,
+        ):
+            operations = scenario_step.get("operations", [])
+            if 0 <= op_idx < len(operations):
+                operations.pop(op_idx)
+            st.rerun()
+    with action_cols[3]:
         if st.button(
             "Cancel",
             key=f"scenario_{nonce}_step_{step_ui_key}_operation_edit_cancel_{operation_ui_key}",
@@ -240,35 +253,28 @@ def render_operation_component(
         operation_labels_by_id,
     )
 
-    with st.container(border=True):
-        operation_action_cols = st.columns([8, 1, 1], gap="small", vertical_alignment="center")
-        with operation_action_cols[0]:
+    operation_action_cols = st.columns([1, 20, 1], gap="small", vertical_alignment="center")
+    with operation_action_cols[1]:
+        with st.container(border=True):
             st.write(operation_description)
-        with operation_action_cols[1]:
-            if st.button(
-                "",
-                key=f"scenario_{nonce}_step_{step_ui_key}_operation_edit_{operation_ui_key}",
-                icon=":material/edit:",
-                help="Modify operation",
-                use_container_width=True,
-            ):
-                _edit_step_operation_dialog(
-                    operation=operation,
-                    op_idx=op_idx,
-                    step_ui_key=step_ui_key,
-                    nonce=nonce,
-                    operation_catalog=operation_catalog,
-                    operation_labels_by_id=operation_labels_by_id,
-                )
-        with operation_action_cols[2]:
-            if st.button(
-                "",
-                key=f"scenario_{nonce}_step_{step_ui_key}_operation_delete_{operation_ui_key}",
-                icon=":material/delete:",
-                help="Delete operation",
-            ):
-                scenario_step.get("operations", []).pop(op_idx)
-                st.rerun()
+    with operation_action_cols[2]:
+        if st.button(
+            "",
+            key=f"scenario_{nonce}_step_{step_ui_key}_operation_more_actions_{operation_ui_key}",
+            icon=":material/more_vert:",
+            help="Modify operation",
+            use_container_width=True,
+            type="tertiary",
+        ):
+            _edit_step_operation_dialog(
+                scenario_step=scenario_step,
+                operation=operation,
+                op_idx=op_idx,
+                step_ui_key=step_ui_key,
+                nonce=nonce,
+                operation_catalog=operation_catalog,
+                operation_labels_by_id=operation_labels_by_id,
+            )
 
 
 def find_draft_step_by_ui_key(draft: dict, step_ui_key: str) -> dict | None:
@@ -599,4 +605,3 @@ def render_add_new_step_operation_dialog(draft: dict, close_add_step_operation_d
         ):
             close_add_step_operation_dialog_fn()
             st.rerun()
-

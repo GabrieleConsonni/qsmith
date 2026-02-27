@@ -124,6 +124,124 @@ def _new_draft_step(
     }
 
 
+@st.dialog("Modify step", width="large")
+def _edit_scenario_step_dialog(
+    draft: dict,
+    scenario_step: dict,
+    step_idx: int,
+    nonce: int,
+    step_catalog: list[dict],
+    step_labels_by_id: dict[str, str],
+    on_failure_options: list[str],
+):
+    step_ui_key = scenario_step.get("_ui_key") or f"step_{step_idx}"
+    scenario_step["_ui_key"] = step_ui_key
+
+    selected_order = int(
+        st.number_input(
+            "Step order",
+            min_value=0,
+            value=_safe_int(scenario_step.get("order"), step_idx + 1),
+            key=f"scenario_{nonce}_step_order_{step_ui_key}",
+        )
+    )
+
+    current_step_id = str(scenario_step.get("step_id") or "").strip()
+    selected_step_id = current_step_id
+    selected_step: dict | None = None
+    step_options = [str(item.get("id")) for item in step_catalog if item.get("id")]
+    step_by_id = {str(item.get("id")): item for item in step_catalog if item.get("id")}
+
+    if step_options:
+        if current_step_id and current_step_id not in step_options:
+            step_options.insert(0, current_step_id)
+        selected_step_id = st.selectbox(
+            "Step",
+            options=step_options,
+            index=step_options.index(current_step_id) if current_step_id in step_options else 0,
+            format_func=lambda _id: step_labels_by_id.get(_id, f"Unknown ({_id})"),
+            key=f"scenario_{nonce}_step_select_{step_ui_key}",
+        )
+        selected_step = step_by_id.get(str(selected_step_id))
+    else:
+        selected_step_id = st.text_input(
+            "Step id",
+            value=current_step_id,
+            key=f"scenario_{nonce}_step_input_{step_ui_key}",
+        ).strip()
+
+    on_failure_value = str(scenario_step.get("on_failure") or "ABORT")
+    if on_failure_value not in on_failure_options:
+        on_failure_value = on_failure_options[0] if on_failure_options else "ABORT"
+    selected_on_failure = st.selectbox(
+        "On failure",
+        options=on_failure_options or ["ABORT"],
+        index=(on_failure_options.index(on_failure_value) if on_failure_options else 0),
+        key=f"scenario_{nonce}_step_on_failure_{step_ui_key}",
+    )
+
+    if isinstance(selected_step, dict):
+        preview_step_id = str(selected_step.get("id") or "")
+        st.text_input(
+            "Code",
+            value=str(selected_step.get("code") or ""),
+            key=f"scenario_{nonce}_step_edit_preview_code_{step_ui_key}_{preview_step_id}",
+            disabled=True,
+        )
+        st.text_input(
+            "Description",
+            value=str(selected_step.get("description") or ""),
+            key=f"scenario_{nonce}_step_edit_preview_description_{step_ui_key}_{preview_step_id}",
+            disabled=True,
+        )
+        st.text_input(
+            "Step type",
+            value=_step_type_label(str(selected_step.get("step_type") or "")),
+            key=f"scenario_{nonce}_step_edit_preview_type_{step_ui_key}_{preview_step_id}",
+            disabled=True,
+        )
+        st.text_area(
+            "Configuration",
+            value=_pretty_json(selected_step.get("configuration_json") or {}),
+            key=f"scenario_{nonce}_step_edit_preview_cfg_{step_ui_key}_{preview_step_id}",
+            disabled=True,
+            height=220,
+        )
+
+    action_cols = st.columns([4, 2, 2, 2], gap="small", vertical_alignment="center")
+    with action_cols[1]:
+        if st.button(
+            "Save",
+            key=f"scenario_{nonce}_step_edit_save_{step_ui_key}",
+            icon=":material/save:",
+            type="secondary",
+            use_container_width=True,
+        ):
+            scenario_step["order"] = selected_order
+            scenario_step["step_id"] = str(selected_step_id or "").strip()
+            scenario_step["on_failure"] = str(selected_on_failure or "ABORT")
+            st.rerun()
+    with action_cols[2]:
+        if st.button(
+            "Delete",
+            key=f"scenario_{nonce}_step_edit_delete_{step_ui_key}",
+            icon=":material/delete:",
+            type="secondary",
+            use_container_width=True,
+        ):
+            steps = draft.get("steps", [])
+            if 0 <= step_idx < len(steps):
+                steps.pop(step_idx)
+            st.rerun()
+    with action_cols[3]:
+        if st.button(
+            "Cancel",
+            key=f"scenario_{nonce}_step_edit_cancel_{step_ui_key}",
+            use_container_width=True,
+        ):
+            st.rerun()
+
+
 def render_step_component(
     draft: dict,
     scenario_step: dict,
@@ -140,123 +258,74 @@ def render_step_component(
 ):
     step_ui_key = scenario_step.get("_ui_key") or f"step_{step_idx}"
     scenario_step["_ui_key"] = step_ui_key
-    step_edit_mode = bool(scenario_step.get("_edit_mode", False))
     step_order = _safe_int(scenario_step.get("order"), step_idx + 1)
     step_id = str(scenario_step.get("step_id") or "")
     step_label = step_labels_by_id.get(step_id, f"Unknown ({step_id})")
 
-    step_header_cols = st.columns([8, 1, 1], gap="small", vertical_alignment="top")
-    with step_header_cols[0]:
-        with st.expander(f"Step #{step_order} - {step_label}", expanded=False):
-            if step_edit_mode:
-                scenario_step["order"] = int(
-                    st.number_input(
-                        "Step order",
-                        min_value=0,
-                        value=step_order,
-                        key=f"scenario_{nonce}_step_order_{step_ui_key}",
-                    )
-                )
-                if step_catalog:
-                    step_options = [str(item.get("id")) for item in step_catalog if item.get("id")]
-                    if step_options:
-                        current_step_id = str(scenario_step.get("step_id") or "")
-                        if current_step_id and current_step_id not in step_options:
-                            step_options.insert(0, current_step_id)
-                        selected_step_id = st.selectbox(
-                            "Step",
-                            options=step_options,
-                            index=(
-                                step_options.index(current_step_id)
-                                if current_step_id in step_options
-                                else 0
-                            ),
-                            format_func=lambda _id: step_labels_by_id.get(_id, f"Unknown ({_id})"),
-                            key=f"scenario_{nonce}_step_select_{step_ui_key}",
-                        )
-                        scenario_step["step_id"] = str(selected_step_id)
-                    else:
-                        scenario_step["step_id"] = st.text_input(
-                            "Step id",
-                            value=str(scenario_step.get("step_id") or ""),
-                            key=f"scenario_{nonce}_step_input_{step_ui_key}",
-                        ).strip()
-                else:
-                    scenario_step["step_id"] = st.text_input(
-                        "Step id",
-                        value=str(scenario_step.get("step_id") or ""),
-                        key=f"scenario_{nonce}_step_input_{step_ui_key}",
-                    ).strip()
 
-                on_failure = str(scenario_step.get("on_failure") or "ABORT")
-                scenario_step["on_failure"] = st.selectbox(
-                    "On failure",
-                    options=on_failure_options,
-                    index=(
-                        on_failure_options.index(on_failure)
-                        if on_failure in on_failure_options
-                        else 0
-                    ),
-                    key=f"scenario_{nonce}_step_on_failure_{step_ui_key}",
-                )
-            else:
-                st.caption(f"on_failure: {scenario_step.get('on_failure') or 'ABORT'}")
-
-            st.markdown("**Step operations**")
-            operations = scenario_step.get("operations") or []
-
-            for op_idx, operation in enumerate(operations):
-                render_operation_component_fn(
-                    scenario_step,
-                    operation,
-                    op_idx,
-                    step_ui_key,
-                    nonce,
-                    operation_catalog,
-                    operation_labels_by_id,
+    with st.expander(f"Step #{step_order} - {step_label}", expanded=False):
+        step_header_cols = st.columns([20, 1])
+        with step_header_cols[0]:
+            st.markdown("**Step Details**")
+        with step_header_cols[1]:
+            if st.button(
+                "",
+                key=f"scenario_{nonce}_step_more_actions_{step_ui_key}",
+                icon=":material/more_vert:",
+                help="Modify step",
+                use_container_width=True,
+                type="tertiary"
+            ):
+                _edit_scenario_step_dialog(
+                    draft=draft,
+                    scenario_step=scenario_step,
+                    step_idx=step_idx,
+                    nonce=nonce,
+                    step_catalog=step_catalog,
+                    step_labels_by_id=step_labels_by_id,
+                    on_failure_options=on_failure_options,
                 )
 
-            add_operation_cols = st.columns(2, gap="small")
-            with add_operation_cols[0]:
-                if st.button(
-                    "Add new operation",
-                    key=f"scenario_{nonce}_step_add_new_operation_{step_ui_key}",
-                    icon=":material/add:",
-                    use_container_width=True,
-                ):
-                    open_add_new_step_operation_dialog_fn(step_ui_key)
-                    st.rerun()
-            with add_operation_cols[1]:
-                if st.button(
-                    "Import operation",
-                    key=f"scenario_{nonce}_step_import_operation_{step_ui_key}",
-                    icon=":material/download:",
-                    use_container_width=True,
-                ):
-                    open_import_step_operation_dialog_fn(step_ui_key)
-                    st.rerun()
+        st.divider()
+        st.write("**Step Operations**")
 
-    with step_header_cols[1]:
-        icon = ":material/save:" if step_edit_mode else ":material/edit:"
-        if st.button(
-            "",
-            key=f"scenario_{nonce}_step_edit_toggle_{step_ui_key}",
-            icon=icon,
-            help="Save step" if step_edit_mode else "Modify step",
-            use_container_width=True,
-        ):
-            scenario_step["_edit_mode"] = not step_edit_mode
-            st.rerun()
-    with step_header_cols[2]:
-        if st.button(
-            "",
-            key=f"scenario_{nonce}_step_delete_{step_ui_key}",
-            icon=":material/delete:",
-            help="Delete scenario step",
-            use_container_width=True,
-        ):
-            draft.get("steps", []).pop(step_idx)
-            st.rerun()
+        operations = scenario_step.get("operations") or []
+        for op_idx, operation in enumerate(operations):
+            render_operation_component_fn(
+                scenario_step,
+                operation,
+                op_idx,
+                step_ui_key,
+                nonce,
+                operation_catalog,
+                operation_labels_by_id,
+            )
+
+        add_operation_cols = st.columns([8,2,2,8],gap="small")
+        with add_operation_cols[1]:
+            if st.button(
+                "",
+                help="Add new operation",
+                key=f"scenario_{nonce}_step_add_new_operation_{step_ui_key}",
+                icon=":material/add:",
+                use_container_width=True,
+                type="tertiary"
+            ):
+                open_add_new_step_operation_dialog_fn(step_ui_key)
+                st.rerun()
+        with add_operation_cols[2]:
+            if st.button(
+                "",
+                help="Import operation",
+                key=f"scenario_{nonce}_step_import_operation_{step_ui_key}",
+                icon=":material/download:",
+                use_container_width=True,
+                type="tertiary"
+            ):
+                open_import_step_operation_dialog_fn(step_ui_key)
+                st.rerun()
+
+        
 
 
 def append_step_to_draft(draft: dict, step_id: str):
@@ -648,4 +717,3 @@ def render_add_new_scenario_step_dialog(draft: dict, close_add_scenario_step_dia
         ):
             close_add_scenario_step_dialog_fn()
             st.rerun()
-

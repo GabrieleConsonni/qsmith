@@ -656,29 +656,53 @@ def _render_editor():
 
 
 def _render_step_toolbar():
+
     nonce = int(st.session_state.get(SCENARIO_EDITOR_NONCE_KEY, 0))
-    action_cols = st.columns([8, 2, 2], gap="small", vertical_alignment="bottom")
-    with action_cols[1]:
+    action_cols = st.columns([8, 2, 2, 2, 2], gap="small", vertical_alignment="bottom")
+    if _is_editor_dirty():  
+        with action_cols[1]:
+            if st.button(
+                "Save",
+                key="save_scenario_btn",
+                icon=":material/save:",
+                type="secondary",
+                use_container_width=True,
+            ):
+                _save_draft()
+
+        with action_cols[2]:
+            if st.button(
+                "Undo",
+                key="undo_scenario_btn",
+                icon=":material/undo:",
+                type="secondary",
+                use_container_width=True,
+            ):
+                _undo_changes()
+
+    with action_cols[3]:
         if st.button(
-            "+ Create new step",
+            "",
             help="Crea un nuovo step e aggiungilo allo scenario.",
             key=f"scenario_{nonce}_add_new_step",
             icon=":material/add:",
-            use_container_width=True,
+            use_container_width=True
         ):
             _open_add_new_scenario_step_dialog()
             st.rerun()
-    with action_cols[2]:
+
+    with action_cols[4]:
         if st.button(
-            "Import a step",
+            "",
             help="Importa uno step esistente e aggiungilo allo scenario.",
             key=f"scenario_{nonce}_import_step",
             icon=":material/download:",
-            use_container_width=True,
+            use_container_width=True
         ):
             _open_import_scenario_step_dialog()
             st.rerun()
 
+    
 
 @st.dialog("Modifica descrizione scenario")
 def _edit_scenario_description_dialog(current_description: str, dialog_suffix: str):
@@ -739,32 +763,6 @@ def _render_editor_main_fields():
     )
     if mode == "create":
         st.caption("Scenario in creazione.")
-
-
-def _render_editor_actions():
-    if not _is_editor_dirty():
-        return
-
-    action_cols = st.columns([8, 1, 1], gap="small", vertical_alignment="center")
-    with action_cols[1]:
-        if st.button(
-            "Save",
-            key="save_scenario_btn",
-            icon=":material/save:",
-            type="secondary",
-            use_container_width=True,
-        ):
-            _save_draft()
-    with action_cols[2]:
-        if st.button(
-            "Undo",
-            key="undo_scenario_btn",
-            icon=":material/undo:",
-            type="secondary",
-            use_container_width=True,
-        ):
-            _undo_changes()
-
 
 def _render_feedback():
     feedback_message = st.session_state.pop(SCENARIO_FEEDBACK_KEY, None)
@@ -878,9 +876,8 @@ def render_scenario_editor_page():
     _render_editor_main_fields()
     st.divider()
     _render_editor()
+    st.divider()
     _render_step_toolbar()
-
-    _render_editor_actions()
     _render_feedback()
 
 

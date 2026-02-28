@@ -16,6 +16,8 @@ class DataFromQueueStepExecutor(StepExecutor):
 
     def execute(self, session:Session, scenario_step:ScenarioStepEntity, step:StepEntity, cfg: DataFromQueueConfigurationStepDto) -> list[dict[str, str]]:
         queue = QueueService().get_by_id(session, cfg.queue_id)
+        if not queue:
+            raise ValueError(f"Queue '{cfg.queue_id}' not found")
         broker_connection:BrokerConnectionConfigTypes = load_broker_connection(queue.broker_id)
 
         service = QueueConnectionServiceFactory.get_service(broker_connection)
@@ -27,8 +29,15 @@ class DataFromQueueStepExecutor(StepExecutor):
         all_msgs = []
 
         while self.work_is_not_finished(all_msgs, max_messages, retry):
+            remaining_messages = max_messages - len(all_msgs)
+            if remaining_messages <= 0:
+                break
 
-            msgs = service.receive_messages(broker_connection, queue_id=cfg.queue_id)
+            msgs = service.receive_messages(
+                broker_connection,
+                queue_id=cfg.queue_id,
+                max_messages=remaining_messages,
+            )
 
             if len(msgs) == 0:
                 time.sleep(wait_time_seconds)
@@ -43,5 +52,5 @@ class DataFromQueueStepExecutor(StepExecutor):
 
     @staticmethod
     def work_is_not_finished(all_msgs, max_messages, retry):
-        right_size = len(all_msgs) == 0 and len(all_msgs)< max_messages
+        right_size = len(all_msgs) < max_messages
         return  retry > 0 and right_size

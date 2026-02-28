@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from _alembic.models.step_entity import StepEntity
 from _alembic.services.session_context_manager import managed_session
 from elaborations.models.dtos.create_step_dto import CreateStepDto
+from elaborations.models.dtos.update_step_dto import UpdateStepDto
 from elaborations.services.alembic.step_service import StepService
 from exceptions.app_exception import QsmithAppException
 
@@ -12,9 +13,9 @@ router = APIRouter(prefix="/elaborations")
 async def insert_step_api(dto:CreateStepDto):
     with managed_session() as session:
         entity = StepEntity()
-        entity.code = dto.code,
-        entity.description = dto.description,
-        entity.step_type = dto.cfg.stepType,
+        entity.code = dto.code
+        entity.description = dto.description
+        entity.step_type = dto.cfg.stepType
         entity.configuration_json = dto.cfg.model_dump()
         step_id = StepService().insert(
             session,
@@ -23,18 +24,19 @@ async def insert_step_api(dto:CreateStepDto):
     return {"id":step_id, "message": "Step added"}
 
 @router.put("/step")
-async def insert_step_api(dto:CreateStepDto):
+async def update_step_api(dto:UpdateStepDto):
     with managed_session() as session:
-        entity = StepEntity()
-        entity.code = dto.code,
-        entity.description = dto.description,
-        entity.step_type = dto.cfg.stepType,
-        entity.configuration_json = dto.cfg.model_dump()
-        step_id = StepService().insert(
+        entity = StepService().update(
             session,
-            entity
+            dto.id,
+            code=dto.code,
+            description=dto.description,
+            step_type=dto.cfg.stepType,
+            configuration_json=dto.cfg.model_dump(),
         )
-    return {"id":step_id, "message": "Step added"}
+        if not entity:
+            raise QsmithAppException(f"No step found with id [ {dto.id} ]")
+    return {"id":dto.id, "message": "Step updated"}
 
 
 @router.get("/step")

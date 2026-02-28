@@ -3,7 +3,6 @@ from fastapi import APIRouter
 from _alembic.models.scenario_step_entity import ScenarioStepEntity
 from _alembic.services.session_context_manager import managed_session
 from elaborations.models.dtos.create_scenario_dto import CreateScenarioStepDto
-from elaborations.services.alembic.scenario_service import ScenarioService
 from elaborations.services.alembic.scenario_step_service import ScenarioStepService
 from exceptions.app_exception import QsmithAppException
 
@@ -17,7 +16,9 @@ async def find_all_by_scenario_api(scenario_id:str):
         results = []
         for step in all:
             results.append({
+                "id": step.id,
                 "scenario_id": step.scenario_id,
+                "step_id": step.step_id,
                 "code": step.step_id,
                 "order": step.order,
                 "on_failure": step.on_failure
@@ -38,10 +39,10 @@ async def insert_scenario_step_api(scenario_id: str, dto:CreateScenarioStepDto):
 
 
 @router.delete("/scenario/{scenario_id}/step")
-async def delete_scenario_step_api(_id: str):
+async def delete_scenario_step_api(scenario_id: str):
     with managed_session() as session:
-        result = ScenarioService().delete_by_id(session, _id)
+        result = ScenarioStepService().delete_by_scenario_id(session, scenario_id)
         if result == 0:
-            raise QsmithAppException(f"No scenario step found with id [ {_id} ]")
+            raise QsmithAppException(f"No scenario steps found with scenario id [ {scenario_id} ]")
         return {"message": f"{result} scenario step(s) deleted"}
 

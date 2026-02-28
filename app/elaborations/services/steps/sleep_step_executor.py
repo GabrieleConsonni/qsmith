@@ -11,5 +11,5 @@ from elaborations.services.steps.step_executor import StepExecutor
 class SleepStepExecutor(StepExecutor):
     def execute(self, session:Session, scenario_step:ScenarioStepEntity, step:StepEntity, cfg: SleepConfigurationStepDto) -> list[dict[str, str]]:
         time.sleep(cfg.duration)
-        self.log(step.id, f"Slept for {cfg.duration} seconds")
+        self.log(scenario_step.step_id, f"Slept for {cfg.duration} seconds")
         return [{"status": "slept", "duration": str(cfg.duration)}]

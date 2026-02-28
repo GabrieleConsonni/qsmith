@@ -35,7 +35,7 @@ def convert_to_config_operation_type(data: dict):
         )
     elif operation_type == OperationType.SAVE_EXTERNAL_DB.value:
         return SaveToExternalDBConfigurationOperationDto(
-            connection_id=data.get("connection_id") or data.get("dataset_id"),
+            connection_id=data.get("connection_id"),
             table_name=data.get("table_name")
         )
     else:

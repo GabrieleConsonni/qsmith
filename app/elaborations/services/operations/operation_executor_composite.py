@@ -37,6 +37,10 @@ def execute_operations(session: Session, operation_ids: list[str], data: list[di
 
     for op_id in operation_ids:
         op_entity = OperationService().get_by_id(session, op_id)
+        if not op_entity:
+            message = f"Operation with id '{op_id}' not found"
+            log(message, level=LogLevel.ERROR)
+            raise ValueError(message)
         cfg = convert_to_config_operation_type(op_entity.configuration_json)
         new_execution_result = execute_operation(session, op_id, cfg, execution_result.data)
         execution_result.extend(new_execution_result)
@@ -49,11 +53,8 @@ def execute_operation(session: Session, operation_id: str, cfg: ConfigurationOpe
     clazz = _EXECUTOR_MAPPING.get(type(cfg))
     if clazz is None:
         supported_types = list(_EXECUTOR_MAPPING.keys())
-        message = f"Unsupported operation type: {cfg}. "
+        message = f"Unsupported operation type: {cfg}. Supported types: {supported_types}"
         log(message, level=LogLevel.ERROR)
-        raise ValueError(
-
-            f"Supported types: {supported_types}"
-        )
+        raise ValueError(message)
     operation_executor = clazz()
     return operation_executor.execute(session, operation_id, cfg, data)

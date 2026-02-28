@@ -16,17 +16,6 @@ class SaveToExternalDbOperationExecutor(OperationExecutor):
     def execute(self, session:Session, operation_id:str, cfg: SaveToExternalDBConfigurationOperationDto, data:list[dict])->ExecutionResultDto:
         connection_id = str(cfg.connection_id or "").strip()
         table_name = str(cfg.table_name or "").strip()
-        legacy_dataset_id = str(cfg.dataset_id or "").strip()
-        if (not connection_id or not table_name) and legacy_dataset_id:
-            payload = self.load_database_datasource_payload(session, legacy_dataset_id)
-            if not connection_id:
-                connection_id = str(payload.get("connection_id") or "").strip()
-            if not table_name:
-                object_name = str(payload.get("object_name") or "").strip()
-                schema = str(payload.get("schema") or "").strip()
-                table_name = (
-                    object_name if not schema or "." in object_name else f"{schema}.{object_name}"
-                )
 
         if not connection_id:
             raise ValueError("SAVE_EXTERNAL_DB operation requires connection_id.")
@@ -70,16 +59,3 @@ class SaveToExternalDbOperationExecutor(OperationExecutor):
             raise ValueError(f"Database connection '{_id}' not found")
 
         return convert_database_connection_config(json_payload_entity.payload)
-
-    @staticmethod
-    def load_database_datasource_payload(session: Session, _id: str) -> dict:
-        json_payload_entity: JsonPayloadEntity = JsonFilesService().get_by_id(session, _id)
-        if not json_payload_entity:
-            raise ValueError(f"Database datasource '{_id}' not found")
-        if json_payload_entity.json_type != JsonType.DATABASE_TABLE.value:
-            raise ValueError(f"Datasource '{_id}' is not a database-table datasource")
-        return (
-            json_payload_entity.payload
-            if isinstance(json_payload_entity.payload, dict)
-            else {}
-        )

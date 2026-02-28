@@ -32,12 +32,13 @@ Qsmith e un queue manager composto da backend FastAPI e UI Streamlit. Gestisce b
 - Pagine principali:
   - `app/ui/pages/Brokers.py`
   - `app/ui/pages/DatabaseConnections.py`
-  - `app/ui/pages/Queues.py`
-  - `app/ui/pages/QueueDetails.py`
+  - `app/ui/pages/DAtabaseDatasources.py`
   - `app/ui/pages/JsonArray.py`
-  - `app/ui/pages/DatabaseDataSources.py`
-  - `app/ui/pages/Scenarios.py`
   - `app/ui/pages/Logs.py`
+  - `app/ui/pages/QueueDetails.py`
+  - `app/ui/pages/Queues.py`
+  - `app/ui/pages/ScenarioEditor.py`
+  - `app/ui/pages/Scenarios.py`
   - `app/ui/pages/Tools.py`
 
 **Router API principali**

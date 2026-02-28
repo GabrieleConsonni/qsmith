@@ -151,18 +151,3 @@
 - [v] Se nel dialog di aggiunta operation l'utente sceglie come operationType `SAVE_EXTERNAL_DB` allora viene mostrata una selectbox su dataset configurati
 
 
-
-
-## QSM-030 - Home & Quick Actions
-- [ ] Home page dedicata
-- [ ] Quick action: crea scenario
-- [ ] Quick action: aggiungi sorgente dati
-- [ ] Quick action: aggiungi broker
-
----
-
-## QSM-040 - Tools
-- [x] Pagina `Tools` placeholder
-- [ ] Utility operative reali da definire
-
----

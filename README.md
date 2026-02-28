@@ -71,7 +71,7 @@ docker compose -f docker-compose-compile-requirements.yml run --rm compiler
 
 ## Test
 ```bash
-pytest app/test
+pytest test
 ```
 
 Nota: i test usano Testcontainers (Docker richiesto).

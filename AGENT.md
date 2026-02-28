@@ -4,15 +4,18 @@ Leggi prima `docs/CODEX_CONTEXT.md` per contesto e comandi principali.
 
 **Regole di Lavoro**
 - Evita di inserire segreti o credenziali reali nei file del repo.
-- Se tocchi i modelli SQLAlchemy in `app/_alembic/models`, aggiorna le migrazioni in `alembic/`.
 - Per ricerche nel repo preferisci `rg` (ripgrep).
-- Mantieni la logica di fetch API concentrata nei service per facilitare test e riuso.
-- In UI, se possibile estrai componenti in file separati e organizzali per package (esempio: `brokers/components`) e chiamali con `..._component.py` .
-- Le chiamate API per le queue devono stare in servizi dedicati (`queues.services.queue_service`).
 - Quando identifichi una modifica strutturale, aggiorna sempre questo file e i documenti correlati.
 - Prima di iniziare una modifica, leggi `docs/SPEC.md` (analisi funzionale) e `docs/TASK.md` (piano di lavoro).
 - Se una modifica impatta specifiche o piano di lavoro, aggiorna `docs/SPEC.md` e/o `docs/TASK.md` e/o `README.md` e/o `docs/CODEX_CONTEXT.md`.
 - Per la risoluzione di bug consultare e aggiornare il file `docs/BUGS.md` essi hanno sintassi QSMB-XXX
+- Per modifiche\aggiunte alla UI (Streamlit) non scrivere tutto in un unico file ma partendo dalla pagina:
+  - Dove possibile rendila modulare estraendo i componenti in packages (esempio: `ui/brokers`)
+  - Dentro i packages metti sottocartelle services, components e models. 
+  - Mantieni la logica di fetch API concentrata nei service per facilitare test e riuso.
+  - Per i componenti grafici chiamali con il loro tipo ad esempio:
+    - se sono container `..._container.py`
+    - se sono dialog `..._dialog.py`
 
 **Esecuzione e Test**
 - Avvio obbligatorio via Docker:

@@ -8,5 +8,5 @@ from elaborations.services.steps.step_executor import StepExecutor
 
 class DataStepExecutor(StepExecutor):
     def execute(self, session:Session, scenario_step:ScenarioStepEntity, step:StepEntity, cfg: DataConfigurationStepDTO) -> list[dict[str, str]]:
-        self.log(step, f"Try to export {len(step.data)}")
-        return self.execute_operations(session, step.id,cfg.data)
+        self.log(scenario_step.step_id, f"Try to export {len(cfg.data)} objects")
+        return self.execute_operations(session, scenario_step.id, cfg.data)

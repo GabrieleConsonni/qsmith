@@ -14,10 +14,12 @@ from json_utils.services.json_service import make_json_safe
 class PublishToQueueOperationExecutor(OperationExecutor):
     def execute(self,session:Session,  operation_id:str, cfg: PublishConfigurationOperationDto, data:list[dict])->ExecutionResultDto:
         queue = QueueService().get_by_id(session,cfg.queue_id)
+        if not queue:
+            raise ValueError(f"Queue '{cfg.queue_id}' not found")
         connection_config: BrokerConnectionConfigTypes = load_broker_connection(queue.broker_id)
         service = QueueConnectionServiceFactory().get_service(connection_config)
         msg = [make_json_safe(item) for item in data]
-        service.publish_messages(connection_config, cfg.queue_id, [msg])
+        service.publish_messages(connection_config, cfg.queue_id, msg)
         message=f"Published {len(data)} message(s) to queue '{queue.code}'"
         self.log(operation_id, message=message)
         return ExecutionResultDto(

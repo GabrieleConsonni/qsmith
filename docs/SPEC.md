@@ -13,28 +13,32 @@ La soluzione copre:
 - configurazione connessioni database (Postgres/Oracle/MSSQL)
 - gestione queue per broker
 - operazioni runtime su queue (test connessione, send, receive, ack)
-- gestione datasource JSON array
-- gestione datasource database (table/view)
-- visualizzazione log applicativi
-- gestione scenari di elaborazione (esecuzione scenario)
-
-Non copre (stato attuale):
-- Home page dedicata con quick actions
-- Tools operativi completi (pagina placeholder)
+- gestione datasource 
+    - JSON array
+    - dataset (table/view da database)
+- gestione scenari di test
+    - creazione di scenari composti da step e operazioni
+    - esecuzione singola o multipla di scenari
+    - esecuzione singola di scenari in modalità debug  
+- visualizzazione log applicativi 
 
 ## 3. Routing UI
 Pagine disponibili:
-- `Brokers`
-- `Database Connections`
-- `Queues`
-- `Queue details`
-- `Json Array`
-- `Database Datasources`
-- `Scenarios`
+- `Configurations` 
+    - `Brokers`
+    - `Database Connections`
+- `SQS Brokers` 
+    - `Queues`
+        - `Queue details`
+- `Datasources`
+    - `Json Array`
+    - `Dataset`
+- `Test scenarios`
+    - `Scenarios`
+        - `Scenario Editor` 
 - `Logs`
 - `Tools`
 
-La navigazione avviene via sidebar; la selezione broker impatta il contesto di `Queues` e `Queue details`.
 
 ## 4. Specifiche per Pagina
 
@@ -42,21 +46,27 @@ La navigazione avviene via sidebar; la selezione broker impatta il contesto di `
 Obiettivi:
 - visualizzare elenco broker configurati
 - consentire inserimento/modifica/cancellazione broker
-- aprire contesto queue del broker selezionato
+- aprire la pagina `Queues` del broker selezionato
 
 Dati principali mostrati:
 - code
 - description
 - tipo connessione/configurazione
 
-### 4.2 Queues
+### 4.2 Database Connections
+Obiettivi:
+- elenco connessioni database
+- CRUD connessioni (Postgres/Oracle/MSSQL)
+- test connessione configurata
+
+### 4.3 Queues
 Obiettivi:
 - mostrare le queue del broker selezionato
 - visualizzare metriche queue (messaggi, ultimo aggiornamento)
 - aggiungere/modificare/cancellare queue
-- navigare al dettaglio della singola queue
+- navigare al `Queue details` della singola queue
 
-### 4.3 Queue details
+### 4.4 Queue details
 Header:
 - metrica `Approximante number of messages`
 - metrica `Not visible messages`
@@ -80,40 +90,38 @@ Funzioni `Receive`:
 - extract json-array da messaggi ricevuti e salvataggio datasource
 - clean preview
 
-### 4.4 Json Array
+### 4.5 Json Array
 Obiettivi:
 - elenco datasource JSON array
 - aggiunta/modifica/cancellazione item
 - preview payload JSON
 
-### 4.5 Scenarios
+### 4.6 Dataset
 Obiettivi:
-- ricaricare elenco scenari da backend
-- selezionare scenario
-- eseguire scenario selezionato
-
-### 4.6 Logs
-Obiettivi:
-- ricaricare log
-- filtrare log per livello, tipo, subject, messaggio e intervallo data
-- pulire log vecchi per numero giorni
-
-### 4.7 Tools
-Stato attuale:
-- pagina placeholder "Utility operative in arrivo."
-
-### 4.8 Database Connections
-Obiettivi:
-- elenco connessioni database
-- CRUD connessioni (Postgres/Oracle/MSSQL)
-- test connessione configurata
-
-### 4.9 Database Datasources
-Obiettivi:
-- elenco datasource tabellari
+- elenco dataset tabellari
 - CRUD datasource database
 - scelta tabella/view da connessione tramite dialog con tree tables/views
 - preview dati tabella/view configurata
+
+### 4.7 Test Scenarios
+Obiettivi:
+- selezionare scenario
+- aggiunta/cancellazione item
+- eseguire scenario selezionato
+- navigare al `Scenario Editor` del singolo scenario
+
+
+### 4.8 Scenario Editor
+Obiettivi:
+- Aggiungere step e operazioni allo scenario
+- Eseguire step singolarmente o in gruppi
+
+
+### 4.9 Logs
+Obiettivi:
+- visualizzare i log
+- filtrare log per livello, tipo, subject, messaggio e intervallo data
+- pulire log vecchi per numero giorni
 
 ## 5. API Funzionali Principali
 - `/broker/connection` CRUD broker connection

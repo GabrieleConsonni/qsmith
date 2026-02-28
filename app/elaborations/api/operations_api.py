@@ -12,9 +12,9 @@ router = APIRouter(prefix="/elaborations")
 async def insert_operation_api(dto:CreateOperationDto):
     with managed_session() as session:
         entity = OperationEntity()
-        entity.code = dto.code,
-        entity.description = dto.description,
-        entity.operation_type = dto.cfg.operationType,
+        entity.code = dto.code
+        entity.description = dto.description
+        entity.operation_type = dto.cfg.operationType
         entity.configuration_json = dto.cfg.model_dump()
         op_id = OperationService().insert(
             session,

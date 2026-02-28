@@ -115,6 +115,8 @@ Obiettivi:
 Obiettivi:
 - Aggiungere step e operazioni allo scenario
 - Eseguire step singolarmente o in gruppi
+- Visualizzare stato ultima esecuzione di step/operazioni (check/error/idle)
+- Mostrare avanzamento esecuzione scenario in tempo reale (step eseguiti / totali)
 
 
 ### 4.9 Logs
@@ -130,6 +132,8 @@ Obiettivi:
 - `/data-source/database` CRUD datasource database
 - `/database/connection` CRUD connessioni database + test + metadata objects/preview
 - `/elaborations/scenario` elenco/gestione scenari ed esecuzione
+- `/elaborations/scenario/{scenario_id}/step/{scenario_step_id}/execute` esecuzione asincrona del singolo scenario-step
+- `/elaborations/execution/{execution_id}/events` stream SSE eventi runtime esecuzione
 - `/logs/` elenco log
 - `/logs/{days}` pulizia log
 

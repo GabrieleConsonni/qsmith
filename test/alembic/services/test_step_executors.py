@@ -258,9 +258,13 @@ def test_data_from_db_step_executor_reads_from_external_postgres(
     def _fake_execute_operations(session, operation_ids, data):
         captured["operation_ids"] = operation_ids
         captured["data"] = data
-        return ExecutionResultDto(data=data, result=[{"message": "db-forwarded"}])
+        return [{"message": "db-forwarded"}]
 
-    monkeypatch.setattr(db_module, "execute_operations", _fake_execute_operations)
+    monkeypatch.setattr(
+        db_module.DataFromDbStepExecutor,
+        "execute_operations",
+        classmethod(lambda _cls, session, step_id, data: _fake_execute_operations(session, [], data)),
+    )
 
     connection_payload = {
         "database_type": "postgres",

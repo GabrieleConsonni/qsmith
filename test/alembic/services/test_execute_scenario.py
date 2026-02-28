@@ -16,6 +16,7 @@ from app.elaborations.services.alembic.step_operation_service import StepOperati
 from app.elaborations.services.alembic.step_service import StepService
 from app.elaborations.services.scenarios.scenario_executor_thread import ScenarioExecutionInput, _execute
 from app.logs.services.alembic.log_service import LogService
+from uuid import uuid4
 
 
 def test_execution(alembic_container):
@@ -66,6 +67,7 @@ def test_execution(alembic_container):
         )
 
     _execute(ScenarioExecutionInput(
+        execution_id=str(uuid4()),
         scenario_id=scenario_id,
         scenario_code="scenario_code"
     ))

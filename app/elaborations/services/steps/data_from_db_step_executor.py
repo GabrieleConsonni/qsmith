@@ -6,7 +6,6 @@ from _alembic.models.step_entity import StepEntity
 from data_sources.models.database_connection_config_types import DatabaseConnectionConfigTypes
 from data_sources.services.alembic.database_connection_service import load_database_connection
 from elaborations.models.dtos.configuration_step_dtos import DataFromDbConfigurationStepDto
-from elaborations.services.operations.operation_executor_composite import execute_operations
 from elaborations.services.steps.step_executor import StepExecutor
 from json_utils.models.enums.json_type import JsonType
 from json_utils.services.alembic.json_files_service import JsonFilesService
@@ -48,18 +47,12 @@ class DataFromDbStepExecutor(StepExecutor):
 
         self.log(scenario_step.step_id, f"Start reading table '{table_name}'")
 
-        operations_id = self.find_all_operations(session, scenario_step.id)
-
-        results: list[dict[str, str]] = []
-
         rows = DatabaseTableReader.read_full_table(engine, ReadTableConfig(
                 table_name=table_name,
         ))
         total_rows = len(rows) if isinstance(rows, list) else 0
 
-        op_result = execute_operations(session, operations_id, rows)
-
-        results.extend(op_result.result)
+        results = self.execute_operations(session, scenario_step.id, rows)
 
         self.log(scenario_step.step_id,
                  f"Finished reading table '{table_name}'. Total rows processed: {total_rows}")

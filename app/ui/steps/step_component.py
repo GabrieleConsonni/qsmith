@@ -34,6 +34,10 @@ STEP_TYPE_OPTIONS = [
     STEP_TYPE_DATA_FROM_DB,
     STEP_TYPE_DATA_FROM_QUEUE,
 ]
+STEP_STATUS_SUCCESS = "success"
+STEP_STATUS_ERROR = "error"
+STEP_STATUS_RUNNING = "running"
+STEP_STATUS_IDLE = "idle"
 
 
 def _safe_int(value: object, default: int = 0) -> int:
@@ -107,6 +111,17 @@ def _step_type_icon(step_type: str) -> str:
     if normalized_type == STEP_TYPE_DATA_FROM_QUEUE:
         return ":material/view_kanban:"
     return ":material/question_mark:"
+
+
+def _step_status_icon(step_status: str) -> str:
+    normalized_status = str(step_status or "").strip().lower()
+    if normalized_status == STEP_STATUS_SUCCESS:
+        return ":material/check_circle:"
+    if normalized_status == STEP_STATUS_ERROR:
+        return ":material/error:"
+    if normalized_status == STEP_STATUS_RUNNING:
+        return ":material/pending:"
+    return ":material/radio_button_unchecked:"
 
 
 def _pretty_json(value: object) -> str:
@@ -235,15 +250,24 @@ def _resolve_configuration_value(configuration_json: dict, *keys: str):
     return None
 
 
-def _render_step_details_sleep(step_type: str, configuration_json: dict):
+def _render_step_details_sleep(step_type: str, configuration_json: dict, step_status: str):
     duration = _safe_int(configuration_json.get("duration"), 0)
-    st.markdown(f"**Step type: {_step_type_label(step_type)}**")
+    st.markdown(
+        f"**Step type: {_step_type_label(step_type)} {_step_status_icon(step_status)}**"
+    )
     st.write(f"Duration: {duration} sec")
         
 
-def _render_step_details_data(step_type: str, configuration_json: dict, step_ui_key: str):
+def _render_step_details_data(
+    step_type: str,
+    configuration_json: dict,
+    step_ui_key: str,
+    step_status: str,
+):
     data_payload = configuration_json.get("data")
-    st.markdown(f"**Step type: {_step_type_label(step_type)}**")
+    st.markdown(
+        f"**Step type: {_step_type_label(step_type)} {_step_status_icon(step_status)}**"
+    )
     st.json(data_payload if data_payload is not None else {}, expanded=False)
 
 
@@ -251,12 +275,15 @@ def _render_step_details_data_from_json_array(
     step_type: str,
     configuration_json: dict,
     json_arrays_by_id: dict[str, dict],
+    step_status: str,
 ):
     json_array_id = str(
         _resolve_configuration_value(configuration_json, "json_array_id", "jsonArrayId") or ""
     ).strip()
     selected_json_array = json_arrays_by_id.get(json_array_id, {})
-    st.markdown(f"**Step type: {_step_type_label(step_type)}**")
+    st.markdown(
+        f"**Step type: {_step_type_label(step_type)} {_step_status_icon(step_status)}**"
+    )
     
     code = str(selected_json_array.get("code") or "")
     descritption = str(selected_json_array.get("description") or "")
@@ -271,13 +298,16 @@ def _render_step_details_data_from_db(
     step_ui_key: str,
     database_datasources: list[dict],
     database_datasource_by_id: dict[str, dict],
+    step_status: str,
 ):
     dataset_id, selected_dataset = _find_dataset_from_configuration(
         configuration_json,
         database_datasources,
         database_datasource_by_id,
     )
-    st.markdown(f"**Step type: {_step_type_label(step_type)}**")
+    st.markdown(
+        f"**Step type: {_step_type_label(step_type)} {_step_status_icon(step_status)}**"
+    )
     code = str(selected_dataset.get("code") or "").strip()
     description = str(selected_dataset.get("description") or "").strip()
     if code or description:
@@ -366,6 +396,7 @@ def _render_step_details_data_from_queue(
     step_type: str,
     configuration_json: dict,
     brokers_by_id: dict[str, dict],
+    step_status: str,
 ):
     broker_id = str(
         _resolve_configuration_value(configuration_json, "broker_id", "brokerId") or ""
@@ -375,7 +406,9 @@ def _render_step_details_data_from_queue(
     ).strip()
     queue_item, broker_item = _find_queue_and_broker(queue_id, broker_id, brokers_by_id)
 
-    st.markdown(f"**Step type: {_step_type_label(step_type)}**")
+    st.markdown(
+        f"**Step type: {_step_type_label(step_type)} {_step_status_icon(step_status)}**"
+    )
 
     broker_description = str(broker_item.get("description") or "").strip()
     queue_description = str(queue_item.get("description") or "").strip()
@@ -383,13 +416,15 @@ def _render_step_details_data_from_queue(
 
 
 
-def _render_step_details_unknown(step_type: str, configuration_json: dict):
+def _render_step_details_unknown(step_type: str, configuration_json: dict, step_status: str):
     with st.container(border=True):
-        st.markdown(f"**Step type: {_step_type_label(step_type)}**")
+        st.markdown(
+            f"**Step type: {_step_type_label(step_type)} {_step_status_icon(step_status)}**"
+        )
         st.code(_pretty_json(configuration_json), language="json")
 
 
-def _render_step_details_component(selected_step: dict, step_ui_key: str):
+def _render_step_details_component(selected_step: dict, step_ui_key: str, step_status: str):
     if not isinstance(selected_step, dict):
         st.caption("Step type: -")
         st.info("Step non trovato nel catalogo.")    
@@ -414,16 +449,22 @@ def _render_step_details_component(selected_step: dict, step_ui_key: str):
     brokers_by_id = _map_by_id(brokers)
 
     if normalized_step_type == STEP_TYPE_SLEEP:
-        _render_step_details_sleep(resolved_step_type, configuration_json)
+        _render_step_details_sleep(resolved_step_type, configuration_json, step_status)
         return
     if normalized_step_type == STEP_TYPE_DATA:
-        _render_step_details_data(resolved_step_type, configuration_json, step_ui_key)
+        _render_step_details_data(
+            resolved_step_type,
+            configuration_json,
+            step_ui_key,
+            step_status,
+        )
         return
     if normalized_step_type == STEP_TYPE_DATA_FROM_JSON_ARRAY:
         _render_step_details_data_from_json_array(
             resolved_step_type,
             configuration_json,
             json_arrays_by_id,
+            step_status,
         )
         return
     if normalized_step_type == STEP_TYPE_DATA_FROM_DB:
@@ -433,6 +474,7 @@ def _render_step_details_component(selected_step: dict, step_ui_key: str):
             step_ui_key,
             database_datasources,
             database_datasource_by_id,
+            step_status,
         )
         return
     if normalized_step_type == STEP_TYPE_DATA_FROM_QUEUE:
@@ -440,10 +482,11 @@ def _render_step_details_component(selected_step: dict, step_ui_key: str):
             resolved_step_type,
             configuration_json,
             brokers_by_id,
+            step_status,
         )
         return
 
-    _render_step_details_unknown(resolved_step_type, configuration_json)
+    _render_step_details_unknown(resolved_step_type, configuration_json, step_status)
 
 
 def _new_draft_step(
@@ -552,6 +595,9 @@ def render_step_component(
     render_operation_component_fn,
     open_add_new_step_operation_dialog_fn,
     open_import_step_operation_dialog_fn,
+    open_execute_step_dialog_fn,
+    get_step_status_fn,
+    get_operation_status_fn,
 ):
     step_ui_key = scenario_step.get("_ui_key") or f"step_{step_idx}"
     scenario_step["_ui_key"] = step_ui_key
@@ -568,10 +614,24 @@ def render_step_component(
 
     step_type_icon = _step_type_icon(str(selected_step.get("step_type") or "") if isinstance(selected_step, dict) else "")
 
-    step_layout_cols = st.columns([20, 1], vertical_alignment="top")
+    step_status = (
+        str(get_step_status_fn(scenario_step) or STEP_STATUS_IDLE)
+        if callable(get_step_status_fn)
+        else STEP_STATUS_IDLE
+    )
+
+    step_layout_cols = st.columns([1, 19, 1], vertical_alignment="top")
     with step_layout_cols[0]:
+        st.button(
+            "",
+            key=f"scenario_{nonce}_step_status_{step_ui_key}",
+            icon=_step_status_icon(step_status),
+            disabled=True,
+            use_container_width=True,
+        )
+    with step_layout_cols[1]:
         with st.expander(f"{step_label}", expanded=False, icon=step_type_icon):
-            _render_step_details_component(selected_step, step_ui_key)
+            _render_step_details_component(selected_step, step_ui_key, step_status)
             on_failure_value = str(scenario_step.get("on_failure") or "-")
             st.markdown(f"**On failure:** {on_failure_value}")
 
@@ -580,6 +640,11 @@ def render_step_component(
 
             operations = scenario_step.get("operations") or []
             for op_idx, operation in enumerate(operations):
+                operation_status = (
+                    str(get_operation_status_fn(scenario_step, operation) or STEP_STATUS_IDLE)
+                    if callable(get_operation_status_fn)
+                    else STEP_STATUS_IDLE
+                )
                 render_operation_component_fn(
                     scenario_step,
                     operation,
@@ -588,9 +653,10 @@ def render_step_component(
                     nonce,
                     operation_catalog,
                     operation_labels_by_id,
+                    operation_status=operation_status,
                 )
 
-            add_operation_cols = st.columns([8, 2, 2, 8], gap="small")
+            add_operation_cols = st.columns([7, 2, 2, 2, 7], gap="small")
             with add_operation_cols[1]:
                 if st.button(
                     "",
@@ -613,7 +679,19 @@ def render_step_component(
                 ):
                     open_import_step_operation_dialog_fn(step_ui_key)
                     st.rerun()
-    with step_layout_cols[1]:
+            with add_operation_cols[3]:
+                if st.button(
+                    "",
+                    help="Run step",
+                    key=f"scenario_{nonce}_step_execute_{step_ui_key}",
+                    icon=":material/play_arrow:",
+                    use_container_width=True,
+                    type="tertiary",
+                    disabled=not bool(str(scenario_step.get("id") or "").strip()),
+                ):
+                    open_execute_step_dialog_fn(step_ui_key)
+                    st.rerun()
+    with step_layout_cols[2]:
         if st.button(
             "",
             key=f"scenario_{nonce}_step_more_actions_{step_ui_key}",

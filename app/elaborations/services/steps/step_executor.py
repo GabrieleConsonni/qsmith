@@ -9,10 +9,12 @@ from _alembic.models.step_entity import StepEntity
 from elaborations.services.alembic.step_operation_service import StepOperationService
 from elaborations.services.operations.operation_executor_composite import execute_operations
 from _alembic.models.log_entity import LogEntity
+from elaborations.services.scenarios.execution_event_bus import publish_runtime_log_event
 from logs.models.dtos.log_dto import LogDto
 from logs.models.enums.log_level import LogLevel
 from logs.models.enums.log_subject_type import LogSubjectType
 from logs.services.alembic.log_service import LogService
+from elaborations.services.scenarios.execution_runtime_context import bind_execution_context
 
 
 class StepExecutor(ABC):
@@ -26,11 +28,19 @@ class StepExecutor(ABC):
             payload=payload
         )
         LogService().log(log_dto)
+        publish_runtime_log_event(
+            subject_type=LogSubjectType.STEP_EXECUTION,
+            subject=step_id,
+            level=level,
+            message=message,
+            payload=payload,
+        )
 
     @classmethod
     def execute_operations(cls, session:Session, step_id: str, data) -> list[dict[str, str]]:
         operation_ids = cls.find_all_operations(session,step_id)
-        return execute_operations(session, operation_ids, data).result
+        with bind_execution_context(scenario_step_id=step_id):
+            return execute_operations(session, operation_ids, data).result
 
     @classmethod
     def find_all_operations(cls, session:Session, step_id):

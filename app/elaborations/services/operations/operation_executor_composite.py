@@ -6,6 +6,14 @@ from elaborations.models.dtos.configuration_operation_dto import ConfigurationOp
     SaveToExternalDBConfigurationOperationDto, convert_to_config_operation_type, ConfigurationOperationDto
 from elaborations.services.alembic.operation_service import OperationService
 from elaborations.services.operations.operation_executor import OperationExecutor, ExecutionResultDto
+from elaborations.services.scenarios.execution_event_bus import (
+    publish_execution_event,
+    publish_runtime_log_event,
+)
+from elaborations.services.scenarios.execution_runtime_context import (
+    get_execution_id,
+    get_scenario_step_id,
+)
 from elaborations.services.operations.publish_to_queue_operation_executor import PublishToQueueOperationExecutor
 from elaborations.services.operations.save_to_external_db_operation_executor import SaveToExternalDbOperationExecutor
 from elaborations.services.operations.save_to_internal_db_operation_executor import SaveInternalDbOperationExecutor
@@ -28,6 +36,12 @@ def log(message: str, level: LogLevel = LogLevel.INFO):
         message=message,
         level=level)
     LogService().log(log_dto)
+    publish_runtime_log_event(
+        subject_type=LogSubjectType.OPERATION_EXECUTION,
+        subject="N/A",
+        level=level,
+        message=message,
+    )
 
 
 def execute_operations(session: Session, operation_ids: list[str], data: list[dict]) -> ExecutionResultDto:
@@ -42,8 +56,35 @@ def execute_operations(session: Session, operation_ids: list[str], data: list[di
             log(message, level=LogLevel.ERROR)
             raise ValueError(message)
         cfg = convert_to_config_operation_type(op_entity.configuration_json)
-        new_execution_result = execute_operation(session, op_id, cfg, execution_result.data)
-        execution_result.extend(new_execution_result)
+        try:
+            new_execution_result = execute_operation(session, op_id, cfg, execution_result.data)
+            execution_result.extend(new_execution_result)
+            execution_id = get_execution_id()
+            if execution_id:
+                publish_execution_event(
+                    execution_id,
+                    "operation_finished",
+                    {
+                        "scenario_step_id": get_scenario_step_id(),
+                        "operation_id": op_id,
+                        "status": "success",
+                        "result": new_execution_result.result,
+                    },
+                )
+        except Exception as op_exception:
+            execution_id = get_execution_id()
+            if execution_id:
+                publish_execution_event(
+                    execution_id,
+                    "operation_finished",
+                    {
+                        "scenario_step_id": get_scenario_step_id(),
+                        "operation_id": op_id,
+                        "status": "error",
+                        "error": str(op_exception),
+                    },
+                )
+            raise
 
     return execution_result
 

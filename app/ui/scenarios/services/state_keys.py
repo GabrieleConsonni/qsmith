@@ -19,5 +19,9 @@ ADD_STEP_OPERATION_DIALOG_OPEN_KEY = "add_step_operation_dialog_open"
 ADD_STEP_OPERATION_DIALOG_CREATE_NEW_KEY = "add_step_operation_dialog_create_new"
 ADD_STEP_OPERATION_DIALOG_NONCE_KEY = "add_step_operation_dialog_nonce"
 ADD_STEP_OPERATION_DIALOG_TARGET_STEP_UI_KEY = "add_step_operation_dialog_target_step_ui_key"
+EXECUTE_STEP_DIALOG_OPEN_KEY = "execute_step_dialog_open"
+EXECUTE_STEP_DIALOG_TARGET_STEP_UI_KEY = "execute_step_dialog_target_step_ui_key"
+EXECUTE_STEP_DIALOG_NONCE_KEY = "execute_step_dialog_nonce"
+SCENARIO_LAST_EXECUTION_ID_KEY = "scenario_last_execution_id"
 
 ON_FAILURE_OPTIONS = ["ABORT", "CONTINUE"]

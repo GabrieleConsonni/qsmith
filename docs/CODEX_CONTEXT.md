@@ -46,6 +46,7 @@ Qsmith e un queue manager composto da backend FastAPI e UI Streamlit. Gestisce b
 - `/data-source` (json-array, database datasources)
 - `/database` (database connections, test, objects metadata, preview)
 - `/elaborations` (scenari, step, operations)
+  - include anche stream runtime SSE: `/elaborations/execution/{execution_id}/events`
 - `/logs`
 - `/json_utils`
 

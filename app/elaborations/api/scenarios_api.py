@@ -10,10 +10,14 @@ from elaborations.models.dtos.create_scenario_dto import (
     CreateStepOperationDto,
     UpdateScenarioDto,
 )
+from elaborations.models.dtos.execute_scenario_step_dto import ExecuteScenarioStepDto
 from elaborations.services.alembic.scenario_service import ScenarioService
 from elaborations.services.alembic.scenario_step_service import ScenarioStepService
 from elaborations.services.alembic.step_operation_service import StepOperationService
-from elaborations.services.scenarios.scenario_executor_service import execute_scenario_by_id
+from elaborations.services.scenarios.scenario_executor_service import (
+    execute_scenario_by_id,
+    execute_scenario_step_by_id,
+)
 from exceptions.app_exception import QsmithAppException
 
 router = APIRouter(prefix="/elaborations")
@@ -142,5 +146,19 @@ async def delete_scenario_api(_id: str):
 
 @router.get("/scenario/{_id}/execute")
 async def execute_scenario_api(_id):
-    execute_scenario_by_id(_id)
-    return {"message": "Scenario started"}
+    execution_id = execute_scenario_by_id(_id)
+    return {"message": "Scenario started", "execution_id": execution_id}
+
+
+@router.post("/scenario/{scenario_id}/step/{scenario_step_id}/execute")
+async def execute_scenario_step_api(
+    scenario_id: str,
+    scenario_step_id: str,
+    dto: ExecuteScenarioStepDto,
+):
+    execution_id = execute_scenario_step_by_id(
+        scenario_id=scenario_id,
+        scenario_step_id=scenario_step_id,
+        include_previous=dto.include_previous,
+    )
+    return {"message": "Scenario step started", "execution_id": execution_id}

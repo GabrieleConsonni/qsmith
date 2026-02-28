@@ -69,3 +69,15 @@ def delete_scenario_by_id(scenario_id: str) -> dict:
 
 def execute_scenario_by_id(scenario_id: str) -> dict:
     return api_get(f"/elaborations/scenario/{scenario_id}/execute")
+
+
+def execute_scenario_step_by_id(
+    scenario_id: str,
+    scenario_step_id: str,
+    include_previous: bool,
+) -> dict:
+    payload = {"include_previous": bool(include_previous)}
+    return api_post(
+        f"/elaborations/scenario/{scenario_id}/step/{scenario_step_id}/execute",
+        payload,
+    )

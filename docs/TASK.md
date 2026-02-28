@@ -150,4 +150,19 @@
 - [v] Se nel dialog di aggiunta operation l'utente sceglie come operationType `SAVE_INTERNAL_DB` allora viene mostrata una textbox per il nome tabella.
 - [v] Se nel dialog di aggiunta operation l'utente sceglie come operationType `SAVE_EXTERNAL_DB` allora viene mostrata una selectbox su dataset configurati
 
+## QSM-025 - Fix step e operazioni
+- [v] identificare criticità nelle operazioni e coprire le funzionalità con test di unità
+- [v] identificare criticità negli step e coprire le funzionalità con test di unità
+
+## QSM-026 - Esecuzione step scenario
+- [x] creare architettura SSE (Server-Sent Events) fra Qsmith e Qsmith UI in modo tale che il BE possa inviare eventi al FE per aggiornarlo 
+- [x] aggiungere bottone check\errore\pallino vuoto a fianco della label steptype (servirà per capire se l'ultima esecuzione dello step è andata a buon fine)
+- [x] aggiungere bottone check\errore\pallino vuoto a fianco della descrizione dell'oprazione (servirà per capire se l'ultima esecuzione dell'operazione è andata a buon fine)
+- [x] aggiungere pulsante per esecuzione singolo step alla maschera dello scenarioEditor nel container dello step a finaco ai bottoni add\import operation
+- [x] alla pressione del botton di avvio mostrare dialog che richiede se eseguire anche i precedenti o solo il singolo ( in inglese )
+- [x] aggiungere api per esecuzione di step scenario ( asincrona ) con aggiornamenti al FE
+- [x] all'esecuzione dello step viene inviato l'esito (log) al FE
+- [x] all'esecuzione dell'operazione viene inviato l'esito (log) al FE
+- [x] in basso a destra un elemento che indichi "Test scenario running: 3/6 step executed"
+
 

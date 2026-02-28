@@ -29,6 +29,10 @@ OPERATION_TYPE_OPTIONS = [
     OPERATION_TYPE_SAVE_INTERNAL_DB,
     OPERATION_TYPE_SAVE_EXTERNAL_DB,
 ]
+OPERATION_STATUS_SUCCESS = "success"
+OPERATION_STATUS_ERROR = "error"
+OPERATION_STATUS_RUNNING = "running"
+OPERATION_STATUS_IDLE = "idle"
 
 
 def _safe_int(value: object, default: int = 0) -> int:
@@ -312,6 +316,17 @@ def _operation_type_label(operation_type: str) -> str:
     label = normalized_type.replace("-", " ")
     return f"{label}" if label else "-"
 
+
+def _operation_status_icon(operation_status: str) -> str:
+    normalized_status = str(operation_status or "").strip().lower()
+    if normalized_status == OPERATION_STATUS_SUCCESS:
+        return ":material/check_circle:"
+    if normalized_status == OPERATION_STATUS_ERROR:
+        return ":material/error:"
+    if normalized_status == OPERATION_STATUS_RUNNING:
+        return ":material/pending:"
+    return ":material/radio_button_unchecked:"
+
 def render_operation_component(
     scenario_step: dict,
     operation: dict,
@@ -320,6 +335,7 @@ def render_operation_component(
     nonce: int,
     operation_catalog: list[dict],
     operation_labels_by_id: dict[str, str],
+    operation_status: str = OPERATION_STATUS_IDLE,
 ):
     operation_ui_key = operation.get("_ui_key") or f"{step_ui_key}_op_{op_idx}"
     operation["_ui_key"] = operation_ui_key
@@ -341,7 +357,15 @@ def render_operation_component(
 
     operation_type = _operation_type_label(str(selected_operation.get("operation_type") or "") if isinstance(selected_operation, dict) else "")
     
-    operation_action_cols = st.columns([1, 20, 1], gap="small", vertical_alignment="center")
+    operation_action_cols = st.columns([1, 19, 1], gap="small", vertical_alignment="center")
+    with operation_action_cols[0]:
+        st.button(
+            "",
+            key=f"scenario_{nonce}_step_{step_ui_key}_operation_status_{operation_ui_key}",
+            icon=_operation_status_icon(operation_status),
+            disabled=True,
+            use_container_width=True,
+        )
     with operation_action_cols[1]:
         with st.container(border=True):
             st.markdown(f"**{operation_description}**")

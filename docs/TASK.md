@@ -165,4 +165,13 @@
 - [x] all'esecuzione dell'operazione viene inviato l'esito (log) al FE
 - [x] in basso a destra un elemento che indichi "Test scenario running: 3/6 step executed"
 
+---
+
+## QSM-027 - Snapshot scenario_step / step_operation
+- [x] `scenario_steps` e `step_operations` aggiornati a modello snapshot (code/type/configuration_json)
+- [x] dialog add step/operation: aggiunto `Add only`
+- [x] dialog add step/operation lato sinistro: aggiunto `Delete` sotto `Add`
+- [x] Scenario Editor renderizza dettagli da `scenario_steps` / `step_operations`
+- [x] Runtime esecuzione step/operation basato su snapshot scenario (senza lookup da anagrafica)
+
 

@@ -56,8 +56,8 @@ Qsmith e un queue manager composto da backend FastAPI e UI Streamlit. Gestisce b
 - `operations` definizioni di operazioni con `operation_type` e configurazione JSON
 - `steps` definizioni di step con `step_type` e configurazione JSON
 - `scenarios` elenco scenari
-- `scenario_steps` collegamento scenario -> step con ordine e policy di errore
-- `step_operations` collegamento step -> operazioni con ordine
+- `scenario_steps` snapshot degli step usati nello scenario (code/description/type/configuration_json + ordine + on_failure)
+- `step_operations` snapshot delle operazioni usate nel singolo scenario_step (code/description/type/configuration_json + ordine)
 - `logs` eventi applicativi
 
 **Configurazione Ambiente**

@@ -117,6 +117,14 @@ Obiettivi:
 - Eseguire step singolarmente o in gruppi
 - Visualizzare stato ultima esecuzione di step/operazioni (check/error/idle)
 - Mostrare avanzamento esecuzione scenario in tempo reale (step eseguiti / totali)
+- I dialog `Add step` e `Add operation` supportano:
+  - `Save and add`: salva in anagrafica (`steps`/`operations`) e aggiunge snapshot nello scenario
+  - `Add only`: aggiunge solo snapshot nello scenario senza salvare nell'anagrafica
+  - pannello sinistro con `Add` e `Delete` (delete dall'anagrafica)
+
+Modello dati scenario:
+- `scenario_steps` e `step_operations` contengono i dettagli funzionali (code/type/configuration_json) usati in esecuzione.
+- Lo scenario non dipende più da `step_id`/`operation_id` in runtime.
 
 
 ### 4.9 Logs

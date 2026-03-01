@@ -12,7 +12,11 @@ from scenarios.services.data_loader_service import (
     load_step_editor_queues_for_broker,
     load_steps_catalog,
 )
-from scenarios.services.scenario_api_service import create_step, get_steps_page
+from scenarios.services.scenario_api_service import (
+    create_step,
+    delete_step_by_id,
+    get_steps_page,
+)
 from scenarios.services.state_keys import (
     ADD_SCENARIO_STEP_DIALOG_NONCE_KEY,
     SCENARIO_FEEDBACK_KEY,
@@ -478,21 +482,38 @@ def _render_step_details_component(selected_step: dict, step_ui_key: str, step_s
 
 
 def _new_draft_step(
-    default_step_id: str = "",
+    code: str = "",
     description: str = "",
+    step_type: str = STEP_TYPE_SLEEP,
+    configuration_json: dict | None = None,
     order: int = 1,
     edit_mode: bool = True,
 ) -> dict:
     return {
         "id": None,
         "order": order,
-        "step_id": default_step_id,
+        "code": str(code or "").strip(),
         "description": str(description or ""),
+        "step_type": str(step_type or STEP_TYPE_SLEEP),
+        "configuration_json": configuration_json if isinstance(configuration_json, dict) else {},
         "on_failure": "ABORT",
         "operations": [],
         "_ui_key": _new_ui_key(),
         "_edit_mode": edit_mode,
     }
+
+
+def _extract_step_draft_fields(step_item: dict) -> tuple[str, str, str, dict]:
+    cfg = step_item.get("configuration_json")
+    if not isinstance(cfg, dict):
+        cfg = {}
+    step_type = str(step_item.get("step_type") or cfg.get("stepType") or "").strip().replace("_", "-").lower()
+    return (
+        str(step_item.get("code") or "").strip(),
+        str(step_item.get("description") or ""),
+        step_type or STEP_TYPE_SLEEP,
+        cfg,
+    )
 
 
 def _reload_draft_steps(draft: dict):
@@ -584,31 +605,23 @@ def render_step_component(
     step_idx: int,
     nonce: int,
     step_catalog: list[dict],
-    operation_catalog: list[dict],
     step_labels_by_id: dict[str, str],
-    operation_labels_by_id: dict[str, str],
     on_failure_options: list[str],
     render_operation_component_fn,
     open_add_new_step_operation_dialog_fn,
-    open_import_step_operation_dialog_fn,
     execute_step_action_fn,
     get_step_status_fn,
     get_operation_status_fn,
 ):
     step_ui_key = scenario_step.get("_ui_key") or f"step_{step_idx}"
     scenario_step["_ui_key"] = step_ui_key
-    step_id = str(scenario_step.get("step_id") or "")
-    step_label = step_labels_by_id.get(step_id, f"Unknown ({step_id})")
+    step_code = str(scenario_step.get("code") or "").strip()
     step_description = str(scenario_step.get("description") or "").strip()
-    step_expander_label = step_description or step_label
-    selected_step = next(
-        (
-            item
-            for item in step_catalog
-            if str(item.get("id") or "").strip() == step_id
-        ),
-        None,
-    )
+    if step_code and step_description and step_code != step_description:
+        step_expander_label = f"{step_description} [{step_code}]"
+    else:
+        step_expander_label = step_description or step_code or f"Step {step_idx + 1}"
+    selected_step = scenario_step
 
     step_status = (
         str(get_step_status_fn(scenario_step) or STEP_STATUS_IDLE)
@@ -648,8 +661,6 @@ def render_step_component(
                     op_idx,
                     step_ui_key,
                     nonce,
-                    operation_catalog,
-                    operation_labels_by_id,
                     operation_status=operation_status,
                 )
 
@@ -712,15 +723,19 @@ def render_step_component(
         
 
 
-def append_step_to_draft(draft: dict, step_id: str, description: str = ""):
-    step_id_value = str(step_id or "").strip()
-    if not step_id_value:
+def append_step_to_draft(draft: dict, step_item: dict):
+    if not isinstance(step_item, dict):
+        return
+    code, description, step_type, cfg = _extract_step_draft_fields(step_item)
+    if not code:
         return
     steps = draft.setdefault("steps", [])
     steps.append(
         _new_draft_step(
-            default_step_id=step_id_value,
-            description=str(description or ""),
+            code=code,
+            description=description,
+            step_type=step_type,
+            configuration_json=cfg,
             order=len(steps) + 1,
             edit_mode=False,
         )
@@ -816,6 +831,19 @@ def build_step_creation_payload(dialog_nonce: int) -> tuple[dict | None, str | N
     }, None
 
 
+def build_draft_step_from_creation_payload(payload: dict) -> dict:
+    cfg = payload.get("cfg") if isinstance(payload, dict) else {}
+    if not isinstance(cfg, dict):
+        cfg = {}
+    step_type = str(cfg.get("stepType") or STEP_TYPE_SLEEP).strip().replace("_", "-").lower()
+    return {
+        "code": str((payload or {}).get("code") or "").strip(),
+        "description": str((payload or {}).get("description") or ""),
+        "step_type": step_type or STEP_TYPE_SLEEP,
+        "configuration_json": cfg,
+    }
+
+
 def render_readonly_step_preview(selected_step: dict, dialog_nonce: int):
     if not isinstance(selected_step, dict):
         st.info("Seleziona uno step esistente.")
@@ -903,7 +931,7 @@ def render_import_scenario_step_dialog(
                 STEP_STATUS_IDLE,
             )
             if st.button(
-                "Seleziona step",
+                "Add",
                 key=(
                     f"scenario_add_step_select_existing_{dialog_nonce}_{step_id}_{step_idx}"
                 ),
@@ -911,13 +939,25 @@ def render_import_scenario_step_dialog(
                 type="secondary",
                 use_container_width=True,
             ):
-                append_step_to_draft(
-                    draft,
-                    step_id,
-                    str(step_item.get("description") or ""),
-                )
+                append_step_to_draft(draft, step_item)
                 close_add_scenario_step_dialog_fn()
                 st.session_state[SCENARIO_FEEDBACK_KEY] = "Scenario step aggiunto."
+                st.rerun()
+            if st.button(
+                "Delete",
+                key=f"scenario_add_step_delete_existing_{dialog_nonce}_{step_id}_{step_idx}",
+                icon=":material/delete:",
+                type="secondary",
+                use_container_width=True,
+                disabled=not bool(step_id),
+            ):
+                try:
+                    delete_step_by_id(step_id)
+                except Exception as exc:
+                    st.error(f"Errore cancellazione step: {str(exc)}")
+                    return
+                load_steps_catalog(force=True)
+                st.session_state[SCENARIO_FEEDBACK_KEY] = "Step eliminato da anagrafica."
                 st.rerun()
 
     pagination_cols = st.columns([1, 1, 6], gap="small", vertical_alignment="center")
@@ -1161,15 +1201,33 @@ def render_add_new_scenario_step_dialog(draft: dict, close_add_scenario_step_dia
                     for item in updated_step_catalog
                     if str(item.get("id") or "").strip() == created_step_id
                 ),
-                {},
+                None,
             )
             append_step_to_draft(
                 draft,
-                created_step_id,
-                str(created_step.get("description") or ""),
+                created_step if isinstance(created_step, dict) else build_draft_step_from_creation_payload(payload or {}),
             )
             close_add_scenario_step_dialog_fn()
             st.session_state[SCENARIO_FEEDBACK_KEY] = "Nuovo step creato e aggiunto."
+            st.rerun()
+
+        if st.button(
+            "Add only",
+            key=f"scenario_add_step_add_only_{dialog_nonce}",
+            icon=":material/add_circle:",
+            type="secondary",
+            use_container_width=True,
+        ):
+            payload, validation_error = build_step_creation_payload(dialog_nonce)
+            if validation_error:
+                st.error(validation_error)
+                return
+            append_step_to_draft(
+                draft,
+                build_draft_step_from_creation_payload(payload or {}),
+            )
+            close_add_scenario_step_dialog_fn()
+            st.session_state[SCENARIO_FEEDBACK_KEY] = "Nuovo scenario step aggiunto."
             st.rerun()
 
 

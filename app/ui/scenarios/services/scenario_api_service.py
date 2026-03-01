@@ -69,6 +69,10 @@ def create_step(payload: dict) -> dict:
     return api_post("/elaborations/step", payload)
 
 
+def delete_step_by_id(step_id: str) -> dict:
+    return api_delete(f"/elaborations/step/{step_id}")
+
+
 def get_all_operations() -> list[dict]:
     result = api_get("/elaborations/operation")
     return result if isinstance(result, list) else []
@@ -102,6 +106,10 @@ def get_operations_page(page: int, size: int = 5, search: str = "") -> dict:
 
 def create_operation(payload: dict) -> dict:
     return api_post("/elaborations/operation", payload)
+
+
+def delete_operation_by_id(operation_id: str) -> dict:
+    return api_delete(f"/elaborations/operation/{operation_id}")
 
 
 def get_scenario_by_id(scenario_id: str) -> dict:

@@ -53,16 +53,26 @@ def test_execution(alembic_container):
             session,
             ScenarioStepEntity(
                 scenario_id=scenario_id,
-                step_id=step_id,
-                order=0
+                code="step1_code",
+                step_type=StepType.SLEEP.value,
+                configuration_json={
+                    "stepType": "sleep",
+                    "duration": 2,
+                },
+                order=0,
             )
         )
         StepOperationService().insert(
             session,
             StepOperationEntity(
                 scenario_step_id=scenario_step_id,
-                operation_id=operation_id,
-                order=0
+                code="operation_1",
+                operation_type=OperationType.SAVE_INTERNAL_DB.value,
+                configuration_json={
+                    "operationType": "save-internal-db",
+                    "table_name": "test_table",
+                },
+                order=0,
             )
         )
 

@@ -2,7 +2,6 @@ from sqlalchemy.orm import Session
 
 from _alembic.models.json_payload_entity import JsonPayloadEntity
 from _alembic.models.scenario_step_entity import ScenarioStepEntity
-from _alembic.models.step_entity import StepEntity
 from data_sources.models.database_connection_config_types import DatabaseConnectionConfigTypes
 from data_sources.services.alembic.database_connection_service import load_database_connection
 from elaborations.models.dtos.configuration_step_dtos import DataFromDbConfigurationStepDto
@@ -15,8 +14,12 @@ from sqlalchemy_utils.engine_factory.sqlalchemy_engine_factory_composite import 
 
 class DataFromDbStepExecutor(StepExecutor):
 
-    def execute(self, session: Session, scenario_step: ScenarioStepEntity, step: StepEntity,
-                cfg: DataFromDbConfigurationStepDto) -> list[dict[str, str]]:
+    def execute(
+        self,
+        session: Session,
+        scenario_step: ScenarioStepEntity,
+        cfg: DataFromDbConfigurationStepDto,
+    ) -> list[dict[str, str]]:
         connection_id = ""
         table_name = ""
         data_source_id = str(cfg.dataset_id or "").strip()
@@ -35,7 +38,9 @@ class DataFromDbStepExecutor(StepExecutor):
         else:
             # Backward compatibility for existing DATA_FROM_DB steps created before data_source_id.
             configuration_json = (
-                step.configuration_json if isinstance(step.configuration_json, dict) else {}
+                scenario_step.configuration_json
+                if isinstance(scenario_step.configuration_json, dict)
+                else {}
             )
             connection_id = str(configuration_json.get("connection_id") or "").strip()
             table_name = str(configuration_json.get("table_name") or "").strip()
@@ -45,7 +50,7 @@ class DataFromDbStepExecutor(StepExecutor):
         database_connection_cfg: DatabaseConnectionConfigTypes = load_database_connection(connection_id)
         engine = create_sqlalchemy_engine(database_connection_cfg)
 
-        self.log(scenario_step.step_id, f"Start reading table '{table_name}'")
+        self.log(str(scenario_step.code or scenario_step.id), f"Start reading table '{table_name}'")
 
         rows = DatabaseTableReader.read_full_table(engine, ReadTableConfig(
                 table_name=table_name,
@@ -54,7 +59,7 @@ class DataFromDbStepExecutor(StepExecutor):
 
         results = self.execute_operations(session, scenario_step.id, rows)
 
-        self.log(scenario_step.step_id,
+        self.log(str(scenario_step.code or scenario_step.id),
                  f"Finished reading table '{table_name}'. Total rows processed: {total_rows}")
 
         return results

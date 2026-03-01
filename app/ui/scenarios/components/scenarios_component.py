@@ -34,7 +34,6 @@ from scenarios.services.execution_stream_service import (
 from scenarios.services.state_keys import (
     ADD_SCENARIO_STEP_DIALOG_NONCE_KEY,
     ADD_SCENARIO_STEP_DIALOG_OPEN_KEY,
-    ADD_STEP_OPERATION_DIALOG_CREATE_NEW_KEY,
     ADD_STEP_OPERATION_DIALOG_NONCE_KEY,
     ADD_STEP_OPERATION_DIALOG_OPEN_KEY,
     ADD_STEP_OPERATION_DIALOG_TARGET_STEP_UI_KEY,
@@ -136,12 +135,11 @@ def _close_add_scenario_step_dialog():
     st.session_state[ADD_SCENARIO_STEP_DIALOG_OPEN_KEY] = False
 
 
-def _open_add_step_operation_dialog(step_ui_key: str, create_new: bool):
+def _open_add_step_operation_dialog(step_ui_key: str):
     if not step_ui_key:
         return
     _close_add_scenario_step_dialog()
     st.session_state[ADD_STEP_OPERATION_DIALOG_OPEN_KEY] = True
-    st.session_state[ADD_STEP_OPERATION_DIALOG_CREATE_NEW_KEY] = create_new
     st.session_state[ADD_STEP_OPERATION_DIALOG_TARGET_STEP_UI_KEY] = step_ui_key
     st.session_state[ADD_STEP_OPERATION_DIALOG_NONCE_KEY] = (
         int(st.session_state.get(ADD_STEP_OPERATION_DIALOG_NONCE_KEY, 0)) + 1
@@ -149,16 +147,11 @@ def _open_add_step_operation_dialog(step_ui_key: str, create_new: bool):
 
 
 def _open_add_new_step_operation_dialog(step_ui_key: str):
-    _open_add_step_operation_dialog(step_ui_key, create_new=True)
-
-
-def _open_import_step_operation_dialog(step_ui_key: str):
-    _open_add_step_operation_dialog(step_ui_key, create_new=False)
+    _open_add_step_operation_dialog(step_ui_key)
 
 
 def _close_add_step_operation_dialog():
     st.session_state[ADD_STEP_OPERATION_DIALOG_OPEN_KEY] = False
-    st.session_state.pop(ADD_STEP_OPERATION_DIALOG_CREATE_NEW_KEY, None)
     st.session_state.pop(ADD_STEP_OPERATION_DIALOG_TARGET_STEP_UI_KEY, None)
 
 
@@ -184,21 +177,44 @@ def _build_scenario_draft(scenario_id: str) -> dict | None:
         operations_payload = scenario_step.get("operations") or []
         draft_operations: list[dict] = []
         for op_idx, step_operation in enumerate(operations_payload):
+            operation_cfg = (
+                step_operation.get("configuration_json")
+                if isinstance(step_operation.get("configuration_json"), dict)
+                else {}
+            )
             draft_operations.append(
                 {
                     "id": step_operation.get("id"),
                     "order": _safe_int(step_operation.get("order"), op_idx + 1),
-                    "operation_id": str(step_operation.get("operation_id") or ""),
+                    "code": str(step_operation.get("code") or ""),
+                    "description": str(step_operation.get("description") or ""),
+                    "operation_type": str(
+                        step_operation.get("operation_type")
+                        or operation_cfg.get("operationType")
+                        or ""
+                    ),
+                    "configuration_json": operation_cfg,
                     "_ui_key": _new_ui_key(),
                 }
             )
 
+        step_cfg = (
+            scenario_step.get("configuration_json")
+            if isinstance(scenario_step.get("configuration_json"), dict)
+            else {}
+        )
         draft_steps.append(
             {
                 "id": scenario_step.get("id"),
                 "order": _safe_int(scenario_step.get("order"), step_idx + 1),
-                "step_id": str(scenario_step.get("step_id") or ""),
+                "code": str(scenario_step.get("code") or ""),
                 "description": str(scenario_step.get("description") or ""),
+                "step_type": str(
+                    scenario_step.get("step_type")
+                    or step_cfg.get("stepType")
+                    or ""
+                ),
+                "configuration_json": step_cfg,
                 "on_failure": str(scenario_step.get("on_failure") or "ABORT"),
                 "operations": draft_operations,
                 "_ui_key": _new_ui_key(),
@@ -247,15 +263,26 @@ def _build_scenario_payload(draft: dict) -> dict:
             operations_payload.append(
                 {
                     "order": _safe_int(operation.get("order"), 0),
-                    "operation_id": str(operation.get("operation_id") or "").strip(),
+                    "code": str(operation.get("code") or "").strip(),
+                    "description": str(operation.get("description") or ""),
+                    "cfg": (
+                        operation.get("configuration_json")
+                        if isinstance(operation.get("configuration_json"), dict)
+                        else {}
+                    ),
                 }
             )
 
         steps_payload.append(
             {
                 "order": _safe_int(step.get("order"), 0),
-                "step_id": str(step.get("step_id") or "").strip(),
+                "code": str(step.get("code") or "").strip(),
                 "description": str(step.get("description") or ""),
+                "cfg": (
+                    step.get("configuration_json")
+                    if isinstance(step.get("configuration_json"), dict)
+                    else {}
+                ),
                 "on_failure": str(step.get("on_failure") or "ABORT"),
                 "operations": operations_payload,
             }
@@ -299,18 +326,25 @@ def _validate_draft(draft: dict) -> str | None:
         return "Il campo Code e' obbligatorio."
 
     for idx, step in enumerate(payload["steps"]):
-        if not step["step_id"]:
-            return f"Scenario step #{idx + 1}: step_id obbligatorio."
+        if not step["code"]:
+            return f"Scenario step #{idx + 1}: code obbligatorio."
+        if not isinstance(step.get("cfg"), dict) or not step["cfg"].get("stepType"):
+            return f"Scenario step #{idx + 1}: configurazione step non valida."
         if step["on_failure"] not in ON_FAILURE_OPTIONS:
             return (
                 f"Scenario step #{idx + 1}: on_failure deve essere uno tra "
                 f"{', '.join(ON_FAILURE_OPTIONS)}."
             )
         for op_idx, operation in enumerate(step["operations"]):
-            if not operation["operation_id"]:
+            if not operation["code"]:
                 return (
                     f"Scenario step #{idx + 1}, operation #{op_idx + 1}: "
-                    "operation_id obbligatorio."
+                    "code obbligatorio."
+                )
+            if not isinstance(operation.get("cfg"), dict) or not operation["cfg"].get("operationType"):
+                return (
+                    f"Scenario step #{idx + 1}, operation #{op_idx + 1}: "
+                    "configurazione operation non valida."
                 )
     return None
 
@@ -550,8 +584,6 @@ def _render_operation_component(
     op_idx: int,
     step_ui_key: str,
     nonce: int,
-    operation_catalog: list[dict],
-    operation_labels_by_id: dict[str, str],
     operation_status: str = "idle",
 ):
     operation_render_component(
@@ -560,8 +592,6 @@ def _render_operation_component(
         op_idx,
         step_ui_key,
         nonce,
-        operation_catalog,
-        operation_labels_by_id,
         operation_status=operation_status,
     )
 
@@ -572,9 +602,7 @@ def _render_step_component(
     step_idx: int,
     nonce: int,
     step_catalog: list[dict],
-    operation_catalog: list[dict],
     step_labels_by_id: dict[str, str],
-    operation_labels_by_id: dict[str, str],
     execution_state: dict,
 ):
     step_render_component(
@@ -583,13 +611,10 @@ def _render_step_component(
         step_idx,
         nonce,
         step_catalog,
-        operation_catalog,
         step_labels_by_id,
-        operation_labels_by_id,
         ON_FAILURE_OPTIONS,
         _render_operation_component,
         _open_add_new_step_operation_dialog,
-        _open_import_step_operation_dialog,
         _execute_scenario_step_from_draft,
         lambda step_item: _get_step_execution_status(execution_state, step_item),
         lambda step_item, operation_item: _get_operation_execution_status(
@@ -675,9 +700,7 @@ def _render_editor():
             step_idx,
             nonce,
             step_catalog,
-            operation_catalog,
             step_labels_by_id,
-            operation_labels_by_id,
             execution_state,
         )
 
@@ -847,27 +870,12 @@ def _get_operation_execution_status(
     operation: dict,
 ) -> str:
     scenario_step_id = str(scenario_step.get("id") or "").strip()
-    operation_id = str(operation.get("operation_id") or "").strip()
+    operation_id = str(operation.get("id") or "").strip()
     if not scenario_step_id or not operation_id:
         return "idle"
     key = f"{scenario_step_id}:{operation_id}"
     statuses = execution_state.get("operation_status") if isinstance(execution_state, dict) else {}
     return str((statuses or {}).get(key) or "idle")
-
-
-def _render_execution_progress(execution_state: dict):
-    if not isinstance(execution_state, dict) or not execution_state:
-        return
-    is_running = bool(execution_state.get("running"))
-    executed_steps = int(execution_state.get("executed_steps") or 0)
-    total_steps = int(execution_state.get("total_steps") or 0)
-    if total_steps <= 0 and not is_running:
-        return
-
-    progress_cols = st.columns([7, 3], gap="small", vertical_alignment="center")
-    with progress_cols[1]:
-        status_label = "running" if is_running else str(execution_state.get("status") or "finished")
-        st.caption(f"Test scenario {status_label}: {executed_steps}/{total_steps} step executed")
 
 
 def render_scenarios_list_page():

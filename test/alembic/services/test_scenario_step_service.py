@@ -38,8 +38,10 @@ def test_delete(alembic_container):
             session,
             ScenarioStepEntity(
                 scenario_id=scenario_id,
-                step_id=step_id,
-                order=0
+                code="step1_code",
+                step_type=StepType.SLEEP.value,
+                configuration_json={"stepType": "sleep", "duration": 1},
+                order=0,
             )
         )
 

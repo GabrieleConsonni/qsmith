@@ -13,10 +13,15 @@ from scenarios.services.data_loader_service import (
     load_step_editor_context,
     load_step_editor_queues_for_broker,
 )
-from scenarios.services.scenario_api_service import create_operation, get_operations_page
+from scenarios.services.scenario_api_service import (
+    create_operation,
+    delete_operation_by_id,
+    get_operations_page,
+)
 from scenarios.services.state_keys import (
     ADD_STEP_OPERATION_DIALOG_NONCE_KEY,
     ADD_STEP_OPERATION_DIALOG_TARGET_STEP_UI_KEY,
+    OPERATIONS_CATALOG_KEY,
     SCENARIO_FEEDBACK_KEY,
     STEP_EDITOR_BROKERS_KEY,
 )
@@ -223,38 +228,36 @@ def _render_operation_details(operation_item: dict):
 
 
 def _new_draft_operation(
-    default_operation_id: str = "",
+    code: str = "",
+    description: str = "",
+    operation_type: str = OPERATION_TYPE_PUBLISH,
+    configuration_json: dict | None = None,
     order: int = 1,
 ) -> dict:
     return {
         "id": None,
         "order": order,
-        "operation_id": default_operation_id,
+        "code": str(code or "").strip(),
+        "description": str(description or ""),
+        "operation_type": str(operation_type or OPERATION_TYPE_PUBLISH),
+        "configuration_json": configuration_json if isinstance(configuration_json, dict) else {},
         "_ui_key": _new_ui_key(),
     }
 
 
-def _resolve_operation_description(
-    operation_id: str,
-    operation_catalog: list[dict],
-    operation_labels_by_id: dict[str, str],
-) -> str:
-    operation_item = next(
-        (
-            item
-            for item in operation_catalog
-            if str(item.get("id") or "") == str(operation_id or "")
-        ),
-        None,
+def _extract_operation_draft_fields(operation_item: dict) -> tuple[str, str, str, dict]:
+    cfg = operation_item.get("configuration_json")
+    if not isinstance(cfg, dict):
+        cfg = {}
+    operation_type = str(
+        operation_item.get("operation_type") or cfg.get("operationType") or ""
+    ).strip().replace("_", "-").lower()
+    return (
+        str(operation_item.get("code") or "").strip(),
+        str(operation_item.get("description") or ""),
+        operation_type or OPERATION_TYPE_PUBLISH,
+        cfg,
     )
-    if isinstance(operation_item, dict):
-        return str(
-            operation_item.get("description")
-            or operation_item.get("code")
-            or operation_labels_by_id.get(str(operation_id or ""), "")
-            or f"Unknown ({operation_id})"
-        )
-    return operation_labels_by_id.get(str(operation_id or ""), f"Unknown ({operation_id})")
 
 
 @st.dialog("Modify operation", width="large")
@@ -264,8 +267,6 @@ def _edit_step_operation_dialog(
     op_idx: int,
     step_ui_key: str,
     nonce: int,
-    operation_catalog: list[dict],
-    operation_labels_by_id: dict[str, str],
 ):
     operation_ui_key = operation.get("_ui_key") or f"{step_ui_key}_op_{op_idx}"
     operation["_ui_key"] = operation_ui_key
@@ -310,14 +311,6 @@ def _edit_step_operation_dialog(
         ):
             st.rerun()
 
-def _operation_type_label(operation_type: str) -> str:
-    normalized_type = str(operation_type or "").strip().replace("_", "-").lower()
-    if not normalized_type:
-        return "-"
-    label = normalized_type.replace("-", " ")
-    return f"{label}" if label else "-"
-
-
 def _operation_status_icon(operation_status: str) -> str:
     normalized_status = str(operation_status or "").strip().lower()
     if normalized_status == OPERATION_STATUS_SUCCESS:
@@ -334,29 +327,18 @@ def render_operation_component(
     op_idx: int,
     step_ui_key: str,
     nonce: int,
-    operation_catalog: list[dict],
-    operation_labels_by_id: dict[str, str],
     operation_status: str = OPERATION_STATUS_IDLE,
 ):
     operation_ui_key = operation.get("_ui_key") or f"{step_ui_key}_op_{op_idx}"
     operation["_ui_key"] = operation_ui_key
-    operation_id = str(operation.get("operation_id") or "").strip()
-    selected_operation = next(
-        (
-            item
-            for item in operation_catalog
-            if str(item.get("id") or "").strip() == operation_id
-        ),
-        None,
+    operation_code = str(operation.get("code") or "").strip()
+    operation_description = str(operation.get("description") or "").strip()
+    operation_label = (
+        f"{operation_description} [{operation_code}]"
+        if operation_code and operation_description and operation_code != operation_description
+        else (operation_description or operation_code or f"Operation {op_idx + 1}")
     )
-    
-    operation_description = _resolve_operation_description(
-        operation_id,
-        operation_catalog,
-        operation_labels_by_id,
-    )
-
-    operation_type = _operation_type_label(str(selected_operation.get("operation_type") or "") if isinstance(selected_operation, dict) else "")
+    operation_type = _operation_type_label(str(operation.get("operation_type") or ""))
     
     operation_action_cols = st.columns([1, 19, 1], gap="small", vertical_alignment="center")
     with operation_action_cols[0]:
@@ -370,9 +352,9 @@ def render_operation_component(
         )
     with operation_action_cols[1]:
         with st.container(border=True):
-            st.markdown(f"**{operation_description}**")
+            st.markdown(f"**{operation_label}**")
             st.markdown(f"*{operation_type} operation*")
-            _render_operation_details(selected_operation)
+            _render_operation_details(operation)
     with operation_action_cols[2]:
         if st.button(
             "",
@@ -388,8 +370,6 @@ def render_operation_component(
                 op_idx=op_idx,
                 step_ui_key=step_ui_key,
                 nonce=nonce,
-                operation_catalog=operation_catalog,
-                operation_labels_by_id=operation_labels_by_id,
             )
 
 
@@ -402,14 +382,19 @@ def find_draft_step_by_ui_key(draft: dict, step_ui_key: str) -> dict | None:
     return None
 
 
-def append_operation_to_step(scenario_step: dict, operation_id: str):
-    operation_id_value = str(operation_id or "").strip()
-    if not operation_id_value:
+def append_operation_to_step(scenario_step: dict, operation_item: dict):
+    if not isinstance(operation_item, dict):
+        return
+    code, description, operation_type, cfg = _extract_operation_draft_fields(operation_item)
+    if not code:
         return
     operations = scenario_step.setdefault("operations", [])
     operations.append(
         _new_draft_operation(
-            default_operation_id=operation_id_value,
+            code=code,
+            description=description,
+            operation_type=operation_type,
+            configuration_json=cfg,
             order=len(operations) + 1,
         )
     )
@@ -473,6 +458,19 @@ def build_operation_creation_payload(dialog_nonce: int) -> tuple[dict | None, st
         "description": description,
         "cfg": cfg,
     }, None
+
+
+def build_draft_operation_from_creation_payload(payload: dict) -> dict:
+    cfg = payload.get("cfg") if isinstance(payload, dict) else {}
+    if not isinstance(cfg, dict):
+        cfg = {}
+    operation_type = str(cfg.get("operationType") or OPERATION_TYPE_PUBLISH).strip().replace("_", "-").lower()
+    return {
+        "code": str((payload or {}).get("code") or "").strip(),
+        "description": str((payload or {}).get("description") or ""),
+        "operation_type": operation_type or OPERATION_TYPE_PUBLISH,
+        "configuration_json": cfg,
+    }
 
 
 def render_readonly_operation_preview(selected_operation: dict, dialog_nonce: int):
@@ -583,7 +581,7 @@ def _render_existing_operations_panel(
         with st.expander(operation_label, expanded=False):
             _render_operation_details(operation_item)
             if st.button(
-                "Seleziona operation",
+                "Add",
                 key=(
                     "scenario_add_operation_select_existing_"
                     f"{dialog_nonce}_{operation_id}_{op_idx}"
@@ -592,9 +590,25 @@ def _render_existing_operations_panel(
                 type="secondary",
                 use_container_width=True,
             ):
-                append_operation_to_step(scenario_step, operation_id)
+                append_operation_to_step(scenario_step, operation_item)
                 close_add_step_operation_dialog_fn()
                 st.session_state[SCENARIO_FEEDBACK_KEY] = "Operazione aggiunta."
+                st.rerun()
+            if st.button(
+                "Delete",
+                key=f"scenario_add_operation_delete_existing_{dialog_nonce}_{operation_id}_{op_idx}",
+                icon=":material/delete:",
+                type="secondary",
+                use_container_width=True,
+                disabled=not bool(operation_id),
+            ):
+                try:
+                    delete_operation_by_id(operation_id)
+                except Exception as exc:
+                    st.error(f"Errore cancellazione operazione: {str(exc)}")
+                    return
+                load_operations_catalog(force=True)
+                st.session_state[SCENARIO_FEEDBACK_KEY] = "Operazione eliminata da anagrafica."
                 st.rerun()
 
     pagination_cols = st.columns([1, 1, 6], gap="small", vertical_alignment="center")
@@ -756,9 +770,44 @@ def _render_new_operation_form_panel(
                 return
 
             load_operations_catalog(force=True)
-            append_operation_to_step(scenario_step, created_operation_id)
+            updated_operations_catalog = st.session_state.get(OPERATIONS_CATALOG_KEY, [])
+            if not isinstance(updated_operations_catalog, list):
+                updated_operations_catalog = []
+            created_operation = next(
+                (
+                    item
+                    for item in updated_operations_catalog
+                    if str(item.get("id") or "").strip() == created_operation_id
+                ),
+                None,
+            )
+            append_operation_to_step(
+                scenario_step,
+                created_operation
+                if isinstance(created_operation, dict)
+                else build_draft_operation_from_creation_payload(payload or {}),
+            )
             close_add_step_operation_dialog_fn()
             st.session_state[SCENARIO_FEEDBACK_KEY] = "Nuova operazione creata e aggiunta."
+            st.rerun()
+
+        if st.button(
+            "Add only",
+            key=f"scenario_add_operation_add_only_{dialog_nonce}",
+            icon=":material/add_circle:",
+            type="secondary",
+            use_container_width=True,
+        ):
+            payload, validation_error = build_operation_creation_payload(dialog_nonce)
+            if validation_error:
+                st.error(validation_error)
+                return
+            append_operation_to_step(
+                scenario_step,
+                build_draft_operation_from_creation_payload(payload or {}),
+            )
+            close_add_step_operation_dialog_fn()
+            st.session_state[SCENARIO_FEEDBACK_KEY] = "Nuova step operation aggiunta."
             st.rerun()
 
 

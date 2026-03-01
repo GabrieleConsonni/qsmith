@@ -3,7 +3,6 @@ import time
 from sqlalchemy.orm import Session
 
 from _alembic.models.scenario_step_entity import ScenarioStepEntity
-from _alembic.models.step_entity import StepEntity
 from brokers.models.connections.broker_connection_config_types import BrokerConnectionConfigTypes
 from brokers.services.alembic.broker_connection_service import load_broker_connection
 from brokers.services.alembic.queue_service import QueueService
@@ -14,7 +13,12 @@ from elaborations.services.steps.step_executor import StepExecutor
 
 class DataFromQueueStepExecutor(StepExecutor):
 
-    def execute(self, session:Session, scenario_step:ScenarioStepEntity, step:StepEntity, cfg: DataFromQueueConfigurationStepDto) -> list[dict[str, str]]:
+    def execute(
+        self,
+        session: Session,
+        scenario_step: ScenarioStepEntity,
+        cfg: DataFromQueueConfigurationStepDto,
+    ) -> list[dict[str, str]]:
         queue = QueueService().get_by_id(session, cfg.queue_id)
         if not queue:
             raise ValueError(f"Queue '{cfg.queue_id}' not found")
@@ -46,7 +50,10 @@ class DataFromQueueStepExecutor(StepExecutor):
 
             all_msgs.extend(msgs)
 
-        self.log(scenario_step.step_id, f"Try to export {len(all_msgs)} messages read from queue '{queue.code}'")
+        self.log(
+            str(scenario_step.code or scenario_step.id),
+            f"Try to export {len(all_msgs)} messages read from queue '{queue.code}'",
+        )
 
         return self.execute_operations(session, scenario_step.id, all_msgs)
 

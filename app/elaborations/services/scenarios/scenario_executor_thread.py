@@ -132,7 +132,7 @@ def _execute(scenario_input: ScenarioExecutionInput):
                         "step_started",
                         {
                             "scenario_step_id": scenario_step.id,
-                            "step_id": scenario_step.step_id,
+                            "step_code": scenario_step.code,
                             "step_order": int(scenario_step.order),
                             "step_index": step_index,
                             "total_steps": total_steps,
@@ -149,7 +149,7 @@ def _execute(scenario_input: ScenarioExecutionInput):
                             "step_finished",
                             {
                                 "scenario_step_id": scenario_step.id,
-                                "step_id": scenario_step.step_id,
+                                "step_code": scenario_step.code,
                                 "step_order": int(scenario_step.order),
                                 "status": "success",
                                 "result": step_results,
@@ -172,7 +172,7 @@ def _execute(scenario_input: ScenarioExecutionInput):
                             "step_finished",
                             {
                                 "scenario_step_id": scenario_step.id,
-                                "step_id": scenario_step.step_id,
+                                "step_code": scenario_step.code,
                                 "step_order": int(scenario_step.order),
                                 "status": "error",
                                 "error": str(step_exception),

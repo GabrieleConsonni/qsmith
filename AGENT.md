@@ -6,6 +6,7 @@ Leggi prima `docs/CODEX_CONTEXT.md` per contesto e comandi principali.
 - Evita di inserire segreti o credenziali reali nei file del repo.
 - Per ricerche nel repo preferisci `rg` (ripgrep).
 - Quando identifichi una modifica strutturale, aggiorna sempre questo file e i documenti correlati.
+- Per scenari: `scenario_steps`/`step_operations` sono snapshot funzionali (code/type/configuration_json), non riferimenti runtime a `steps`/`operations`.
 - Prima di iniziare una modifica, leggi `docs/SPEC.md` (analisi funzionale) e `docs/TASK.md` (piano di lavoro).
 - Se una modifica impatta specifiche o piano di lavoro, aggiorna `docs/SPEC.md` e/o `docs/TASK.md` e/o `README.md` e/o `docs/CODEX_CONTEXT.md`.
 - Per la risoluzione di bug consultare e aggiornare il file `docs/BUGS.md` essi hanno sintassi QSMB-XXX

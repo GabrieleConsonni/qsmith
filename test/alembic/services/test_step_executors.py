@@ -98,12 +98,11 @@ def test_sleep_step_executor_returns_slept_status(monkeypatch, alembic_container
     sleep_calls: list[int] = []
     monkeypatch.setattr(sleep_module.time, "sleep", lambda duration: sleep_calls.append(duration))
 
-    scenario_step = SimpleNamespace(step_id="step-1")
-    step = SimpleNamespace(id="step-1")
+    scenario_step = SimpleNamespace(code="step-1", id="sc-step-0")
     cfg = SleepConfigurationStepDto(duration=2)
 
     with managed_session() as session:
-        result = SleepStepExecutor().execute(session, scenario_step, step, cfg)
+        result = SleepStepExecutor().execute(session, scenario_step, cfg)
 
     assert sleep_calls == [2]
     assert result == [{"status": "slept", "duration": "2"}]
@@ -113,12 +112,11 @@ def test_data_step_executor_forwards_cfg_data(monkeypatch, alembic_container):
     captured: dict = {}
     _patch_execute_operations_for_class(monkeypatch, DataStepExecutor, captured)
 
-    scenario_step = SimpleNamespace(id="sc-step-1", step_id="step-1")
-    step = SimpleNamespace(id="step-1")
+    scenario_step = SimpleNamespace(id="sc-step-1", code="step-1")
     cfg = DataConfigurationStepDTO(data=[{"id": 1}, {"id": 2}])
 
     with managed_session() as session:
-        result = DataStepExecutor().execute(session, scenario_step, step, cfg)
+        result = DataStepExecutor().execute(session, scenario_step, cfg)
 
     assert captured["step_id"] == "sc-step-1"
     assert captured["data"] == [{"id": 1}, {"id": 2}]
@@ -136,11 +134,10 @@ def test_data_from_json_array_step_executor_uses_list_payload(monkeypatch, alemb
             [{"id": 1}, {"id": 2}],
             "json_arr",
         )
-        scenario_step = SimpleNamespace(id="sc-step-2", step_id="step-2")
-        step = SimpleNamespace(id="step-2")
+        scenario_step = SimpleNamespace(id="sc-step-2", code="step-2")
         cfg = DataFromJsonArrayConfigurationStepDto(json_array_id=json_array_id)
 
-        result = DataFromJsonArrayStepExecutor().execute(session, scenario_step, step, cfg)
+        result = DataFromJsonArrayStepExecutor().execute(session, scenario_step, cfg)
 
     assert captured["step_id"] == "sc-step-2"
     assert captured["data"] == [{"id": 1}, {"id": 2}]
@@ -158,11 +155,10 @@ def test_data_from_json_array_step_executor_wraps_single_object(monkeypatch, ale
             {"id": 10, "name": "single"},
             "json_obj",
         )
-        scenario_step = SimpleNamespace(id="sc-step-3", step_id="step-3")
-        step = SimpleNamespace(id="step-3")
+        scenario_step = SimpleNamespace(id="sc-step-3", code="step-3")
         cfg = DataFromJsonArrayConfigurationStepDto(json_array_id=json_array_id)
 
-        result = DataFromJsonArrayStepExecutor().execute(session, scenario_step, step, cfg)
+        result = DataFromJsonArrayStepExecutor().execute(session, scenario_step, cfg)
 
     assert captured["data"] == [{"id": 10, "name": "single"}]
     assert result == [{"message": "ok"}]
@@ -200,8 +196,7 @@ def test_data_from_queue_step_executor_reads_until_max_messages(monkeypatch, ale
     )
     monkeypatch.setattr(queue_module.time, "sleep", lambda duration: sleep_calls.append(duration))
 
-    scenario_step = SimpleNamespace(id="sc-step-4", step_id="step-4")
-    step = SimpleNamespace(id="step-4")
+    scenario_step = SimpleNamespace(id="sc-step-4", code="step-4")
     cfg = DataFromQueueConfigurationStepDto(
         queue_id="queue-1",
         retry=4,
@@ -210,7 +205,7 @@ def test_data_from_queue_step_executor_reads_until_max_messages(monkeypatch, ale
     )
 
     with managed_session() as session:
-        result = DataFromQueueStepExecutor().execute(session, scenario_step, step, cfg)
+        result = DataFromQueueStepExecutor().execute(session, scenario_step, cfg)
 
     assert captured["step_id"] == "sc-step-4"
     assert captured["data"] == [{"id": 1}, {"id": 2}, {"id": 3}]
@@ -225,12 +220,11 @@ def test_data_from_queue_step_executor_raises_when_queue_not_found(alembic_conta
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setattr(queue_module.QueueService, "get_by_id", lambda _self, _session, _queue_id: None)
     try:
-        scenario_step = SimpleNamespace(id="sc-step-5", step_id="step-5")
-        step = SimpleNamespace(id="step-5")
+        scenario_step = SimpleNamespace(id="sc-step-5", code="step-5")
         cfg = DataFromQueueConfigurationStepDto(queue_id="missing-queue")
         with managed_session() as session:
             with pytest.raises(ValueError, match="Queue 'missing-queue' not found"):
-                DataFromQueueStepExecutor().execute(session, scenario_step, step, cfg)
+                DataFromQueueStepExecutor().execute(session, scenario_step, cfg)
     finally:
         monkeypatch.undo()
 
@@ -295,10 +289,9 @@ def test_data_from_db_step_executor_reads_from_external_postgres(
         )
 
     with managed_session() as session:
-        scenario_step = SimpleNamespace(id="sc-step-6", step_id="step-6")
-        step = SimpleNamespace(id="step-6", configuration_json={})
+        scenario_step = SimpleNamespace(id="sc-step-6", code="step-6", configuration_json={})
         cfg = DataFromDbConfigurationStepDto(dataset_id=datasource_id)
-        result = DataFromDbStepExecutor().execute(session, scenario_step, step, cfg)
+        result = DataFromDbStepExecutor().execute(session, scenario_step, cfg)
 
     assert captured["operation_ids"] == []
     assert len(captured["data"]) == 2
@@ -361,7 +354,9 @@ def test_delete_scenario_steps_api_deletes_only_scenario_steps(alembic_container
             session,
             ScenarioStepEntity(
                 scenario_id=scenario_id,
-                step_id=step_id,
+                code=_new_name("step"),
+                step_type=StepType.SLEEP.value,
+                configuration_json={"stepType": "sleep", "duration": 0},
                 order=0,
             ),
         )

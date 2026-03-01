@@ -1,4 +1,6 @@
-from fastapi import APIRouter
+import math
+
+from fastapi import APIRouter, Query
 
 from _alembic.models.step_entity import StepEntity
 from _alembic.services.session_context_manager import managed_session
@@ -40,19 +42,50 @@ async def update_step_api(dto:UpdateStepDto):
 
 
 @router.get("/step")
-async def find_all_step_api():
+async def find_all_step_api(
+    page: int | None = Query(default=None, ge=1),
+    size: int = Query(default=5, ge=1),
+    search: str | None = Query(default=None),
+):
     with managed_session() as session:
-        steps = StepService().get_all(session)
-        result = []
+        service = StepService()
+        query = service.get_filtered_query(session, search or "")
+
+        if page is None:
+            steps = query.all()
+            result = []
+            for step in steps:
+                result.append({
+                    "id": step.id,
+                    "code": step.code,
+                    "description": step.description,
+                    "step_type": step.step_type,
+                    "configuration_json": step.configuration_json
+                })
+            return result
+
+        total_items = query.count()
+        total_pages = math.ceil(total_items / size) if total_items > 0 else 0
+        offset = (page - 1) * size
+        steps = query.offset(offset).limit(size).all()
+
+        items = []
         for step in steps:
-            result.append({
+            items.append({
                 "id": step.id,
                 "code": step.code,
                 "description": step.description,
                 "step_type": step.step_type,
                 "configuration_json": step.configuration_json
             })
-        return result
+
+        return {
+            "items": items,
+            "page": page,
+            "size": size,
+            "total_items": total_items,
+            "total_pages": total_pages,
+        }
 
 @router.get("/step/{_id}")
 async def find_step_by_id_api(_id:str):

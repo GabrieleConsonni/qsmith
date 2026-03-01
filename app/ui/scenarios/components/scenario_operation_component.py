@@ -13,7 +13,7 @@ from scenarios.services.data_loader_service import (
     load_step_editor_context,
     load_step_editor_queues_for_broker,
 )
-from scenarios.services.scenario_api_service import create_operation
+from scenarios.services.scenario_api_service import create_operation, get_operations_page
 from scenarios.services.state_keys import (
     ADD_STEP_OPERATION_DIALOG_NONCE_KEY,
     ADD_STEP_OPERATION_DIALOG_TARGET_STEP_UI_KEY,
@@ -33,6 +33,7 @@ OPERATION_STATUS_SUCCESS = "success"
 OPERATION_STATUS_ERROR = "error"
 OPERATION_STATUS_RUNNING = "running"
 OPERATION_STATUS_IDLE = "idle"
+OPERATION_PAGE_SIZE = 5
 
 
 def _safe_int(value: object, default: int = 0) -> int:
@@ -530,72 +531,107 @@ def _resolve_target_step_for_operation_dialog(
     return None
 
 
-def render_import_step_operation_dialog(
-    draft: dict,
-    operation_catalog: list[dict],
+def _render_existing_operations_panel(
+    scenario_step: dict,
     operation_labels_by_id: dict[str, str],
     close_add_step_operation_dialog_fn,
+    dialog_nonce: int,
 ):
-    dialog_nonce = int(st.session_state.get(ADD_STEP_OPERATION_DIALOG_NONCE_KEY, 0))
-    scenario_step = _resolve_target_step_for_operation_dialog(
-        draft,
-        dialog_nonce,
-        close_add_step_operation_dialog_fn,
+    st.markdown("**Select existing operation**")
+    search_key = f"scenario_add_operation_search_{dialog_nonce}"
+    page_key = f"scenario_add_operation_page_{dialog_nonce}"
+    last_search_key = f"scenario_add_operation_last_search_{dialog_nonce}"
+
+    search_value = st.text_input(
+        "Filter by text/description",
+        key=search_key,
+        placeholder="Search by code or description",
+    ).strip()
+    normalized_search = search_value.lower()
+    if normalized_search != str(st.session_state.get(last_search_key) or ""):
+        st.session_state[last_search_key] = normalized_search
+        st.session_state[page_key] = 1
+
+    current_page = max(_safe_int(st.session_state.get(page_key), 1), 1)
+    page_payload = get_operations_page(
+        current_page,
+        size=OPERATION_PAGE_SIZE,
+        search=search_value,
     )
-    if not isinstance(scenario_step, dict):
-        return
+    total_pages = max(_safe_int(page_payload.get("total_pages"), 0), 0)
+    total_items = max(_safe_int(page_payload.get("total_items"), 0), 0)
+    if total_pages > 0 and current_page > total_pages:
+        st.session_state[page_key] = total_pages
+        st.rerun()
 
-    operation_ids = [str(item.get("id")) for item in operation_catalog if item.get("id")]
-    operation_by_id = {
-        str(item.get("id")): item for item in operation_catalog if item.get("id")
-    }
+    available_operations = page_payload.get("items") or []
+    if not isinstance(available_operations, list):
+        available_operations = []
 
-    selected_operation_id = ""
-    if operation_ids:
-        selected_operation_id = st.selectbox(
-            "Existing operation",
-            options=operation_ids,
-            format_func=lambda _id: operation_labels_by_id.get(_id, f"Unknown ({_id})"),
-            key=f"scenario_add_operation_existing_select_{dialog_nonce}",
+    resolved_page = max(_safe_int(page_payload.get("page"), current_page), 1)
+
+    if total_items <= 0 and search_value:
+        st.info("Nessuna operation trovata per il filtro inserito.")
+    elif total_items <= 0:
+        st.info("Nessuna operation disponibile da selezionare.")
+
+    for op_idx, operation_item in enumerate(available_operations):
+        operation_id = str(operation_item.get("id") or "").strip()
+        operation_label = operation_labels_by_id.get(operation_id) or (
+            f"{operation_item.get('code') or '-'} ({operation_item.get('description') or '-'})"
         )
-    else:
-        st.info("Nessuna operation disponibile da importare.")
+        with st.expander(operation_label, expanded=False):
+            _render_operation_details(operation_item)
+            if st.button(
+                "Seleziona operation",
+                key=(
+                    "scenario_add_operation_select_existing_"
+                    f"{dialog_nonce}_{operation_id}_{op_idx}"
+                ),
+                icon=":material/add:",
+                type="secondary",
+                use_container_width=True,
+            ):
+                append_operation_to_step(scenario_step, operation_id)
+                close_add_step_operation_dialog_fn()
+                st.session_state[SCENARIO_FEEDBACK_KEY] = "Operazione aggiunta."
+                st.rerun()
 
-    render_readonly_operation_preview(operation_by_id.get(selected_operation_id), dialog_nonce)
-    action_cols = st.columns([7, 2, 2], gap="small")
-    with action_cols[1]:
+    pagination_cols = st.columns([1, 1, 6], gap="small", vertical_alignment="center")
+    with pagination_cols[0]:
         if st.button(
-            "Add",
-            key=f"scenario_add_operation_add_existing_{dialog_nonce}",
-            icon=":material/add:",
-            type="secondary",
+            "",
+            key=f"scenario_add_operation_page_prev_{dialog_nonce}",
+            icon=":material/keyboard_arrow_left:",
+            help="Previous page",
             use_container_width=True,
-            disabled=not bool(selected_operation_id),
+            disabled=current_page <= 1,
         ):
-            append_operation_to_step(scenario_step, selected_operation_id)
-            close_add_step_operation_dialog_fn()
-            st.session_state[SCENARIO_FEEDBACK_KEY] = "Operazione aggiunta."
+            st.session_state[page_key] = max(current_page - 1, 1)
             st.rerun()
-    with action_cols[2]:
+    with pagination_cols[1]:
         if st.button(
-            "Cancel",
-            key=f"scenario_add_operation_cancel_existing_{dialog_nonce}",
+            "",
+            key=f"scenario_add_operation_page_next_{dialog_nonce}",
+            icon=":material/keyboard_arrow_right:",
+            help="Next page",
             use_container_width=True,
+            disabled=(total_pages <= 0 or current_page >= total_pages),
         ):
-            close_add_step_operation_dialog_fn()
+            st.session_state[page_key] = current_page + 1
             st.rerun()
+    with pagination_cols[2]:
+        if total_items > 0:
+            st.caption(
+                f"Pagina {resolved_page}/{max(total_pages, 1)} - {total_items} operation trovate"
+            )
 
 
-def render_add_new_step_operation_dialog(draft: dict, close_add_step_operation_dialog_fn):
-    dialog_nonce = int(st.session_state.get(ADD_STEP_OPERATION_DIALOG_NONCE_KEY, 0))
-    scenario_step = _resolve_target_step_for_operation_dialog(
-        draft,
-        dialog_nonce,
-        close_add_step_operation_dialog_fn,
-    )
-    if not isinstance(scenario_step, dict):
-        return
-
+def _render_new_operation_form_panel(
+    scenario_step: dict,
+    close_add_step_operation_dialog_fn,
+    dialog_nonce: int,
+):
     load_step_editor_context(force=False)
     load_database_connections(force=False)
     brokers = st.session_state.get(STEP_EDITOR_BROKERS_KEY, [])
@@ -614,7 +650,7 @@ def render_add_new_step_operation_dialog(draft: dict, close_add_step_operation_d
         str(item.get("id")): item for item in database_connections if item.get("id")
     }
 
-    st.markdown("**New operation**")
+    st.markdown("**Or insert new one**")
     st.text_input(
         "Code",
         key=f"scenario_add_operation_code_{dialog_nonce}",
@@ -694,7 +730,7 @@ def render_add_new_step_operation_dialog(draft: dict, close_add_step_operation_d
         if not database_connection_ids:
             st.info("Nessuna connection database configurata.")
 
-    create_cols = st.columns([6, 3, 3], gap="small")
+    create_cols = st.columns([6, 6], gap="small")
     with create_cols[1]:
         if st.button(
             "Save and add",
@@ -724,11 +760,68 @@ def render_add_new_step_operation_dialog(draft: dict, close_add_step_operation_d
             close_add_step_operation_dialog_fn()
             st.session_state[SCENARIO_FEEDBACK_KEY] = "Nuova operazione creata e aggiunta."
             st.rerun()
-    with create_cols[2]:
+
+
+def render_add_step_operation_dialog(
+    draft: dict,
+    operation_catalog: list[dict],
+    operation_labels_by_id: dict[str, str],
+    close_add_step_operation_dialog_fn,
+):
+    dialog_nonce = int(st.session_state.get(ADD_STEP_OPERATION_DIALOG_NONCE_KEY, 0))
+    scenario_step = _resolve_target_step_for_operation_dialog(
+        draft,
+        dialog_nonce,
+        close_add_step_operation_dialog_fn,
+    )
+    if not isinstance(scenario_step, dict):
+        return
+
+    content_cols = st.columns([1, 1], gap="large", vertical_alignment="top")
+    with content_cols[0]:
+        _render_existing_operations_panel(
+            scenario_step,
+            operation_labels_by_id,
+            close_add_step_operation_dialog_fn,
+            dialog_nonce,
+        )
+    with content_cols[1]:
+        _render_new_operation_form_panel(
+            scenario_step,
+            close_add_step_operation_dialog_fn,
+            dialog_nonce,
+        )
+
+    st.divider()
+    footer_cols = st.columns([1, 1], gap="large", vertical_alignment="center")
+    with footer_cols[1]:
         if st.button(
             "Cancel",
-            key=f"scenario_add_operation_cancel_new_{dialog_nonce}",
+            key=f"scenario_add_operation_cancel_dialog_{dialog_nonce}",
             use_container_width=True,
         ):
             close_add_step_operation_dialog_fn()
             st.rerun()
+
+
+def render_import_step_operation_dialog(
+    draft: dict,
+    operation_catalog: list[dict],
+    operation_labels_by_id: dict[str, str],
+    close_add_step_operation_dialog_fn,
+):
+    render_add_step_operation_dialog(
+        draft,
+        operation_catalog,
+        operation_labels_by_id,
+        close_add_step_operation_dialog_fn,
+    )
+
+
+def render_add_new_step_operation_dialog(draft: dict, close_add_step_operation_dialog_fn):
+    render_add_step_operation_dialog(
+        draft,
+        [],
+        {},
+        close_add_step_operation_dialog_fn,
+    )

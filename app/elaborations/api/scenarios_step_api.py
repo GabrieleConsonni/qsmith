@@ -20,6 +20,7 @@ async def find_all_by_scenario_api(scenario_id:str):
                 "scenario_id": step.scenario_id,
                 "step_id": step.step_id,
                 "code": step.step_id,
+                "description": step.description,
                 "order": step.order,
                 "on_failure": step.on_failure
             })
@@ -32,6 +33,7 @@ async def insert_scenario_step_api(scenario_id: str, dto:CreateScenarioStepDto):
         entity = ScenarioStepEntity()
         entity.scenario_id = scenario_id
         entity.step_id = dto.step_id
+        entity.description = dto.description
         entity.on_failure = dto.on_failure
         entity.order = dto.order
         scenario_step_id = ScenarioStepService().insert(session,entity)

@@ -10,6 +10,7 @@ class CreateStepOperationDto(BaseModel):
 class CreateScenarioStepDto(BaseModel):
     order: int
     step_id: str
+    description: str | None = ""
     on_failure: str | None = OnFailure.ABORT
     operations: list[CreateStepOperationDto] = Field(default_factory=list)
 

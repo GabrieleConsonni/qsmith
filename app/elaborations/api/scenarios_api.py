@@ -46,6 +46,7 @@ def _insert_scenario_steps(
         scenario_step_entity.order = step.order
         scenario_step_entity.scenario_id = scenario_id
         scenario_step_entity.step_id = step.step_id
+        scenario_step_entity.description = step.description
         scenario_step_entity.on_failure = step.on_failure
         scenario_step_id = ScenarioStepService().insert(session, scenario_step_entity)
         _insert_step_operations(session, scenario_step_id, step.operations or [])
@@ -121,6 +122,7 @@ async def find_scenario_api(_id: str):
                     "id": scenario_step.id,
                     "scenario_id": scenario_step.scenario_id,
                     "step_id": scenario_step.step_id,
+                    "description": scenario_step.description,
                     "order": scenario_step.order,
                     "on_failure": scenario_step.on_failure,
                     "operations": result_operations,

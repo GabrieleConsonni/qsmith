@@ -6,13 +6,11 @@ from uuid import uuid4
 import streamlit as st
 
 from scenarios.components.scenario_operation_component import (
-    render_add_new_step_operation_dialog as operation_render_add_new_dialog,
-    render_import_step_operation_dialog as operation_render_import_dialog,
+    render_add_step_operation_dialog as operation_render_add_dialog,
     render_operation_component as operation_render_component,
 )
 from steps.step_component import (
-    render_add_new_scenario_step_dialog as step_render_add_new_dialog,
-    render_import_scenario_step_dialog as step_render_import_dialog,
+    render_add_scenario_step_dialog as step_render_add_dialog,
     render_step_component as step_render_component,
 )
 from scenarios.services.data_loader_service import (
@@ -34,7 +32,6 @@ from scenarios.services.execution_stream_service import (
     register_execution_listener,
 )
 from scenarios.services.state_keys import (
-    ADD_SCENARIO_STEP_DIALOG_CREATE_NEW_KEY,
     ADD_SCENARIO_STEP_DIALOG_NONCE_KEY,
     ADD_SCENARIO_STEP_DIALOG_OPEN_KEY,
     ADD_STEP_OPERATION_DIALOG_CREATE_NEW_KEY,
@@ -127,26 +124,16 @@ def _operation_catalog_label(operation_item: dict) -> str:
     return f"{code} ({description})"
 
 
-def _open_add_scenario_step_dialog(create_new: bool):
+def _open_add_scenario_step_dialog():
     _close_add_step_operation_dialog()
     st.session_state[ADD_SCENARIO_STEP_DIALOG_OPEN_KEY] = True
-    st.session_state[ADD_SCENARIO_STEP_DIALOG_CREATE_NEW_KEY] = create_new
     st.session_state[ADD_SCENARIO_STEP_DIALOG_NONCE_KEY] = (
         int(st.session_state.get(ADD_SCENARIO_STEP_DIALOG_NONCE_KEY, 0)) + 1
     )
 
 
-def _open_add_new_scenario_step_dialog():
-    _open_add_scenario_step_dialog(create_new=True)
-
-
-def _open_import_scenario_step_dialog():
-    _open_add_scenario_step_dialog(create_new=False)
-
-
 def _close_add_scenario_step_dialog():
     st.session_state[ADD_SCENARIO_STEP_DIALOG_OPEN_KEY] = False
-    st.session_state.pop(ADD_SCENARIO_STEP_DIALOG_CREATE_NEW_KEY, None)
 
 
 def _open_add_step_operation_dialog(step_ui_key: str, create_new: bool):
@@ -211,6 +198,7 @@ def _build_scenario_draft(scenario_id: str) -> dict | None:
                 "id": scenario_step.get("id"),
                 "order": _safe_int(scenario_step.get("order"), step_idx + 1),
                 "step_id": str(scenario_step.get("step_id") or ""),
+                "description": str(scenario_step.get("description") or ""),
                 "on_failure": str(scenario_step.get("on_failure") or "ABORT"),
                 "operations": draft_operations,
                 "_ui_key": _new_ui_key(),
@@ -267,6 +255,7 @@ def _build_scenario_payload(draft: dict) -> dict:
             {
                 "order": _safe_int(step.get("order"), 0),
                 "step_id": str(step.get("step_id") or "").strip(),
+                "description": str(step.get("description") or ""),
                 "on_failure": str(step.get("on_failure") or "ABORT"),
                 "operations": operations_payload,
             }
@@ -611,12 +600,12 @@ def _render_step_component(
     )
 
 
-def _render_import_scenario_step_dialog(
+def _render_add_scenario_step_dialog(
     draft: dict,
     step_catalog: list[dict],
     step_labels_by_id: dict[str, str],
 ):
-    step_render_import_dialog(
+    step_render_add_dialog(
         draft,
         step_catalog,
         step_labels_by_id,
@@ -624,22 +613,13 @@ def _render_import_scenario_step_dialog(
     )
 
 
-def _render_add_new_scenario_step_dialog(draft: dict):
-    step_render_add_new_dialog(draft, _close_add_scenario_step_dialog)
-
-
-@st.dialog("Import step", width="large")
-def _import_scenario_step_dialog(
+@st.dialog("Add step", width="large")
+def _add_scenario_step_dialog(
     draft: dict,
     step_catalog: list[dict],
     step_labels_by_id: dict[str, str],
 ):
-    _render_import_scenario_step_dialog(draft, step_catalog, step_labels_by_id)
-
-
-@st.dialog("Add new step", width="large")
-def _add_new_scenario_step_dialog(draft: dict):
-    _render_add_new_scenario_step_dialog(draft)
+    _render_add_scenario_step_dialog(draft, step_catalog, step_labels_by_id)
 
 
 def _render_import_step_operation_dialog(
@@ -647,7 +627,7 @@ def _render_import_step_operation_dialog(
     operation_catalog: list[dict],
     operation_labels_by_id: dict[str, str],
 ):
-    operation_render_import_dialog(
+    operation_render_add_dialog(
         draft,
         operation_catalog,
         operation_labels_by_id,
@@ -655,22 +635,13 @@ def _render_import_step_operation_dialog(
     )
 
 
-def _render_add_new_step_operation_dialog(draft: dict):
-    operation_render_add_new_dialog(draft, _close_add_step_operation_dialog)
-
-
-@st.dialog("Import operation", width="large")
-def _import_step_operation_dialog(
+@st.dialog("Add operation", width="large")
+def _add_step_operation_dialog(
     draft: dict,
     operation_catalog: list[dict],
     operation_labels_by_id: dict[str, str],
 ):
     _render_import_step_operation_dialog(draft, operation_catalog, operation_labels_by_id)
-
-
-@st.dialog("Add new operation", width="large")
-def _add_new_step_operation_dialog(draft: dict):
-    _render_add_new_step_operation_dialog(draft)
 
 
 def _render_editor():
@@ -711,17 +682,9 @@ def _render_editor():
         )
 
     if st.session_state.get(ADD_SCENARIO_STEP_DIALOG_OPEN_KEY, False):
-        create_new = bool(st.session_state.get(ADD_SCENARIO_STEP_DIALOG_CREATE_NEW_KEY, False))
-        if create_new:
-            _add_new_scenario_step_dialog(draft)
-        else:
-            _import_scenario_step_dialog(draft, step_catalog, step_labels_by_id)
+        _add_scenario_step_dialog(draft, step_catalog, step_labels_by_id)
     if st.session_state.get(ADD_STEP_OPERATION_DIALOG_OPEN_KEY, False):
-        create_new = bool(st.session_state.get(ADD_STEP_OPERATION_DIALOG_CREATE_NEW_KEY, False))
-        if create_new:
-            _add_new_step_operation_dialog(draft)
-        else:
-            _import_step_operation_dialog(draft, operation_catalog, operation_labels_by_id)
+        _add_step_operation_dialog(draft, operation_catalog, operation_labels_by_id)
 
 
 def _render_step_toolbar(execution_state: dict):
@@ -729,7 +692,7 @@ def _render_step_toolbar(execution_state: dict):
     scenario_id = str((draft or {}).get("id") or "").strip()
     scenario_is_saved = bool(scenario_id)
     nonce = int(st.session_state.get(SCENARIO_EDITOR_NONCE_KEY, 0))
-    action_cols = st.columns([6, 2, 2, 2, 2, 2], gap="small", vertical_alignment="bottom")
+    action_cols = st.columns([6, 2, 2, 2, 2], gap="small", vertical_alignment="bottom")
     with action_cols[0]:
         if isinstance(execution_state, dict) and execution_state:
             is_running = bool(execution_state.get("running"))
@@ -767,25 +730,14 @@ def _render_step_toolbar(execution_state: dict):
     with action_cols[3]:
         if st.button(
             "",
-            help="Crea un nuovo step e aggiungilo allo scenario.",
-            key=f"scenario_{nonce}_add_new_step",
+            help="Aggiungi uno step allo scenario.",
+            key=f"scenario_{nonce}_add_step",
             icon=":material/add:",
             use_container_width=True
         ):
-            _open_add_new_scenario_step_dialog()
+            _open_add_scenario_step_dialog()
             st.rerun()
-
     with action_cols[4]:
-        if st.button(
-            "",
-            help="Importa uno step esistente e aggiungilo allo scenario.",
-            key=f"scenario_{nonce}_import_step",
-            icon=":material/download:",
-            use_container_width=True
-        ):
-            _open_import_scenario_step_dialog()
-            st.rerun()
-    with action_cols[5]:
         if st.button(
             "",
             help="Esegui l'intero scenario.",

@@ -41,9 +41,6 @@ from scenarios.services.state_keys import (
     ADD_STEP_OPERATION_DIALOG_NONCE_KEY,
     ADD_STEP_OPERATION_DIALOG_OPEN_KEY,
     ADD_STEP_OPERATION_DIALOG_TARGET_STEP_UI_KEY,
-    EXECUTE_STEP_DIALOG_NONCE_KEY,
-    EXECUTE_STEP_DIALOG_OPEN_KEY,
-    EXECUTE_STEP_DIALOG_TARGET_STEP_UI_KEY,
     ON_FAILURE_OPTIONS,
     OPERATIONS_CATALOG_KEY,
     PENDING_SCENARIO_SWITCH_KEY,
@@ -101,7 +98,6 @@ def _set_editor_draft(draft: dict | None, mode: str, reset_baseline: bool = True
     st.session_state[SCENARIO_EDITOR_MODE_KEY] = mode
     _close_add_scenario_step_dialog()
     _close_add_step_operation_dialog()
-    _close_execute_step_dialog()
     if reset_baseline:
         _set_baseline_payload_from_draft(draft)
     _clear_pending_switch()
@@ -177,30 +173,6 @@ def _close_add_step_operation_dialog():
     st.session_state[ADD_STEP_OPERATION_DIALOG_OPEN_KEY] = False
     st.session_state.pop(ADD_STEP_OPERATION_DIALOG_CREATE_NEW_KEY, None)
     st.session_state.pop(ADD_STEP_OPERATION_DIALOG_TARGET_STEP_UI_KEY, None)
-
-
-def _open_execute_step_dialog(step_ui_key: str):
-    if not step_ui_key:
-        return
-    st.session_state[EXECUTE_STEP_DIALOG_OPEN_KEY] = True
-    st.session_state[EXECUTE_STEP_DIALOG_TARGET_STEP_UI_KEY] = step_ui_key
-    st.session_state[EXECUTE_STEP_DIALOG_NONCE_KEY] = (
-        int(st.session_state.get(EXECUTE_STEP_DIALOG_NONCE_KEY, 0)) + 1
-    )
-
-
-def _close_execute_step_dialog():
-    st.session_state[EXECUTE_STEP_DIALOG_OPEN_KEY] = False
-    st.session_state.pop(EXECUTE_STEP_DIALOG_TARGET_STEP_UI_KEY, None)
-
-
-def _find_draft_step_by_ui_key(draft: dict, step_ui_key: str) -> dict | None:
-    if not isinstance(draft, dict):
-        return None
-    for scenario_step in draft.get("steps") or []:
-        if str(scenario_step.get("_ui_key") or "") == str(step_ui_key or ""):
-            return scenario_step
-    return None
 
 
 def _new_scenario_draft() -> dict:
@@ -455,6 +427,26 @@ def _execute_scenario_step(
     st.rerun()
 
 
+def _execute_scenario_step_from_draft(
+    scenario_step: dict,
+    include_previous: bool,
+):
+    draft = st.session_state.get(SCENARIO_DRAFT_KEY)
+    if not isinstance(draft, dict):
+        st.error("Scenario not loaded.")
+        return
+    scenario_id = str(draft.get("id") or "").strip()
+    scenario_step_id = str((scenario_step or {}).get("id") or "").strip()
+    if not scenario_id or not scenario_step_id:
+        st.error("Selected step is not available. Save the scenario and retry.")
+        return
+    _execute_scenario_step(
+        scenario_id=scenario_id,
+        scenario_step_id=scenario_step_id,
+        include_previous=include_previous,
+    )
+
+
 def _update_scenario_description(scenario_id: str, new_description: str):
     scenario_id = str(scenario_id or "").strip()
     if not scenario_id:
@@ -609,7 +601,7 @@ def _render_step_component(
         _render_operation_component,
         _open_add_new_step_operation_dialog,
         _open_import_step_operation_dialog,
-        _open_execute_step_dialog,
+        _execute_scenario_step_from_draft,
         lambda step_item: _get_step_execution_status(execution_state, step_item),
         lambda step_item, operation_item: _get_operation_execution_status(
             execution_state,
@@ -730,14 +722,27 @@ def _render_editor():
             _add_new_step_operation_dialog(draft)
         else:
             _import_step_operation_dialog(draft, operation_catalog, operation_labels_by_id)
-    if st.session_state.get(EXECUTE_STEP_DIALOG_OPEN_KEY, False):
-        _execute_step_dialog()
 
 
-def _render_step_toolbar():
-
+def _render_step_toolbar(execution_state: dict):
+    draft = st.session_state.get(SCENARIO_DRAFT_KEY)
+    scenario_id = str((draft or {}).get("id") or "").strip()
+    scenario_is_saved = bool(scenario_id)
     nonce = int(st.session_state.get(SCENARIO_EDITOR_NONCE_KEY, 0))
-    action_cols = st.columns([8, 2, 2, 2, 2], gap="small", vertical_alignment="bottom")
+    action_cols = st.columns([6, 2, 2, 2, 2, 2], gap="small", vertical_alignment="bottom")
+    with action_cols[0]:
+        if isinstance(execution_state, dict) and execution_state:
+            is_running = bool(execution_state.get("running"))
+            executed_steps = int(execution_state.get("executed_steps") or 0)
+            total_steps = int(execution_state.get("total_steps") or 0)
+            if total_steps > 0 or is_running:
+                status_label = (
+                    "running" if is_running else str(execution_state.get("status") or "finished")
+                )
+                st.caption(
+                    f"Test scenario {status_label}: {executed_steps}/{total_steps} step executed"
+                )
+
     if _is_editor_dirty():  
         with action_cols[1]:
             if st.button(
@@ -780,8 +785,17 @@ def _render_step_toolbar():
         ):
             _open_import_scenario_step_dialog()
             st.rerun()
+    with action_cols[5]:
+        if st.button(
+            "",
+            help="Esegui l'intero scenario.",
+            key=f"scenario_{nonce}_execute_all_steps",
+            icon=":material/play_arrow:",
+            use_container_width=True,
+            disabled=not scenario_is_saved,
+        ):
+            _execute_scenario(scenario_id)
 
-    
 
 @st.dialog("Modifica descrizione scenario")
 def _edit_scenario_description_dialog(current_description: str, dialog_suffix: str):
@@ -904,70 +918,6 @@ def _render_execution_progress(execution_state: dict):
         st.caption(f"Test scenario {status_label}: {executed_steps}/{total_steps} step executed")
 
 
-@st.dialog("Execute step", width="medium")
-def _execute_step_dialog():
-    dialog_nonce = int(st.session_state.get(EXECUTE_STEP_DIALOG_NONCE_KEY, 0))
-    draft = st.session_state.get(SCENARIO_DRAFT_KEY)
-    if not isinstance(draft, dict):
-        st.error("Scenario not loaded.")
-        if st.button("Close", key=f"scenario_execute_step_close_{dialog_nonce}"):
-            _close_execute_step_dialog()
-            st.rerun()
-        return
-
-    scenario_id = str(draft.get("id") or "").strip()
-    target_step_ui_key = str(st.session_state.get(EXECUTE_STEP_DIALOG_TARGET_STEP_UI_KEY) or "")
-    scenario_step = _find_draft_step_by_ui_key(draft, target_step_ui_key)
-    scenario_step_id = str((scenario_step or {}).get("id") or "").strip()
-    if not scenario_id or not scenario_step_id:
-        st.error("Selected step is not available. Save the scenario and retry.")
-        if st.button("Close", key=f"scenario_execute_step_invalid_close_{dialog_nonce}"):
-            _close_execute_step_dialog()
-            st.rerun()
-        return
-
-    st.write("How do you want to execute this scenario step?")
-    st.caption("You can run only the selected step, or include all previous steps.")
-
-    action_cols = st.columns([1, 1, 1], gap="small")
-    with action_cols[0]:
-        if st.button(
-            "Run selected only",
-            key=f"scenario_execute_step_only_{dialog_nonce}",
-            icon=":material/play_arrow:",
-            type="secondary",
-            use_container_width=True,
-        ):
-            _close_execute_step_dialog()
-            _execute_scenario_step(
-                scenario_id=scenario_id,
-                scenario_step_id=scenario_step_id,
-                include_previous=False,
-            )
-    with action_cols[1]:
-        if st.button(
-            "Run previous + selected",
-            key=f"scenario_execute_step_prev_{dialog_nonce}",
-            icon=":material/play_arrow:",
-            type="secondary",
-            use_container_width=True,
-        ):
-            _close_execute_step_dialog()
-            _execute_scenario_step(
-                scenario_id=scenario_id,
-                scenario_step_id=scenario_step_id,
-                include_previous=True,
-            )
-    with action_cols[2]:
-        if st.button(
-            "Cancel",
-            key=f"scenario_execute_step_cancel_{dialog_nonce}",
-            use_container_width=True,
-        ):
-            _close_execute_step_dialog()
-            st.rerun()
-
-
 def render_scenarios_list_page():
     load_scenarios(force=False)
     scenarios = st.session_state.get(SCENARIOS_KEY, [])
@@ -1075,9 +1025,8 @@ def render_scenario_editor_page():
     st.divider()
     _render_editor()
     st.divider()
-    _render_step_toolbar()
     execution_state = _get_execution_state_for_current_scenario()
-    _render_execution_progress(execution_state)
+    _render_step_toolbar(execution_state)
     _render_feedback()
     if bool((execution_state or {}).get("running")):
         time.sleep(1)

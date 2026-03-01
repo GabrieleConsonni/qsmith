@@ -363,6 +363,7 @@ def render_operation_component(
             "",
             key=f"scenario_{nonce}_step_{step_ui_key}_operation_status_{operation_ui_key}",
             icon=_operation_status_icon(operation_status),
+            type="tertiary",
             disabled=True,
             use_container_width=True,
         )

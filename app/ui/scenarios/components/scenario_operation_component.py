@@ -145,6 +145,13 @@ def _reload_step_operations(scenario_step: dict):
     scenario_step["operations"] = [operation for _, operation in indexed_operations]
 
 
+def _persist_scenario_changes(persist_scenario_changes_fn=None):
+    if callable(persist_scenario_changes_fn):
+        persist_scenario_changes_fn()
+        return
+    st.rerun()
+
+
 def _find_queue_and_broker_by_queue_id(
     queue_id: str,
     brokers_by_id: dict[str, dict],
@@ -267,6 +274,7 @@ def _edit_step_operation_dialog(
     op_idx: int,
     step_ui_key: str,
     nonce: int,
+    persist_scenario_changes_fn=None,
 ):
     operation_ui_key = operation.get("_ui_key") or f"{step_ui_key}_op_{op_idx}"
     operation["_ui_key"] = operation_ui_key
@@ -290,7 +298,7 @@ def _edit_step_operation_dialog(
         ):
             operation["order"] = selected_order
             _reload_step_operations(scenario_step)
-            st.rerun()
+            _persist_scenario_changes(persist_scenario_changes_fn)
     with action_cols[2]:
         if st.button(
             "Delete",
@@ -302,7 +310,7 @@ def _edit_step_operation_dialog(
             operations = scenario_step.get("operations", [])
             if 0 <= op_idx < len(operations):
                 operations.pop(op_idx)
-            st.rerun()
+            _persist_scenario_changes(persist_scenario_changes_fn)
     with action_cols[3]:
         if st.button(
             "Cancel",
@@ -328,6 +336,7 @@ def render_operation_component(
     step_ui_key: str,
     nonce: int,
     operation_status: str = OPERATION_STATUS_IDLE,
+    persist_scenario_changes_fn=None,
 ):
     operation_ui_key = operation.get("_ui_key") or f"{step_ui_key}_op_{op_idx}"
     operation["_ui_key"] = operation_ui_key
@@ -370,6 +379,7 @@ def render_operation_component(
                 op_idx=op_idx,
                 step_ui_key=step_ui_key,
                 nonce=nonce,
+                persist_scenario_changes_fn=persist_scenario_changes_fn,
             )
 
 
@@ -534,8 +544,11 @@ def _render_existing_operations_panel(
     operation_labels_by_id: dict[str, str],
     close_add_step_operation_dialog_fn,
     dialog_nonce: int,
+    persist_scenario_changes_fn=None,
+    show_title: bool = True,
 ):
-    st.markdown("**Select existing operation**")
+    if show_title:
+        st.markdown("**Select existing operation**")
     search_key = f"scenario_add_operation_search_{dialog_nonce}"
     page_key = f"scenario_add_operation_page_{dialog_nonce}"
     last_search_key = f"scenario_add_operation_last_search_{dialog_nonce}"
@@ -593,7 +606,7 @@ def _render_existing_operations_panel(
                 append_operation_to_step(scenario_step, operation_item)
                 close_add_step_operation_dialog_fn()
                 st.session_state[SCENARIO_FEEDBACK_KEY] = "Operazione aggiunta."
-                st.rerun()
+                _persist_scenario_changes(persist_scenario_changes_fn)
             if st.button(
                 "Delete",
                 key=f"scenario_add_operation_delete_existing_{dialog_nonce}_{operation_id}_{op_idx}",
@@ -645,6 +658,7 @@ def _render_new_operation_form_panel(
     scenario_step: dict,
     close_add_step_operation_dialog_fn,
     dialog_nonce: int,
+    persist_scenario_changes_fn=None,
 ):
     load_step_editor_context(force=False)
     load_database_connections(force=False)
@@ -664,7 +678,7 @@ def _render_new_operation_form_panel(
         str(item.get("id")): item for item in database_connections if item.get("id")
     }
 
-    st.markdown("**Or insert new one**")
+    st.markdown("**Insert new one**")
     st.text_input(
         "Code",
         key=f"scenario_add_operation_code_{dialog_nonce}",
@@ -744,8 +758,8 @@ def _render_new_operation_form_panel(
         if not database_connection_ids:
             st.info("Nessuna connection database configurata.")
 
-    create_cols = st.columns([6, 6], gap="small")
-    with create_cols[1]:
+    create_cols = st.columns([1, 1], gap="small")
+    with create_cols[0]:
         if st.button(
             "Save and add",
             key=f"scenario_add_operation_save_and_add_{dialog_nonce}",
@@ -789,8 +803,9 @@ def _render_new_operation_form_panel(
             )
             close_add_step_operation_dialog_fn()
             st.session_state[SCENARIO_FEEDBACK_KEY] = "Nuova operazione creata e aggiunta."
-            st.rerun()
+            _persist_scenario_changes(persist_scenario_changes_fn)
 
+    with create_cols[1]:
         if st.button(
             "Add only",
             key=f"scenario_add_operation_add_only_{dialog_nonce}",
@@ -808,7 +823,7 @@ def _render_new_operation_form_panel(
             )
             close_add_step_operation_dialog_fn()
             st.session_state[SCENARIO_FEEDBACK_KEY] = "Nuova step operation aggiunta."
-            st.rerun()
+            _persist_scenario_changes(persist_scenario_changes_fn)
 
 
 def render_add_step_operation_dialog(
@@ -816,8 +831,10 @@ def render_add_step_operation_dialog(
     operation_catalog: list[dict],
     operation_labels_by_id: dict[str, str],
     close_add_step_operation_dialog_fn,
+    persist_scenario_changes_fn=None,
 ):
     dialog_nonce = int(st.session_state.get(ADD_STEP_OPERATION_DIALOG_NONCE_KEY, 0))
+    show_existing_key = f"scenario_add_operation_show_existing_{dialog_nonce}"
     scenario_step = _resolve_target_step_for_operation_dialog(
         draft,
         dialog_nonce,
@@ -826,19 +843,37 @@ def render_add_step_operation_dialog(
     if not isinstance(scenario_step, dict):
         return
 
-    content_cols = st.columns([1, 1], gap="large", vertical_alignment="top")
-    with content_cols[0]:
+    _render_new_operation_form_panel(
+        scenario_step,
+        close_add_step_operation_dialog_fn,
+        dialog_nonce,
+        persist_scenario_changes_fn=persist_scenario_changes_fn,
+    )
+
+    st.divider()
+    existing_cols = st.columns([8, 2], gap="small", vertical_alignment="center")
+    with existing_cols[0]:
+        st.markdown("**Select existing operation**")
+    with existing_cols[1]:
+        show_existing = bool(st.session_state.get(show_existing_key, False))
+        if st.button(
+            "Nascondi" if show_existing else "Ricerca",
+            key=f"scenario_add_operation_toggle_existing_{dialog_nonce}",
+            icon=":material/search:",
+            type="secondary",
+            use_container_width=True,
+        ):
+            st.session_state[show_existing_key] = not show_existing
+            st.rerun()
+
+    if bool(st.session_state.get(show_existing_key, False)):
         _render_existing_operations_panel(
             scenario_step,
             operation_labels_by_id,
             close_add_step_operation_dialog_fn,
             dialog_nonce,
-        )
-    with content_cols[1]:
-        _render_new_operation_form_panel(
-            scenario_step,
-            close_add_step_operation_dialog_fn,
-            dialog_nonce,
+            persist_scenario_changes_fn=persist_scenario_changes_fn,
+            show_title=False,
         )
 
     st.divider()

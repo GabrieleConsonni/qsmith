@@ -76,9 +76,9 @@ _sidebar_nav_button(
     key="nav_database_datasources_page",
     icon=":material/table:",
 )
-st.sidebar.subheader("Test scenarios")
+st.sidebar.subheader("Test")
 _sidebar_nav_button(
-    label="Scenarios",
+    label="Test scenarios",
     page_path="pages/Scenarios.py",
     key="nav_scenarios_page",
     icon=":material/experiment:",

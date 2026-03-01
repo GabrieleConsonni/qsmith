@@ -33,7 +33,6 @@ STEP_TYPE_DATA_FROM_JSON_ARRAY = "data-from-json-array"
 STEP_TYPE_DATA_FROM_DB = "data-from-db"
 STEP_TYPE_DATA_FROM_QUEUE = "data-from-queue"
 STEP_TYPE_OPTIONS = [
-    STEP_TYPE_SLEEP,
     STEP_TYPE_DATA,
     STEP_TYPE_DATA_FROM_JSON_ARRAY,
     STEP_TYPE_DATA_FROM_DB,
@@ -103,6 +102,15 @@ def _step_type_label(step_type: str) -> str:
         return "-"
     label = normalized_type.replace("-", " ")
     return f"Read {label}" if label else "-"
+
+
+def _resolve_step_type(step_item: dict) -> str:
+    if not isinstance(step_item, dict):
+        return ""
+    cfg = _safe_dict(step_item.get("configuration_json") or {})
+    return str(
+        step_item.get("step_type") or cfg.get("stepType") or ""
+    ).strip().replace("_", "-").lower()
 
 
 def _step_status_icon(step_status: str) -> str:
@@ -241,14 +249,6 @@ def _resolve_configuration_value(configuration_json: dict, *keys: str):
         return value
     return None
 
-
-def _render_step_details_sleep(step_type: str, configuration_json: dict, step_status: str):
-    duration = _safe_int(configuration_json.get("duration"), 0)
-    st.markdown(
-        f"**Step type: {_step_type_label(step_type)}**"
-    )
-    st.write(f"Duration: {duration} sec")
-        
 
 def _render_step_details_data(
     step_type: str,
@@ -440,9 +440,6 @@ def _render_step_details_component(selected_step: dict, step_ui_key: str, step_s
     database_datasource_by_id = _map_by_id(database_datasources)
     brokers_by_id = _map_by_id(brokers)
 
-    if normalized_step_type == STEP_TYPE_SLEEP:
-        _render_step_details_sleep(resolved_step_type, configuration_json, step_status)
-        return
     if normalized_step_type == STEP_TYPE_DATA:
         _render_step_details_data(
             resolved_step_type,
@@ -484,7 +481,7 @@ def _render_step_details_component(selected_step: dict, step_ui_key: str, step_s
 def _new_draft_step(
     code: str = "",
     description: str = "",
-    step_type: str = STEP_TYPE_SLEEP,
+    step_type: str = STEP_TYPE_DATA,
     configuration_json: dict | None = None,
     order: int = 1,
     edit_mode: bool = True,
@@ -494,7 +491,7 @@ def _new_draft_step(
         "order": order,
         "code": str(code or "").strip(),
         "description": str(description or ""),
-        "step_type": str(step_type or STEP_TYPE_SLEEP),
+        "step_type": str(step_type or STEP_TYPE_DATA),
         "configuration_json": configuration_json if isinstance(configuration_json, dict) else {},
         "on_failure": "ABORT",
         "operations": [],
@@ -511,7 +508,7 @@ def _extract_step_draft_fields(step_item: dict) -> tuple[str, str, str, dict]:
     return (
         str(step_item.get("code") or "").strip(),
         str(step_item.get("description") or ""),
-        step_type or STEP_TYPE_SLEEP,
+        step_type or STEP_TYPE_DATA,
         cfg,
     )
 
@@ -527,6 +524,13 @@ def _reload_draft_steps(draft: dict):
     draft["steps"] = [step for _, step in indexed_steps]
 
 
+def _persist_scenario_changes(persist_scenario_changes_fn=None):
+    if callable(persist_scenario_changes_fn):
+        persist_scenario_changes_fn()
+        return
+    st.rerun()
+
+
 @st.dialog("Modify step", width="large")
 def _edit_scenario_step_dialog(
     draft: dict,
@@ -536,6 +540,7 @@ def _edit_scenario_step_dialog(
     step_catalog: list[dict],
     step_labels_by_id: dict[str, str],
     on_failure_options: list[str],
+    persist_scenario_changes_fn=None,
 ):
     step_ui_key = scenario_step.get("_ui_key") or f"step_{step_idx}"
     scenario_step["_ui_key"] = step_ui_key
@@ -577,7 +582,7 @@ def _edit_scenario_step_dialog(
             scenario_step["description"] = str(selected_description or "")
             scenario_step["on_failure"] = str(selected_on_failure or "ABORT")
             _reload_draft_steps(draft)
-            st.rerun()
+            _persist_scenario_changes(persist_scenario_changes_fn)
     with action_cols[2]:
         if st.button(
             "Delete",
@@ -589,7 +594,7 @@ def _edit_scenario_step_dialog(
             steps = draft.get("steps", [])
             if 0 <= step_idx < len(steps):
                 steps.pop(step_idx)
-            st.rerun()
+            _persist_scenario_changes(persist_scenario_changes_fn)
     with action_cols[3]:
         if st.button(
             "Cancel",
@@ -612,6 +617,7 @@ def render_step_component(
     execute_step_action_fn,
     get_step_status_fn,
     get_operation_status_fn,
+    persist_scenario_changes_fn=None,
 ):
     step_ui_key = scenario_step.get("_ui_key") or f"step_{step_idx}"
     scenario_step["_ui_key"] = step_ui_key
@@ -718,6 +724,7 @@ def render_step_component(
                 step_catalog=step_catalog,
                 step_labels_by_id=step_labels_by_id,
                 on_failure_options=on_failure_options,
+                persist_scenario_changes_fn=persist_scenario_changes_fn,
             )
 
         
@@ -748,21 +755,14 @@ def build_step_creation_payload(dialog_nonce: int) -> tuple[dict | None, str | N
         st.session_state.get(f"scenario_add_step_description_{dialog_nonce}") or ""
     )
     step_type = str(
-        st.session_state.get(f"scenario_add_step_type_{dialog_nonce}") or STEP_TYPE_SLEEP
+        st.session_state.get(f"scenario_add_step_type_{dialog_nonce}") or STEP_TYPE_DATA
     )
 
     if not code:
         return None, "Il campo Code dello step e' obbligatorio."
 
     cfg: dict
-    if step_type == STEP_TYPE_SLEEP:
-        duration = _safe_int(
-            st.session_state.get(f"scenario_add_step_duration_{dialog_nonce}"), 1
-        )
-        if duration <= 0:
-            return None, "Il campo Duration deve essere maggiore di zero."
-        cfg = {"stepType": STEP_TYPE_SLEEP, "duration": duration}
-    elif step_type == STEP_TYPE_DATA:
+    if step_type == STEP_TYPE_DATA:
         data_raw = str(
             st.session_state.get(f"scenario_add_step_data_{dialog_nonce}") or "[]"
         )
@@ -835,11 +835,11 @@ def build_draft_step_from_creation_payload(payload: dict) -> dict:
     cfg = payload.get("cfg") if isinstance(payload, dict) else {}
     if not isinstance(cfg, dict):
         cfg = {}
-    step_type = str(cfg.get("stepType") or STEP_TYPE_SLEEP).strip().replace("_", "-").lower()
+    step_type = str(cfg.get("stepType") or STEP_TYPE_DATA).strip().replace("_", "-").lower()
     return {
         "code": str((payload or {}).get("code") or "").strip(),
         "description": str((payload or {}).get("description") or ""),
-        "step_type": step_type or STEP_TYPE_SLEEP,
+        "step_type": step_type or STEP_TYPE_DATA,
         "configuration_json": cfg,
     }
 
@@ -882,9 +882,12 @@ def render_import_scenario_step_dialog(
     step_catalog: list[dict],
     step_labels_by_id: dict[str, str],
     close_add_scenario_step_dialog_fn,
+    persist_scenario_changes_fn=None,
+    show_title: bool = True,
 ):
     dialog_nonce = int(st.session_state.get(ADD_SCENARIO_STEP_DIALOG_NONCE_KEY, 0))
-    st.markdown("**Select existing step**")
+    if show_title:
+        st.markdown("**Select existing step**")
     search_key = f"scenario_add_step_search_{dialog_nonce}"
     page_key = f"scenario_add_step_page_{dialog_nonce}"
     last_search_key = f"scenario_add_step_last_search_{dialog_nonce}"
@@ -910,12 +913,17 @@ def render_import_scenario_step_dialog(
     available_steps = page_payload.get("items") or []
     if not isinstance(available_steps, list):
         available_steps = []
+    available_steps = [
+        step_item
+        for step_item in available_steps
+        if _resolve_step_type(step_item) != STEP_TYPE_SLEEP
+    ]
 
     resolved_page = max(_safe_int(page_payload.get("page"), current_page), 1)
 
-    if total_items <= 0 and search_value:
+    if not available_steps and search_value:
         st.info("Nessuno step trovato per il filtro inserito.")
-    elif total_items <= 0:
+    elif not available_steps:
         st.info("Nessuno step disponibile da selezionare.")
 
     for step_idx, step_item in enumerate(available_steps):
@@ -942,7 +950,7 @@ def render_import_scenario_step_dialog(
                 append_step_to_draft(draft, step_item)
                 close_add_scenario_step_dialog_fn()
                 st.session_state[SCENARIO_FEEDBACK_KEY] = "Scenario step aggiunto."
-                st.rerun()
+                _persist_scenario_changes(persist_scenario_changes_fn)
             if st.button(
                 "Delete",
                 key=f"scenario_add_step_delete_existing_{dialog_nonce}_{step_id}_{step_idx}",
@@ -984,11 +992,17 @@ def render_import_scenario_step_dialog(
             st.session_state[page_key] = current_page + 1
             st.rerun()
     with pagination_cols[2]:
-        if total_items > 0:
-            st.caption(f"Pagina {resolved_page}/{max(total_pages, 1)} - {total_items} step trovati")
+        if available_steps:
+            st.caption(
+                f"Pagina {resolved_page}/{max(total_pages, 1)} - {len(available_steps)} step visibili"
+            )
 
 
-def render_add_new_scenario_step_dialog(draft: dict, close_add_scenario_step_dialog_fn):
+def render_add_new_scenario_step_dialog(
+    draft: dict,
+    close_add_scenario_step_dialog_fn,
+    persist_scenario_changes_fn=None,
+):
     dialog_nonce = int(st.session_state.get(ADD_SCENARIO_STEP_DIALOG_NONCE_KEY, 0))
     load_step_editor_context(force=False)
     json_arrays = st.session_state.get(STEP_EDITOR_JSON_ARRAYS_KEY, [])
@@ -1014,7 +1028,7 @@ def render_add_new_scenario_step_dialog(draft: dict, close_add_scenario_step_dia
     broker_ids = [str(item.get("id")) for item in brokers if item.get("id")]
     broker_by_id = {str(item.get("id")): item for item in brokers if item.get("id")}
 
-    st.markdown("**Or insert new one**")
+    st.markdown("**Insert new one**")
     st.text_input(
         "Code",
         key=f"scenario_add_step_code_{dialog_nonce}",
@@ -1031,15 +1045,7 @@ def render_add_new_scenario_step_dialog(draft: dict, close_add_scenario_step_dia
         key=f"scenario_add_step_type_{dialog_nonce}",
     )
 
-    if step_type == STEP_TYPE_SLEEP:
-        st.number_input(
-            "Duration",
-            min_value=1,
-            value=1,
-            step=1,
-            key=f"scenario_add_step_duration_{dialog_nonce}",
-        )
-    elif step_type == STEP_TYPE_DATA:
+    if step_type == STEP_TYPE_DATA:
         data_key = f"scenario_add_step_data_{dialog_nonce}"
         if data_key not in st.session_state:
             st.session_state[data_key] = "[]"
@@ -1166,8 +1172,8 @@ def render_add_new_scenario_step_dialog(draft: dict, close_add_scenario_step_dia
             key=f"scenario_add_step_max_messages_{dialog_nonce}",
         )
 
-    create_cols = st.columns([6, 6], gap="small")
-    with create_cols[1]:
+    create_cols = st.columns([1, 1], gap="small")
+    with create_cols[0]:
         if st.button(
             "Save and add",
             key=f"scenario_add_step_save_and_add_{dialog_nonce}",
@@ -1209,8 +1215,9 @@ def render_add_new_scenario_step_dialog(draft: dict, close_add_scenario_step_dia
             )
             close_add_scenario_step_dialog_fn()
             st.session_state[SCENARIO_FEEDBACK_KEY] = "Nuovo step creato e aggiunto."
-            st.rerun()
+            _persist_scenario_changes(persist_scenario_changes_fn)
 
+    with create_cols[1]:
         if st.button(
             "Add only",
             key=f"scenario_add_step_add_only_{dialog_nonce}",
@@ -1228,7 +1235,7 @@ def render_add_new_scenario_step_dialog(draft: dict, close_add_scenario_step_dia
             )
             close_add_scenario_step_dialog_fn()
             st.session_state[SCENARIO_FEEDBACK_KEY] = "Nuovo scenario step aggiunto."
-            st.rerun()
+            _persist_scenario_changes(persist_scenario_changes_fn)
 
 
 def render_add_scenario_step_dialog(
@@ -1236,19 +1243,42 @@ def render_add_scenario_step_dialog(
     step_catalog: list[dict],
     step_labels_by_id: dict[str, str],
     close_add_scenario_step_dialog_fn,
+    persist_scenario_changes_fn=None,
 ):
     dialog_nonce = int(st.session_state.get(ADD_SCENARIO_STEP_DIALOG_NONCE_KEY, 0))
+    show_existing_key = f"scenario_add_step_show_existing_{dialog_nonce}"
 
-    content_cols = st.columns([1, 1], gap="large", vertical_alignment="top")
-    with content_cols[0]:
+    render_add_new_scenario_step_dialog(
+        draft,
+        close_add_scenario_step_dialog_fn,
+        persist_scenario_changes_fn=persist_scenario_changes_fn,
+    )
+
+    st.divider()
+    existing_cols = st.columns([8, 2], gap="small", vertical_alignment="center")
+    with existing_cols[0]:
+        st.markdown("**Select existing step**")
+    with existing_cols[1]:
+        show_existing = bool(st.session_state.get(show_existing_key, False))
+        if st.button(
+            "Nascondi" if show_existing else "Ricerca",
+            key=f"scenario_add_step_toggle_existing_{dialog_nonce}",
+            icon=":material/search:",
+            type="secondary",
+            use_container_width=True,
+        ):
+            st.session_state[show_existing_key] = not show_existing
+            st.rerun()
+
+    if bool(st.session_state.get(show_existing_key, False)):
         render_import_scenario_step_dialog(
             draft,
             step_catalog,
             step_labels_by_id,
             close_add_scenario_step_dialog_fn,
+            persist_scenario_changes_fn=persist_scenario_changes_fn,
+            show_title=False,
         )
-    with content_cols[1]:
-        render_add_new_scenario_step_dialog(draft, close_add_scenario_step_dialog_fn)
 
     st.divider()
     footer_cols = st.columns([1, 1], gap="large", vertical_alignment="center")

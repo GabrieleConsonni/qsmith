@@ -1,4 +1,3 @@
-from copy import deepcopy
 from decimal import Decimal
 import time
 from uuid import uuid4
@@ -41,7 +40,6 @@ from scenarios.services.state_keys import (
     OPERATIONS_CATALOG_KEY,
     PENDING_SCENARIO_SWITCH_KEY,
     SCENARIOS_KEY,
-    SCENARIO_BASELINE_PAYLOAD_KEY,
     SCENARIO_DRAFT_KEY,
     SCENARIO_EDITOR_MODE_KEY,
     SCENARIO_EDITOR_NONCE_KEY,
@@ -53,6 +51,7 @@ from scenarios.services.state_keys import (
 
 SCENARIOS_LIST_PAGE_PATH = "pages/Scenarios.py"
 SCENARIO_EDITOR_PAGE_PATH = "pages/ScenarioEditor.py"
+STEP_TYPE_SLEEP = "sleep"
 
 
 def _safe_int(value: object, default: int = 0) -> int:
@@ -89,13 +88,11 @@ def _bump_editor_nonce():
     )
 
 
-def _set_editor_draft(draft: dict | None, mode: str, reset_baseline: bool = True):
+def _set_editor_draft(draft: dict | None, mode: str):
     st.session_state[SCENARIO_DRAFT_KEY] = draft
     st.session_state[SCENARIO_EDITOR_MODE_KEY] = mode
     _close_add_scenario_step_dialog()
     _close_add_step_operation_dialog()
-    if reset_baseline:
-        _set_baseline_payload_from_draft(draft)
     _clear_pending_switch()
     _bump_editor_nonce()
 
@@ -295,31 +292,6 @@ def _build_scenario_payload(draft: dict) -> dict:
     }
 
 
-def _set_baseline_payload_from_draft(draft: dict | None):
-    if not isinstance(draft, dict):
-        st.session_state[SCENARIO_BASELINE_PAYLOAD_KEY] = None
-        return
-    st.session_state[SCENARIO_BASELINE_PAYLOAD_KEY] = deepcopy(
-        _build_scenario_payload(draft)
-    )
-
-
-def _is_editor_dirty() -> bool:
-    draft = st.session_state.get(SCENARIO_DRAFT_KEY)
-    if not isinstance(draft, dict):
-        return False
-
-    current_payload = _build_scenario_payload(draft)
-    baseline_payload = st.session_state.get(SCENARIO_BASELINE_PAYLOAD_KEY)
-    if baseline_payload is None:
-        return bool(
-            current_payload.get("code")
-            or current_payload.get("description")
-            or current_payload.get("steps")
-        )
-    return current_payload != baseline_payload
-
-
 def _validate_draft(draft: dict) -> str | None:
     payload = _build_scenario_payload(draft)
     if not payload["code"]:
@@ -330,6 +302,9 @@ def _validate_draft(draft: dict) -> str | None:
             return f"Scenario step #{idx + 1}: code obbligatorio."
         if not isinstance(step.get("cfg"), dict) or not step["cfg"].get("stepType"):
             return f"Scenario step #{idx + 1}: configurazione step non valida."
+        step_type = str(step["cfg"].get("stepType") or "").strip().replace("_", "-").lower()
+        if step_type == STEP_TYPE_SLEEP:
+            return f"Scenario step #{idx + 1}: stepType '{STEP_TYPE_SLEEP}' non supportato."
         if step["on_failure"] not in ON_FAILURE_OPTIONS:
             return (
                 f"Scenario step #{idx + 1}: on_failure deve essere uno tra "
@@ -349,7 +324,7 @@ def _validate_draft(draft: dict) -> str | None:
     return None
 
 
-def _save_draft():
+def _save_draft(preserve_existing_feedback: bool = False):
     draft = st.session_state.get(SCENARIO_DRAFT_KEY)
     if not isinstance(draft, dict):
         st.error("Nessuno scenario in modifica.")
@@ -388,8 +363,14 @@ def _save_draft():
     else:
         updated_draft = None
     _set_editor_draft(updated_draft, "edit")
-    st.session_state[SCENARIO_FEEDBACK_KEY] = feedback
+    existing_feedback = str(st.session_state.get(SCENARIO_FEEDBACK_KEY) or "").strip()
+    if not preserve_existing_feedback or not existing_feedback:
+        st.session_state[SCENARIO_FEEDBACK_KEY] = feedback
     st.rerun()
+
+
+def _auto_save_draft_after_change():
+    _save_draft(preserve_existing_feedback=True)
 
 
 def _delete_scenario(scenario_id: str):
@@ -555,29 +536,6 @@ def _open_scenario_editor_for_edit(scenario_id: str):
     st.switch_page(SCENARIO_EDITOR_PAGE_PATH)
 
 
-def _undo_changes():
-    mode = str(st.session_state.get(SCENARIO_EDITOR_MODE_KEY, "edit"))
-    if mode == "create":
-        _set_editor_draft(_new_scenario_draft(), "create")
-        st.session_state[SCENARIO_FEEDBACK_KEY] = "Modifiche annullate."
-        st.rerun()
-
-    selected_id = str(st.session_state.get(SELECTED_SCENARIO_ID_KEY) or "")
-    if not selected_id:
-        _set_editor_draft(None, "edit")
-        st.session_state[SCENARIO_FEEDBACK_KEY] = "Modifiche annullate."
-        st.rerun()
-
-    restored = _build_scenario_draft(selected_id)
-    if restored is None:
-        st.error("Errore durante l'annullamento modifiche.")
-        return
-
-    _set_editor_draft(restored, "edit")
-    st.session_state[SCENARIO_FEEDBACK_KEY] = "Modifiche annullate."
-    st.rerun()
-
-
 def _render_operation_component(
     scenario_step: dict,
     operation: dict,
@@ -593,6 +551,7 @@ def _render_operation_component(
         step_ui_key,
         nonce,
         operation_status=operation_status,
+        persist_scenario_changes_fn=_auto_save_draft_after_change,
     )
 
 
@@ -622,6 +581,7 @@ def _render_step_component(
             step_item,
             operation_item,
         ),
+        persist_scenario_changes_fn=_auto_save_draft_after_change,
     )
 
 
@@ -635,6 +595,7 @@ def _render_add_scenario_step_dialog(
         step_catalog,
         step_labels_by_id,
         _close_add_scenario_step_dialog,
+        persist_scenario_changes_fn=_auto_save_draft_after_change,
     )
 
 
@@ -657,6 +618,7 @@ def _render_import_step_operation_dialog(
         operation_catalog,
         operation_labels_by_id,
         _close_add_step_operation_dialog,
+        persist_scenario_changes_fn=_auto_save_draft_after_change,
     )
 
 
@@ -715,7 +677,7 @@ def _render_step_toolbar(execution_state: dict):
     scenario_id = str((draft or {}).get("id") or "").strip()
     scenario_is_saved = bool(scenario_id)
     nonce = int(st.session_state.get(SCENARIO_EDITOR_NONCE_KEY, 0))
-    action_cols = st.columns([6, 2, 2, 2, 2], gap="small", vertical_alignment="bottom")
+    action_cols = st.columns([8, 2, 2], gap="small", vertical_alignment="bottom")
     with action_cols[0]:
         if isinstance(execution_state, dict) and execution_state:
             is_running = bool(execution_state.get("running"))
@@ -729,28 +691,7 @@ def _render_step_toolbar(execution_state: dict):
                     f"Test scenario {status_label}: {executed_steps}/{total_steps} step executed"
                 )
 
-    if _is_editor_dirty():  
-        with action_cols[1]:
-            if st.button(
-                "Save",
-                key="save_scenario_btn",
-                icon=":material/save:",
-                type="secondary",
-                use_container_width=True,
-            ):
-                _save_draft()
-
-        with action_cols[2]:
-            if st.button(
-                "Undo",
-                key="undo_scenario_btn",
-                icon=":material/undo:",
-                type="secondary",
-                use_container_width=True,
-            ):
-                _undo_changes()
-
-    with action_cols[3]:
+    with action_cols[1]:
         if st.button(
             "",
             help="Aggiungi uno step allo scenario.",
@@ -760,7 +701,7 @@ def _render_step_toolbar(execution_state: dict):
         ):
             _open_add_scenario_step_dialog()
             st.rerun()
-    with action_cols[4]:
+    with action_cols[2]:
         if st.button(
             "",
             help="Esegui l'intero scenario.",

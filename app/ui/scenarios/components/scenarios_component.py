@@ -23,11 +23,11 @@ from scenarios.services.scenario_api_service import (
     execute_scenario_by_id,
     execute_scenario_step_by_id,
     get_scenario_by_id,
+    get_scenario_executions,
     update_scenario,
 )
 from scenarios.services.execution_stream_service import (
     get_execution_state,
-    get_latest_execution_id_for_scenario,
     register_execution_listener,
 )
 from scenarios.services.state_keys import (
@@ -78,6 +78,23 @@ def _new_ui_key() -> str:
     return uuid4().hex[:10]
 
 
+def _format_datetime(value) -> str:
+    if value is None:
+        return "-"
+    return str(value).replace("T", " ")
+
+
+def _execution_status_label(status: str) -> str:
+    normalized = str(status or "").strip().lower()
+    if normalized == "success":
+        return "success"
+    if normalized == "error":
+        return "error"
+    if normalized == "running":
+        return "running"
+    return normalized or "unknown"
+
+
 def _clear_pending_switch():
     st.session_state.pop(PENDING_SCENARIO_SWITCH_KEY, None)
 
@@ -89,6 +106,12 @@ def _bump_editor_nonce():
 
 
 def _set_editor_draft(draft: dict | None, mode: str):
+    previous_draft = st.session_state.get(SCENARIO_DRAFT_KEY)
+    previous_scenario_id = str((previous_draft or {}).get("id") or "").strip()
+    next_scenario_id = str((draft or {}).get("id") or "").strip()
+    if previous_scenario_id != next_scenario_id:
+        st.session_state.pop(SCENARIO_LAST_EXECUTION_ID_KEY, None)
+
     st.session_state[SCENARIO_DRAFT_KEY] = draft
     st.session_state[SCENARIO_EDITOR_MODE_KEY] = mode
     _close_add_scenario_step_dialog()
@@ -393,6 +416,7 @@ def _delete_scenario(scenario_id: str):
 
 
 def _execute_scenario(scenario_id: str):
+    st.session_state[SCENARIO_LAST_EXECUTION_ID_KEY] = ""
     try:
         response = execute_scenario_by_id(scenario_id)
     except Exception as exc:
@@ -413,6 +437,7 @@ def _execute_scenario_step(
     scenario_step_id: str,
     include_previous: bool,
 ):
+    st.session_state[SCENARIO_LAST_EXECUTION_ID_KEY] = ""
     try:
         response = execute_scenario_step_by_id(
             scenario_id=scenario_id,
@@ -543,6 +568,7 @@ def _render_operation_component(
     step_ui_key: str,
     nonce: int,
     operation_status: str = "idle",
+    operation_error_message: str = "",
 ):
     operation_render_component(
         scenario_step,
@@ -551,6 +577,7 @@ def _render_operation_component(
         step_ui_key,
         nonce,
         operation_status=operation_status,
+        operation_error_message=operation_error_message,
         persist_scenario_changes_fn=_auto_save_draft_after_change,
     )
 
@@ -577,6 +604,12 @@ def _render_step_component(
         _execute_scenario_step_from_draft,
         lambda step_item: _get_step_execution_status(execution_state, step_item),
         lambda step_item, operation_item: _get_operation_execution_status(
+            execution_state,
+            step_item,
+            operation_item,
+        ),
+        lambda step_item: _get_step_execution_error_message(execution_state, step_item),
+        lambda step_item, operation_item: _get_operation_execution_error_message(
             execution_state,
             step_item,
             operation_item,
@@ -672,12 +705,59 @@ def _render_editor():
         _add_step_operation_dialog(draft, operation_catalog, operation_labels_by_id)
 
 
+def _scenario_execution_header(execution_payload: dict) -> str:
+    scenario_name = str(
+        execution_payload.get("scenario_description")
+        or execution_payload.get("scenario_code")
+        or "Scenario"
+    ).strip()
+    status = _execution_status_label(str(execution_payload.get("status") or ""))
+    timestamp = _format_datetime(execution_payload.get("started_at"))
+    return f"{scenario_name} | {status} | {timestamp}"
+
+
+def _render_execution_step_details(step_execution: dict):
+    step_code = str(step_execution.get("step_code") or "").strip()
+    step_description = str(step_execution.get("step_description") or "").strip()
+    step_label = (
+        f"{step_description} [{step_code}]"
+        if step_description and step_code and step_description != step_code
+        else (step_description or step_code or "Step")
+    )
+    step_status = _execution_status_label(str(step_execution.get("status") or ""))
+    step_time = _format_datetime(step_execution.get("started_at"))
+    st.markdown(f"- **{step_label}** | {step_status} | {step_time}")
+    step_error_message = str(step_execution.get("error_message") or "").strip()
+    if step_error_message:
+        st.caption(f"Error: {step_error_message}")
+
+    operation_executions = step_execution.get("operations") or []
+    if not isinstance(operation_executions, list) or not operation_executions:
+        return
+    for operation_execution in operation_executions:
+        operation_code = str(operation_execution.get("operation_code") or "").strip()
+        operation_description = str(operation_execution.get("operation_description") or "").strip()
+        operation_label = (
+            f"{operation_description} [{operation_code}]"
+            if operation_description
+            and operation_code
+            and operation_description != operation_code
+            else (operation_description or operation_code or "Operation")
+        )
+        operation_status = _execution_status_label(str(operation_execution.get("status") or ""))
+        operation_time = _format_datetime(operation_execution.get("started_at"))
+        st.caption(f"  - {operation_label} | {operation_status} | {operation_time}")
+        operation_error_message = str(operation_execution.get("error_message") or "").strip()
+        if operation_error_message:
+            st.caption(f"    Error: {operation_error_message}")
+
+
 def _render_step_toolbar(execution_state: dict):
     draft = st.session_state.get(SCENARIO_DRAFT_KEY)
     scenario_id = str((draft or {}).get("id") or "").strip()
     scenario_is_saved = bool(scenario_id)
     nonce = int(st.session_state.get(SCENARIO_EDITOR_NONCE_KEY, 0))
-    action_cols = st.columns([8, 2, 2], gap="small", vertical_alignment="bottom")
+    action_cols = st.columns([5, 2, 2, 5], gap="small", vertical_alignment="bottom")
     with action_cols[0]:
         if isinstance(execution_state, dict) and execution_state:
             is_running = bool(execution_state.get("running"))
@@ -745,40 +825,6 @@ def _edit_scenario_description_dialog(current_description: str, dialog_suffix: s
             st.rerun()
 
 
-def _render_editor_main_fields():
-    draft = st.session_state.get(SCENARIO_DRAFT_KEY)
-    if not isinstance(draft, dict):
-        return
-
-    mode = str(st.session_state.get(SCENARIO_EDITOR_MODE_KEY, "edit"))
-    nonce = int(st.session_state.get(SCENARIO_EDITOR_NONCE_KEY, 0))
-    scenario_id = str(draft.get("id") or "")
-    is_existing_scenario = mode == "edit" and bool(scenario_id)
-
-    if is_existing_scenario:
-        description = str(draft.get("description") or "").strip() or "-"
-        st.title(description)
-        return
-
-    draft["code"] = st.text_input(
-        "Code",
-        value=str(draft.get("code") or ""),
-        key=f"scenario_{nonce}_code",
-    ).strip()
-    draft["description"] = st.text_input(
-        "Description",
-        value=str(draft.get("description") or ""),
-        key=f"scenario_{nonce}_description",
-    )
-    if mode == "create":
-        st.caption("Scenario in creazione.")
-
-def _render_feedback():
-    feedback_message = st.session_state.pop(SCENARIO_FEEDBACK_KEY, None)
-    if feedback_message:
-        st.success(feedback_message, icon=":material/check_circle:")
-
-
 def _get_execution_state_for_current_scenario() -> dict:
     draft = st.session_state.get(SCENARIO_DRAFT_KEY)
     if not isinstance(draft, dict):
@@ -789,12 +835,13 @@ def _get_execution_state_for_current_scenario() -> dict:
 
     execution_id = str(st.session_state.get(SCENARIO_LAST_EXECUTION_ID_KEY) or "").strip()
     if not execution_id:
-        execution_id = get_latest_execution_id_for_scenario(scenario_id)
-        if execution_id:
-            st.session_state[SCENARIO_LAST_EXECUTION_ID_KEY] = execution_id
-    if not execution_id:
         return {}
-    return get_execution_state(execution_id)
+    live_state = get_execution_state(execution_id)
+    if not isinstance(live_state, dict):
+        return {}
+    if str(live_state.get("scenario_id") or "").strip() != scenario_id:
+        return {}
+    return live_state
 
 
 def _get_step_execution_status(execution_state: dict, scenario_step: dict) -> str:
@@ -803,6 +850,14 @@ def _get_step_execution_status(execution_state: dict, scenario_step: dict) -> st
         return "idle"
     statuses = execution_state.get("step_status") if isinstance(execution_state, dict) else {}
     return str((statuses or {}).get(scenario_step_id) or "idle")
+
+
+def _get_step_execution_error_message(execution_state: dict, scenario_step: dict) -> str:
+    scenario_step_id = str(scenario_step.get("id") or "").strip()
+    if not scenario_step_id:
+        return ""
+    errors = execution_state.get("step_error") if isinstance(execution_state, dict) else {}
+    return str((errors or {}).get(scenario_step_id) or "")
 
 
 def _get_operation_execution_status(
@@ -817,6 +872,20 @@ def _get_operation_execution_status(
     key = f"{scenario_step_id}:{operation_id}"
     statuses = execution_state.get("operation_status") if isinstance(execution_state, dict) else {}
     return str((statuses or {}).get(key) or "idle")
+
+
+def _get_operation_execution_error_message(
+    execution_state: dict,
+    scenario_step: dict,
+    operation: dict,
+) -> str:
+    scenario_step_id = str(scenario_step.get("id") or "").strip()
+    operation_id = str(operation.get("id") or "").strip()
+    if not scenario_step_id or not operation_id:
+        return ""
+    key = f"{scenario_step_id}:{operation_id}"
+    errors = execution_state.get("operation_error") if isinstance(execution_state, dict) else {}
+    return str((errors or {}).get(key) or "")
 
 
 def render_scenarios_list_page():
@@ -922,16 +991,71 @@ def render_scenario_editor_page():
         _render_feedback()
         return
 
-    _render_editor_main_fields()
+    scenario = st.session_state.get(SCENARIO_DRAFT_KEY)
+    description = str(scenario.get("description") or "").strip() or "-"
+    st.title(description)
+
     st.divider()
     _render_editor()
+
     st.divider()
     execution_state = _get_execution_state_for_current_scenario()
     _render_step_toolbar(execution_state)
+        
+
+    execution_state = _get_execution_state_for_current_scenario()
     _render_feedback()
     if bool((execution_state or {}).get("running")):
         time.sleep(1)
         st.rerun()
+
+def _render_feedback():
+    feedback_message = st.session_state.pop(SCENARIO_FEEDBACK_KEY, None)
+    if feedback_message:
+        st.success(feedback_message, icon=":material/check_circle:")
+
+def render_home_page():
+    st.header("Home")
+    st.subheader("Test scenario executions")
+    executions = get_scenario_executions(limit=50)
+
+    if not executions:
+        st.caption("Nessuna execution disponibile.")
+        return
+
+    for idx, execution_payload in enumerate(executions):
+        if not isinstance(execution_payload, dict):
+            continue
+        scenario_id = str(execution_payload.get("scenario_id") or "").strip()
+        execution_id = str(execution_payload.get("id") or "").strip()
+        header = _scenario_execution_header(execution_payload)
+
+        with st.expander(header, expanded=False):
+            action_cols = st.columns([1, 5], gap="small", vertical_alignment="center")
+            with action_cols[0]:
+                if st.button(
+                    "",
+                    key=f"home_open_scenario_editor_{execution_id or idx}",
+                    icon=":material/open_in_new:",
+                    help="Apri scenario editor",
+                    use_container_width=True,
+                    disabled=not bool(scenario_id),
+                ):
+                    _open_scenario_editor_for_edit(scenario_id)
+            with action_cols[1]:
+                st.caption(f"Execution id: {execution_id or '-'}")
+
+            global_error = str(execution_payload.get("error_message") or "").strip()
+            if global_error:
+                st.caption(f"Error: {global_error}")
+
+            step_executions = execution_payload.get("steps") or []
+            if not isinstance(step_executions, list) or not step_executions:
+                st.caption("Nessun dettaglio step.")
+                continue
+            for step_execution in step_executions:
+                if isinstance(step_execution, dict):
+                    _render_execution_step_details(step_execution)
 
 
 def render_scenarios_page():

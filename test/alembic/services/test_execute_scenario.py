@@ -1,4 +1,3 @@
-import json
 import unittest
 
 from app._alembic.models.operation_entity import OperationEntity
@@ -10,8 +9,15 @@ from app._alembic.services.session_context_manager import managed_session
 from app.elaborations.models.enums.operation_type import OperationType
 from app.elaborations.models.enums.step_type import StepType
 from app.elaborations.services.alembic.operation_service import OperationService
+from app.elaborations.services.alembic.scenario_execution_service import ScenarioExecutionService
 from app.elaborations.services.alembic.scenario_service import ScenarioService
+from app.elaborations.services.alembic.scenario_step_execution_service import (
+    ScenarioStepExecutionService,
+)
 from app.elaborations.services.alembic.scenario_step_service import ScenarioStepService
+from app.elaborations.services.alembic.step_operation_execution_service import (
+    StepOperationExecutionService,
+)
 from app.elaborations.services.alembic.step_operation_service import StepOperationService
 from app.elaborations.services.alembic.step_service import StepService
 from app.elaborations.services.scenarios.scenario_executor_thread import ScenarioExecutionInput, _execute
@@ -25,10 +31,10 @@ def test_execution(alembic_container):
             session,
             StepEntity(
                 code="step1_code",
-                step_type=StepType.SLEEP.value,
+                step_type=StepType.DATA.value,
                 configuration_json={
-                    "stepType": "sleep",
-                    "duration": 2
+                    "stepType": "data",
+                    "data": [{"id": 1}],
                 }
             )
         )
@@ -54,10 +60,10 @@ def test_execution(alembic_container):
             ScenarioStepEntity(
                 scenario_id=scenario_id,
                 code="step1_code",
-                step_type=StepType.SLEEP.value,
+                step_type=StepType.DATA.value,
                 configuration_json={
-                    "stepType": "sleep",
-                    "duration": 2,
+                    "stepType": "data",
+                    "data": [{"id": 1}],
                 },
                 order=0,
             )
@@ -83,10 +89,36 @@ def test_execution(alembic_container):
     ))
 
     with managed_session() as session:
-        logs = LogService().get_logs(session)
+        scenario_executions = ScenarioExecutionService().get_all_by_scenario_id(
+            session,
+            scenario_id=scenario_id,
+            limit=10,
+        )
+        assert len(scenario_executions) == 1
+        scenario_execution = scenario_executions[0]
+        assert str(scenario_execution.status or "").strip().lower() == "success"
+        assert scenario_execution.finished_at is not None
 
-        for log in logs:
-            print(f" {log.level} - {log.message} - {json.dumps(log.payload)} ")
+        step_executions = ScenarioStepExecutionService().get_all_by_execution_id(
+            session,
+            scenario_execution.id,
+        )
+        assert len(step_executions) == 1
+        step_execution = step_executions[0]
+        assert str(step_execution.status or "").strip().lower() == "success"
+        assert step_execution.finished_at is not None
+
+        operation_executions = StepOperationExecutionService().get_all_by_step_execution_id(
+            session,
+            step_execution.id,
+        )
+        assert len(operation_executions) == 1
+        operation_execution = operation_executions[0]
+        assert str(operation_execution.status or "").strip().lower() == "success"
+        assert operation_execution.finished_at is not None
+
+        logs = LogService().get_logs(session)
+        assert len(logs) > 0
 
 
 if __name__ == "__main__":

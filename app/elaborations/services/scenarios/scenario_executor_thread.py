@@ -1,11 +1,18 @@
 import threading
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from uuid import uuid4
 
+from _alembic.models.scenario_execution_entity import ScenarioExecutionEntity
 from _alembic.models.scenario_step_entity import ScenarioStepEntity
+from _alembic.models.scenario_step_execution_entity import ScenarioStepExecutionEntity
 from _alembic.services.session_context_manager import managed_session
 from elaborations.models.enums.on_failure import OnFailure
+from elaborations.services.alembic.scenario_execution_service import ScenarioExecutionService
 from elaborations.services.alembic.scenario_service import ScenarioService
+from elaborations.services.alembic.scenario_step_execution_service import (
+    ScenarioStepExecutionService,
+)
 from elaborations.services.alembic.scenario_step_service import ScenarioStepService
 from elaborations.services.scenarios.execution_event_bus import (
     publish_execution_event,
@@ -25,6 +32,7 @@ class ScenarioExecutionInput:
     execution_id: str
     scenario_id: str
     scenario_code: str
+    scenario_description: str = ""
     target_scenario_step_id: str | None = None
     include_previous: bool = False
 
@@ -40,7 +48,7 @@ def log(
         subject=scenario_id,
         message=message,
         level=level,
-        payload=payload
+        payload=payload,
     )
     LogService().log(log_dto)
     publish_runtime_log_event(
@@ -77,16 +85,54 @@ def _resolve_steps_to_execute(
     return [scenario_steps[target_index]]
 
 
+def _utc_now() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
 def _execute(scenario_input: ScenarioExecutionInput):
     with managed_session() as session:
+        scenario_execution_service = ScenarioExecutionService()
+        scenario_step_execution_service = ScenarioStepExecutionService()
+
+        scenario_steps_all: list[ScenarioStepEntity] = ScenarioStepService().get_all_by_scenario_id(
+            session, scenario_input.scenario_id
+        )
+        target_step_id = str(scenario_input.target_scenario_step_id or "").strip()
+        target_step_code = str(
+            next(
+                (
+                    scenario_step.code
+                    for scenario_step in scenario_steps_all
+                    if str(scenario_step.id) == target_step_id
+                ),
+                "",
+            )
+            or ""
+        )
+
+        scenario_execution_id = scenario_execution_service.insert(
+            session,
+            ScenarioExecutionEntity(
+                scenario_id=scenario_input.scenario_id,
+                scenario_code=scenario_input.scenario_code,
+                scenario_description=scenario_input.scenario_description,
+                status="running",
+                include_previous=bool(scenario_input.include_previous),
+                requested_step_id=target_step_id or None,
+                requested_step_code=target_step_code or None,
+            ),
+        )
+
         with bind_execution_context(
             execution_id=scenario_input.execution_id,
             scenario_id=scenario_input.scenario_id,
+            scenario_execution_id=scenario_execution_id,
         ):
             results = []
             total_steps = 0
             completed_steps = 0
             error_count = 0
+            first_error_message = ""
             try:
                 start_message = f"Starting execution of scenario '{scenario_input.scenario_code}'"
                 log(scenario_input.scenario_id, message=start_message)
@@ -94,6 +140,7 @@ def _execute(scenario_input: ScenarioExecutionInput):
                     scenario_input.execution_id,
                     "execution_started",
                     {
+                        "scenario_execution_id": scenario_execution_id,
                         "scenario_id": scenario_input.scenario_id,
                         "scenario_code": scenario_input.scenario_code,
                         "target_scenario_step_id": scenario_input.target_scenario_step_id,
@@ -101,11 +148,8 @@ def _execute(scenario_input: ScenarioExecutionInput):
                     },
                 )
 
-                scenario_steps: list[ScenarioStepEntity] = ScenarioStepService().get_all_by_scenario_id(
-                    session, scenario_input.scenario_id
-                )
                 scenario_steps = _resolve_steps_to_execute(
-                    scenario_steps,
+                    scenario_steps_all,
                     scenario_input.target_scenario_step_id,
                     scenario_input.include_previous,
                 )
@@ -116,12 +160,25 @@ def _execute(scenario_input: ScenarioExecutionInput):
                     scenario_input.execution_id,
                     "execution_progress",
                     {
+                        "scenario_execution_id": scenario_execution_id,
                         "executed_steps": completed_steps,
                         "total_steps": total_steps,
                     },
                 )
 
                 for step_index, scenario_step in enumerate(scenario_steps, start=1):
+                    step_execution_id = scenario_step_execution_service.insert(
+                        session,
+                        ScenarioStepExecutionEntity(
+                            scenario_execution_id=scenario_execution_id,
+                            scenario_step_id=scenario_step.id,
+                            step_code=str(scenario_step.code or ""),
+                            step_description=str(scenario_step.description or ""),
+                            step_order=scenario_step.order,
+                            status="running",
+                        ),
+                    )
+
                     step_start_message = (
                         f"Executing scenario_step {scenario_step.order} "
                         f"of {total_steps} in scenario '{scenario_input.scenario_code}'"
@@ -131,6 +188,8 @@ def _execute(scenario_input: ScenarioExecutionInput):
                         scenario_input.execution_id,
                         "step_started",
                         {
+                            "scenario_execution_id": scenario_execution_id,
+                            "scenario_step_execution_id": step_execution_id,
                             "scenario_step_id": scenario_step.id,
                             "step_code": scenario_step.code,
                             "step_order": int(scenario_step.order),
@@ -140,14 +199,26 @@ def _execute(scenario_input: ScenarioExecutionInput):
                     )
 
                     try:
-                        with bind_execution_context(scenario_step_id=scenario_step.id):
+                        with bind_execution_context(
+                            scenario_step_id=scenario_step.id,
+                            scenario_step_execution_id=step_execution_id,
+                        ):
                             step_results = execute_step(session, scenario_step)
                         results.append(step_results)
                         completed_steps += 1
+                        scenario_step_execution_service.update(
+                            session,
+                            step_execution_id,
+                            status="success",
+                            error_message=None,
+                            finished_at=_utc_now(),
+                        )
                         publish_execution_event(
                             scenario_input.execution_id,
                             "step_finished",
                             {
+                                "scenario_execution_id": scenario_execution_id,
+                                "scenario_step_execution_id": step_execution_id,
                                 "scenario_step_id": scenario_step.id,
                                 "step_code": scenario_step.code,
                                 "step_order": int(scenario_step.order),
@@ -157,6 +228,8 @@ def _execute(scenario_input: ScenarioExecutionInput):
                         )
                     except Exception as step_exception:
                         error_count += 1
+                        if not first_error_message:
+                            first_error_message = str(step_exception)
                         error_message = (
                             f"Error executing scenario_step n.'{scenario_step.order}' "
                             f"in scenario '{scenario_input.scenario_code}'"
@@ -167,10 +240,19 @@ def _execute(scenario_input: ScenarioExecutionInput):
                             level=LogLevel.ERROR,
                             payload={"error": str(step_exception)},
                         )
+                        scenario_step_execution_service.update(
+                            session,
+                            step_execution_id,
+                            status="error",
+                            error_message=str(step_exception),
+                            finished_at=_utc_now(),
+                        )
                         publish_execution_event(
                             scenario_input.execution_id,
                             "step_finished",
                             {
+                                "scenario_execution_id": scenario_execution_id,
+                                "scenario_step_execution_id": step_execution_id,
                                 "scenario_step_id": scenario_step.id,
                                 "step_code": scenario_step.code,
                                 "step_order": int(scenario_step.order),
@@ -185,15 +267,22 @@ def _execute(scenario_input: ScenarioExecutionInput):
                             scenario_input.execution_id,
                             "execution_progress",
                             {
+                                "scenario_execution_id": scenario_execution_id,
                                 "executed_steps": completed_steps,
                                 "total_steps": total_steps,
                             },
                         )
 
                 finish_message = f"Finished execution of scenario '{scenario_input.scenario_code}'"
-                log(scenario_input.scenario_id, message=finish_message, payload={"results": results})
+                log(
+                    scenario_input.scenario_id,
+                    message=finish_message,
+                    payload={"results": results},
+                )
             except Exception as scenario_exception:
                 error_count += 1
+                if not first_error_message:
+                    first_error_message = str(scenario_exception)
                 log(
                     scenario_input.scenario_id,
                     message=f"Scenario execution failed for '{scenario_input.scenario_code}'",
@@ -202,18 +291,30 @@ def _execute(scenario_input: ScenarioExecutionInput):
                 )
             finally:
                 execution_status = "error" if error_count > 0 else "success"
+                scenario_execution_service.update(
+                    session,
+                    scenario_execution_id,
+                    status=execution_status,
+                    error_message=(first_error_message or None) if error_count > 0 else None,
+                    finished_at=_utc_now(),
+                )
+
+                payload = {
+                    "scenario_execution_id": scenario_execution_id,
+                    "scenario_id": scenario_input.scenario_id,
+                    "scenario_code": scenario_input.scenario_code,
+                    "status": execution_status,
+                    "results": results,
+                    "errors": error_count,
+                    "executed_steps": completed_steps,
+                    "total_steps": total_steps,
+                }
+                if first_error_message:
+                    payload["error"] = first_error_message
                 publish_execution_event(
                     scenario_input.execution_id,
                     "execution_finished",
-                    {
-                        "scenario_id": scenario_input.scenario_id,
-                        "scenario_code": scenario_input.scenario_code,
-                        "status": execution_status,
-                        "results": results,
-                        "errors": error_count,
-                        "executed_steps": completed_steps,
-                        "total_steps": total_steps,
-                    },
+                    payload,
                 )
 
 
@@ -237,12 +338,16 @@ class ScenarioExecutorThread(threading.Thread):
                 raise QsmithAppException(message)
             self.scenario_id = scenario.id
             self.scenario_code = scenario.code
+            self.scenario_description = str(scenario.description or "")
 
     def run(self):
-        _execute(ScenarioExecutionInput(
-            execution_id=self.execution_id,
-            scenario_id=self.scenario_id,
-            scenario_code=self.scenario_code,
-            target_scenario_step_id=self.target_scenario_step_id,
-            include_previous=self.include_previous,
-        ))
+        _execute(
+            ScenarioExecutionInput(
+                execution_id=self.execution_id,
+                scenario_id=self.scenario_id,
+                scenario_code=self.scenario_code,
+                scenario_description=self.scenario_description,
+                target_scenario_step_id=self.target_scenario_step_id,
+                include_previous=self.include_previous,
+            )
+        )

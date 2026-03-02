@@ -617,6 +617,8 @@ def render_step_component(
     execute_step_action_fn,
     get_step_status_fn,
     get_operation_status_fn,
+    get_step_error_message_fn=None,
+    get_operation_error_message_fn=None,
     persist_scenario_changes_fn=None,
 ):
     step_ui_key = scenario_step.get("_ui_key") or f"step_{step_idx}"
@@ -634,19 +636,25 @@ def render_step_component(
         if callable(get_step_status_fn)
         else STEP_STATUS_IDLE
     )
+    step_error_message = (
+        str(get_step_error_message_fn(scenario_step) or "").strip()
+        if callable(get_step_error_message_fn)
+        else ""
+    )
 
-    step_layout_cols = st.columns([1, 19, 1], vertical_alignment="top")
+    step_status_icon = _step_status_icon(step_status)
+    step_layout_cols = st.columns([1, 18, 1], gap="small", vertical_alignment="top")
     with step_layout_cols[0]:
         st.button(
             "",
             key=f"scenario_{nonce}_step_status_{step_ui_key}",
-            icon=_step_status_icon(step_status),
+            icon=step_status_icon,
             type="tertiary",
             disabled=True,
             use_container_width=True,
         )
     with step_layout_cols[1]:
-        with st.expander(f"{step_expander_label}", expanded=False):
+        with st.expander(step_expander_label, expanded=False):
             _render_step_details_component(selected_step, step_ui_key, step_status)
             on_failure_value = str(scenario_step.get("on_failure") or "-")
             st.markdown(f"**On failure:** {on_failure_value}")
@@ -661,6 +669,11 @@ def render_step_component(
                     if callable(get_operation_status_fn)
                     else STEP_STATUS_IDLE
                 )
+                operation_error_message = (
+                    str(get_operation_error_message_fn(scenario_step, operation) or "").strip()
+                    if callable(get_operation_error_message_fn)
+                    else ""
+                )
                 render_operation_component_fn(
                     scenario_step,
                     operation,
@@ -668,41 +681,44 @@ def render_step_component(
                     step_ui_key,
                     nonce,
                     operation_status=operation_status,
+                    operation_error_message=operation_error_message,
                 )
+            if step_error_message:
+                st.caption(f"Error: {step_error_message}")
 
             st.divider()
-            add_operation_cols = st.columns([5, 2, 2, 2, 5], gap="small")
-            with add_operation_cols[1]:
+            action_cols = st.columns([5, 1, 1, 1, 5], gap="small", vertical_alignment="center")
+            with action_cols[1]:
                 if st.button(
                     "",
                     help="Add a operation",
                     key=f"scenario_{nonce}_step_add_new_operation_{step_ui_key}",
                     icon=":material/add:",
+                    type="tertiary",
                     use_container_width=True,
-                    type="tertiary"
                 ):
                     open_add_new_step_operation_dialog_fn(step_ui_key)
                     st.rerun()
-            with add_operation_cols[2]:
+            with action_cols[2]:
                 if st.button(
                     "",
                     help="Esegui solo questo step",
                     key=f"scenario_{nonce}_step_execute_{step_ui_key}",
                     icon=":material/play_arrow:",
-                    use_container_width=True,
                     type="tertiary",
+                    use_container_width=True,
                     disabled=not bool(str(scenario_step.get("id") or "").strip()),
                 ):
                     if callable(execute_step_action_fn):
                         execute_step_action_fn(scenario_step, False)
-            with add_operation_cols[3]:
+            with action_cols[3]:
                 if st.button(
                     "",
                     help="Esegui gli step precedenti e quello corrente",
                     key=f"scenario_{nonce}_step_execute_with_previous_{step_ui_key}",
                     icon=":material/playlist_play:",
-                    use_container_width=True,
                     type="tertiary",
+                    use_container_width=True,
                     disabled=not bool(str(scenario_step.get("id") or "").strip()),
                 ):
                     if callable(execute_step_action_fn):
@@ -714,7 +730,7 @@ def render_step_component(
             icon=":material/more_vert:",
             help="Modify step",
             use_container_width=True,
-            type="tertiary"
+            type="tertiary",
         ):
             _edit_scenario_step_dialog(
                 draft=draft,

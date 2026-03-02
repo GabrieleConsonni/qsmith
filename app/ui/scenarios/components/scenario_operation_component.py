@@ -336,6 +336,7 @@ def render_operation_component(
     step_ui_key: str,
     nonce: int,
     operation_status: str = OPERATION_STATUS_IDLE,
+    operation_error_message: str = "",
     persist_scenario_changes_fn=None,
 ):
     operation_ui_key = operation.get("_ui_key") or f"{step_ui_key}_op_{op_idx}"
@@ -348,8 +349,7 @@ def render_operation_component(
         else (operation_description or operation_code or f"Operation {op_idx + 1}")
     )
     operation_type = _operation_type_label(str(operation.get("operation_type") or ""))
-    
-    operation_action_cols = st.columns([1, 19, 1], gap="small", vertical_alignment="center")
+    operation_action_cols = st.columns([1, 18, 1], gap="small", vertical_alignment="top")
     with operation_action_cols[0]:
         st.button(
             "",
@@ -359,19 +359,22 @@ def render_operation_component(
             disabled=True,
             use_container_width=True,
         )
+
     with operation_action_cols[1]:
         with st.container(border=True):
             st.markdown(f"**{operation_label}**")
             st.markdown(f"*{operation_type} operation*")
             _render_operation_details(operation)
+            if operation_error_message:
+                st.caption(f"Error: {operation_error_message}")
     with operation_action_cols[2]:
         if st.button(
             "",
             key=f"scenario_{nonce}_step_{step_ui_key}_operation_more_actions_{operation_ui_key}",
             icon=":material/more_vert:",
             help="Modify operation",
-            use_container_width=True,
             type="tertiary",
+            use_container_width=True,
         ):
             _edit_step_operation_dialog(
                 scenario_step=scenario_step,

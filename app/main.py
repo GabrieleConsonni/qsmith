@@ -16,6 +16,7 @@ from elaborations.api.steps_api import router as steps_router
 from elaborations.api.operations_api import router as operations_router
 from elaborations.api.scenarios_api import router as scenarios_router
 from elaborations.api.execution_events_api import router as execution_events_router
+from elaborations.api.scenario_executions_api import router as scenario_executions_router
 from elaborations.api.scenarios_step_api import router as scenario_steps_router
 from elaborations.api.step_operations_api import router as step_operations_router
 from json_utils.api.json_utils_api import router as json_utils_router
@@ -47,6 +48,7 @@ app.include_router(operations_router)
 app.include_router(steps_router)
 app.include_router(scenarios_router)
 app.include_router(execution_events_router)
+app.include_router(scenario_executions_router)
 app.include_router(scenario_steps_router)
 app.include_router(step_operations_router)
 app.include_router(json_utils_router)

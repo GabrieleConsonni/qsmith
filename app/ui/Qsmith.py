@@ -4,6 +4,7 @@ from brokers.services.data_loader_service import load_brokers
 
 st.set_page_config(page_title="Qsmith", layout="wide", page_icon=":material/construction:")
 
+home = st.Page("pages/Home.py", title="Home")
 brokers_page = st.Page("pages/Brokers.py", title="Brokers")
 database_connections_page = st.Page(
     "pages/DatabaseConnections.py",
@@ -32,6 +33,12 @@ load_brokers()
 brokers = st.session_state.get("brokers", [])
 
 st.sidebar.title("Qsmith")
+_sidebar_nav_button(
+    label="Home",
+    page_path="pages/Home.py",
+    key="nav_home_page",
+    icon=":material/home:",
+)
 st.sidebar.subheader("Configurations")
 _sidebar_nav_button(
     label="SQS broker connections",
@@ -90,6 +97,7 @@ _sidebar_nav_button(label="Tools", page_path="pages/Tools.py", key="nav_tools_pa
 
 pg = st.navigation(
     {
+        "Home": [home],
         "Configurations": [brokers_page, database_connections_page],
         "Brokers & Queues": [queues_page, queue_details],
         "Data Sources": [json_array, database_datasources],

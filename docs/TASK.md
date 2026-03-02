@@ -94,14 +94,14 @@
 
 ## QSM-020 - Gestione database connections
 - [x] Aggiungere una pagina sotto Configurations per la gestione delle connessioni a db
-- [x] la crud è uguale a quella dei brokers eccezion fatta per `open queues`
+- [x] la crud Ã¨ uguale a quella dei brokers eccezion fatta per `open queues`
 - [x] Al momento gestiamo solo connessioni Postgres, aggiungi Oracle e MSSQL
 
 ---
 
 ## QSM-020 - Gestione database datasources
 - [x] Aggiungere una pagina sotto datasources per la gestione dei sorgenti di tipo db (tabelle)
-- [x] la crud è uguale a quella fatta per Json array eccezzion fatta per la parte sinistra in cui vediamo la preview della tabella configurata
+- [x] la crud Ã¨ uguale a quella fatta per Json array eccezzion fatta per la parte sinistra in cui vediamo la preview della tabella configurata
 - [x] quando aggiungiamo una tabella si apre un dialog in cui:
  - si sceglie code e descrizione
  - si sceglie la connessione
@@ -151,13 +151,13 @@
 - [v] Se nel dialog di aggiunta operation l'utente sceglie come operationType `SAVE_EXTERNAL_DB` allora viene mostrata una selectbox su dataset configurati
 
 ## QSM-025 - Fix step e operazioni
-- [v] identificare criticità nelle operazioni e coprire le funzionalità con test di unità
-- [v] identificare criticità negli step e coprire le funzionalità con test di unità
+- [v] identificare criticitÃ  nelle operazioni e coprire le funzionalitÃ  con test di unitÃ 
+- [v] identificare criticitÃ  negli step e coprire le funzionalitÃ  con test di unitÃ 
 
 ## QSM-026 - Esecuzione step scenario
 - [x] creare architettura SSE (Server-Sent Events) fra Qsmith e Qsmith UI in modo tale che il BE possa inviare eventi al FE per aggiornarlo 
-- [x] aggiungere bottone check\errore\pallino vuoto a fianco della label steptype (servirà per capire se l'ultima esecuzione dello step è andata a buon fine)
-- [x] aggiungere bottone check\errore\pallino vuoto a fianco della descrizione dell'oprazione (servirà per capire se l'ultima esecuzione dell'operazione è andata a buon fine)
+- [x] aggiungere bottone check\errore\pallino vuoto a fianco della label steptype (servirÃ  per capire se l'ultima esecuzione dello step Ã¨ andata a buon fine)
+- [x] aggiungere bottone check\errore\pallino vuoto a fianco della descrizione dell'oprazione (servirÃ  per capire se l'ultima esecuzione dell'operazione Ã¨ andata a buon fine)
 - [x] aggiungere pulsante per esecuzione singolo step alla maschera dello scenarioEditor nel container dello step a finaco ai bottoni add\import operation
 - [x] alla pressione del botton di avvio mostrare dialog che richiede se eseguire anche i precedenti o solo il singolo ( in inglese )
 - [x] aggiungere api per esecuzione di step scenario ( asincrona ) con aggiornamenti al FE
@@ -173,5 +173,57 @@
 - [x] dialog add step/operation lato sinistro: aggiunto `Delete` sotto `Add`
 - [x] Scenario Editor renderizza dettagli da `scenario_steps` / `step_operations`
 - [x] Runtime esecuzione step/operation basato su snapshot scenario (senza lookup da anagrafica)
+
+## QSM-028 - Scenario executions
+- Ã¨ necessario persistere a db le esecuzioni degli scenari e vederli sia in scenario editor che in home page
+- l'esecuzione mostra righe di testata con il nome dello scenario e l'esito globale e il datetime
+- la riga di testata Ã¨ ampliabile con il dettaglio degli step con esito e datetime
+- gli step contengono le operazioni con esito e datetime
+- [x] creare la struttura a db `scenario_executions`, `scenario_step_executions`, `step_operation_executions`
+- [x] modificare l'elaborazione degli scenari\step\operatzioni in modo che registrino le esecuzioni
+- [x] Aggiungere una home page
+    - [x] Aggiungere sezione `Test scenario executions` in cui mettere solo gli scenari exectution e bottone che naviga allo scenarioEditor relativo
+- [x] Modifiche alla scenario editor
+    - [x] Dividere lo sceario editor in due parti: la parte di sinistra con gli scenari executions, la parte di destra come adesso.
+    - [x] Gli scenari hanno ordine dal piÃ¹ recente al piÃ¹ vecchio
+    - [x] Aggiungere `bottone di cancellazione` e `bottone icona cerca`
+    - [x] Alla selezione del `bottone cerca`, gli indicatori dello scenario: step, operation si aggiornano con i risultati dell'esecuzione. 
+    - [x] in basso ad ogni step\operazione mettere (eventualmenten) il messaggio di errore come feedback.
+    - [x] quando viene lanciato uno scenario\step\step gli indicatori e i messaggi di feedback si svuotano\puliscono  
+
+## QSM-029 - JsonArray Assert operations 
+- [ ] aggiungere una nuova operation di tipo assert. Essa ha due field generali.
+    - Error message
+    - evaluetedObjectType: `Json\Data`, `Table`, etc ... (ampliabile)
+- [ ] per il tipo `Json\Data` Ã¨ possibile configurare:
+    - [ ] `NotEmpty` <-- verifica che i dati non siano vuoti
+    - [ ] `Empty` <-- verifica che i dati siano vuoti
+    - [ ] `SchemaValidation` <-- verifica che i dati in formato json rispettino uno schema
+        - impostare lo schema per la verifica
+    - [ ] `JsonArrayEquals` <-- verifica che i dati siano uguali al json array impostato
+        - impostare il json array expected
+- [ ] introdurre una family `assert` con un evalutor orchestratore\composite + strategy interne simile a quanto fatto per step_executor (NotEmptyData, EmptyData, ecc.).
+- [ ] modificare il dialog delle operazioni per integrare questa funzionalitÃ 
+
+## QSM-030 - Table Assert Operations (prima parte)
+- [ ] Aggiungere all'evalutor degli assert anche il tipo Table
+- [ ] per il tipo Table Ã¨ possibile configurare:
+    - [ ] `Exists` <-- verifica che una tabella esista a db
+        - impostare connessione e nome tabella
+    - [ ] `Count` <-- verifica che una tabella abbia il numero di righe configurato
+        - impostare connessione e nome tabella
+        - impostare l'expectedCount 
+
+## QSM-031 - Table Assert Operations (seconda parte)
+    - [ ] tablesEquals <-- verifica che due tabelle abbiano lo stesso contenuto. Recuper
+        - impostare colonne da esaminare (comparisonColumn)
+        - impostare come expected alternativamente
+            - dataset o connessione e nome tabella
+            - associazione campi select:  originalColumn -> comparisonColumn, etc...
+            - campi order by
+        - impostare come actual
+            - connessione e nome tabella
+            - associazione campi select:  originalColumn -> comparisonColumn, etc...
+            - campi order by
 
 

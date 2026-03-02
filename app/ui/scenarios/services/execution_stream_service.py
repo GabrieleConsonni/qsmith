@@ -7,7 +7,6 @@ from api_client import API_BASE_URL
 
 _LOCK = threading.RLock()
 _EXECUTION_STATES: dict[str, dict] = {}
-_LATEST_EXECUTION_BY_SCENARIO: dict[str, str] = {}
 _LISTENER_THREADS: dict[str, threading.Thread] = {}
 
 
@@ -20,7 +19,9 @@ def _new_execution_state(execution_id: str, scenario_id: str) -> dict:
         "executed_steps": 0,
         "total_steps": 0,
         "step_status": {},
+        "step_error": {},
         "operation_status": {},
+        "operation_error": {},
         "events": [],
         "error": None,
     }
@@ -52,6 +53,10 @@ def _apply_event(execution_id: str, event_name: str, data: dict):
             state["status"] = "running"
             state["executed_steps"] = 0
             state["total_steps"] = 0
+            state["step_status"] = {}
+            state["step_error"] = {}
+            state["operation_status"] = {}
+            state["operation_error"] = {}
             return
 
         if event_name == "execution_progress":
@@ -70,6 +75,10 @@ def _apply_event(execution_id: str, event_name: str, data: dict):
             status = str(data.get("status") or "").strip() or "idle"
             if scenario_step_id:
                 state["step_status"][scenario_step_id] = status
+                if status == "error":
+                    state["step_error"][scenario_step_id] = str(data.get("error") or "")
+                else:
+                    state["step_error"].pop(scenario_step_id, None)
             return
 
         if event_name == "operation_finished":
@@ -78,6 +87,11 @@ def _apply_event(execution_id: str, event_name: str, data: dict):
             status = str(data.get("status") or "").strip() or "idle"
             if scenario_step_id and operation_id:
                 state["operation_status"][_operation_key(scenario_step_id, operation_id)] = status
+                operation_key = _operation_key(scenario_step_id, operation_id)
+                if status == "error":
+                    state["operation_error"][operation_key] = str(data.get("error") or "")
+                else:
+                    state["operation_error"].pop(operation_key, None)
             return
 
         if event_name == "execution_finished":
@@ -142,7 +156,6 @@ def register_execution_listener(execution_id: str, scenario_id: str):
         return
 
     with _LOCK:
-        _LATEST_EXECUTION_BY_SCENARIO[scenario_id_value] = execution_id_value
         if execution_id_value not in _EXECUTION_STATES:
             _EXECUTION_STATES[execution_id_value] = _new_execution_state(
                 execution_id=execution_id_value,
@@ -160,14 +173,6 @@ def register_execution_listener(execution_id: str, scenario_id: str):
     listener_thread.start()
 
 
-def get_latest_execution_id_for_scenario(scenario_id: str) -> str:
-    scenario_id_value = str(scenario_id or "").strip()
-    if not scenario_id_value:
-        return ""
-    with _LOCK:
-        return str(_LATEST_EXECUTION_BY_SCENARIO.get(scenario_id_value) or "")
-
-
 def get_execution_state(execution_id: str) -> dict:
     execution_id_value = str(execution_id or "").strip()
     if not execution_id_value:
@@ -179,13 +184,8 @@ def get_execution_state(execution_id: str) -> dict:
         return {
             **state,
             "step_status": dict(state.get("step_status") or {}),
+            "step_error": dict(state.get("step_error") or {}),
             "operation_status": dict(state.get("operation_status") or {}),
+            "operation_error": dict(state.get("operation_error") or {}),
             "events": list(state.get("events") or []),
         }
-
-
-def get_latest_execution_state_for_scenario(scenario_id: str) -> dict:
-    execution_id = get_latest_execution_id_for_scenario(scenario_id)
-    if not execution_id:
-        return {}
-    return get_execution_state(execution_id)

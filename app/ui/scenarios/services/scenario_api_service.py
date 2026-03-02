@@ -142,3 +142,17 @@ def execute_scenario_step_by_id(
         f"/elaborations/scenario/{scenario_id}/step/{scenario_step_id}/execute",
         payload,
     )
+
+
+def get_scenario_executions(
+    scenario_id: str | None = None,
+    limit: int = 50,
+) -> list[dict]:
+    limit_value = max(int(limit or 50), 1)
+    scenario_id_value = str(scenario_id or "").strip()
+    query_parts = [f"limit={limit_value}"]
+    if scenario_id_value:
+        query_parts.append(f"scenario_id={quote_plus(scenario_id_value)}")
+    query_string = "&".join(query_parts)
+    result = api_get(f"/elaborations/scenario-execution?{query_string}")
+    return result if isinstance(result, list) else []

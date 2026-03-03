@@ -156,3 +156,8 @@ def get_scenario_executions(
     query_string = "&".join(query_parts)
     result = api_get(f"/elaborations/scenario-execution?{query_string}")
     return result if isinstance(result, list) else []
+
+
+def delete_scenario_execution_by_id(execution_id: str) -> dict:
+    execution_id_value = str(execution_id or "").strip()
+    return api_delete(f"/elaborations/scenario-execution/{execution_id_value}")

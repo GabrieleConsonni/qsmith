@@ -191,7 +191,14 @@
     - [x] in basso ad ogni step\operazione mettere (eventualmenten) il messaggio di errore come feedback.
     - [x] quando viene lanciato uno scenario\step\step gli indicatori e i messaggi di feedback si svuotano\puliscono  
 
-## QSM-029 - JsonArray Assert operations 
+
+## QSM-029 -Modifiche alla pagina degli scenari 
+- [x] raggruppare i due bottoni modifica e delete dentro uno unico che apre dialog con possibilità di cancellare scenario e modificare la descrizione
+- [x] togliere pulsante di avvio esecuzione scenario
+- [x] all'aggiunta di un nuovo scenario mostrare dialog per modifica code e descrizione. al salvataggio apre lo scenario editor
+
+
+## QSM-030 - JsonArray Assert operations 
 - [ ] aggiungere una nuova operation di tipo assert. Essa ha due field generali.
     - Error message
     - evaluetedObjectType: `Json\Data`, `Table`, etc ... (ampliabile)
@@ -200,10 +207,15 @@
     - [ ] `Empty` <-- verifica che i dati siano vuoti
     - [ ] `SchemaValidation` <-- verifica che i dati in formato json rispettino uno schema
         - impostare lo schema per la verifica
+    - [ ] `Contains` <-- verifica che i dati siano contenuti nel json array impostato
+        - impostare il json array expected
+        - impostare un array di keys per fare il confronto
     - [ ] `JsonArrayEquals` <-- verifica che i dati siano uguali al json array impostato
         - impostare il json array expected
 - [ ] introdurre una family `assert` con un evalutor orchestratore\composite + strategy interne simile a quanto fatto per step_executor (NotEmptyData, EmptyData, ecc.).
 - [ ] modificare il dialog delle operazioni per integrare questa funzionalitÃ 
+- [ ] integrare i test esistenti
+
 
 ## QSM-030 - Table Assert Operations (prima parte)
 - [ ] Aggiungere all'evalutor degli assert anche il tipo Table
@@ -215,15 +227,26 @@
         - impostare l'expectedCount 
 
 ## QSM-031 - Table Assert Operations (seconda parte)
-    - [ ] tablesEquals <-- verifica che due tabelle abbiano lo stesso contenuto. Recuper
-        - impostare colonne da esaminare (comparisonColumn)
-        - impostare come expected alternativamente
-            - dataset o connessione e nome tabella
-            - associazione campi select:  originalColumn -> comparisonColumn, etc...
-            - campi order by
-        - impostare come actual
-            - connessione e nome tabella
-            - associazione campi select:  originalColumn -> comparisonColumn, etc...
-            - campi order by
+- [ ] aggiungere all'evaluator degli assert table
+    - [ ] contains <-- verifica che i dati siano contenuti nella tabella
+        - impostare connessione e nome tabella expected
+        - impostare il mapping data keys con le colonne della tabella 
+    - [ ] equals <-- verifica che due tabelle abbiano lo stesso contenuto.
+        - impostare connessione 
+        - nome tabella expected
+        - nome tabella actual
 
 
+## QSM-029 - Short Actions
+- [ ] aggiungere una sezione in home, sopra i `Test scenario executions` 
+- [ ] Mettere i seguenti bottoni:
+     a. Configura connessione broker
+     b. Configura connessione a db
+     c. Aggiungi json array
+     d. Aggiungi dataset
+     e. Crea scenario di test 
+- [ ] renderizzarli in questo modo
+    [vuoto | e | a | b | vuoto]
+    [vuoto | c | d | vuoto] 
+    Test scenario Execution
+    divider

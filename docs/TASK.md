@@ -217,7 +217,46 @@
 - [x] integrare i test esistenti
 
 
-## QSM-031 - Table Assert Operations (prima parte)
+## QSM-031 - Mock servers - configurazione
+I mock server sono dei server attivabili su qsmith per eseguire test in modo asincrono.
+    - ogni server può avere:
+        - code e desc
+        - endpoint
+        - più api configurabili 
+        - più code su cui rimanere in ascolto
+    - le api possono essere configurate come in postman:
+        - tipo di metodo GET,PUT, etc..
+        - url
+        - params
+        - headers
+        - body
+    - le code si riferiscono alle code esistenti su qsmith
+    - ad ogni coda\api associata ad un server possono essere associate le operazioni di qsmith
+    - aggiungere un'altra operazione `run scenario`
+        - impostare lo scenario da eseguire
+    - una volta creato un mock server è possibile attivarlo\spengerlo
+    - l'attivazione di un mock server mette in ascolto le api e le code
+    - all'invocazione di api\coda partono le operazioni ad esse associate
+- [x] Aggiungere una pagina `Mock Servers` in configurations
+- [x] Aggiungere una sezione `Mock Servers` nel sidebar e mettervi tutti i servers configurati
+- [x] Aggiungere relativa anagrafica a db per persistenza dei mock server
+    - mock_servers: code, desc json configurazione
+    - mock_server_apis: code, desc e json della configurazione
+    - ms_api_operations: prendere a riferimento step_operations
+    - mock_server_queues: code, desc e id della queue
+    - ms_queue_operations: prendere a riferimento step_operations
+
+## QSM- - Refactor\rename Step read from db
+- [ ] rinominare lo step DATA_FROM_DB con DATA_FROM_DATASET
+    - il comportamento e ila configurazione sono gli stessi
+- [ ] aggiungere uno step DATA_FROM_DB per la lettura di una tabella interna
+    - configurare nome tabella
+
+## QSM- - Refactor\rename Step read from db
+- [ ] aggiungere uno step per la lettura di una tabella interna
+    - configurare nome tabella
+
+## QSM- - Table Assert Operations (prima parte)
 - [ ] Aggiungere all'evalutor degli assert anche il tipo Table
 - [ ] per il tipo Table Ã¨ possibile configurare:
     - [ ] `Exists` <-- verifica che una tabella esista a db
@@ -227,7 +266,7 @@
         - impostare l'expectedCount 
 
 
-## QSM-032 - Table Assert Operations (seconda parte)
+## QSM- - Table Assert Operations (seconda parte)
 - [ ] aggiungere all'evaluator degli assert table
     - [ ] `Contains` <-- verifica che i dati siano contenuti nella tabella
         - impostare connessione e nome tabella expected
@@ -237,21 +276,20 @@
         - nome tabella expected
         - nome tabella actual
 
-## QSM-033 - Mock servers
-- [ ] Aggiungere una pagina e relativa anagrafica per i mock server
-
 
 ## QSM- - Short Actions
 - [ ] aggiungere una sezione in home, sopra i `Test scenario executions` 
 - [ ] Mettere i seguenti bottoni:
      a. Configura connessione broker
      b. Configura connessione a db
-     c. Aggiungi json array
-     d. Aggiungi dataset
-     e. Crea scenario di test 
+     c. Configura mock server
+     d. Aggiungi json array
+     e. Aggiungi dataset
+     f. Crea scenario di test 
 - [ ] renderizzarli in questo modo
     [vuoto | e | a | b | vuoto]
     [vuoto | c | d | vuoto] 
+    [vuoto | f | vuoto]
     Test scenario Execution
     divider
 

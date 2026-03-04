@@ -27,6 +27,19 @@ class SaveToExternalDBConfigurationOperationDto(ConfigurationOperationDto):
     table_name: str | None = None
 
 
+class RunScenarioConfigurationOperationDto(ConfigurationOperationDto):
+    operationType: str = OperationType.RUN_SCENARIO.value
+    scenario_id: str
+
+    @model_validator(mode="after")
+    def validate_run_scenario_configuration(self):
+        scenario_id = str(self.scenario_id or "").strip()
+        if not scenario_id:
+            raise ValueError("scenario_id is required for run-scenario operation.")
+        self.scenario_id = scenario_id
+        return self
+
+
 class AssertEvaluatedObjectType(str, Enum):
     JSON_DATA = "json-data"
 
@@ -126,6 +139,7 @@ ConfigurationOperationTypes = (
     PublishConfigurationOperationDto
     | SaveInternalDBConfigurationOperationDto
     | SaveToExternalDBConfigurationOperationDto
+    | RunScenarioConfigurationOperationDto
     | AssertConfigurationOperationDto
 )
 
@@ -152,6 +166,10 @@ def convert_to_config_operation_type(data: dict):
                 "datasetId",
             ),
             table_name=_first_non_empty(data, "table_name", "tableName")
+        )
+    if operation_type == OperationType.RUN_SCENARIO.value:
+        return RunScenarioConfigurationOperationDto(
+            scenario_id=_first_non_empty(data, "scenario_id", "scenarioId"),
         )
     if operation_type == OperationType.ASSERT.value:
         return AssertConfigurationOperationDto(

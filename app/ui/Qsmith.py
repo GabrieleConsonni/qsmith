@@ -1,6 +1,7 @@
 import streamlit as st
 
 from brokers.services.data_loader_service import load_brokers
+from mock_servers.services.data_loader_service import load_mock_servers
 
 st.set_page_config(page_title="Qsmith", layout="wide", page_icon=":material/construction:")
 
@@ -10,6 +11,7 @@ database_connections_page = st.Page(
     "pages/DatabaseConnections.py",
     title="Database Connections",
 )
+mock_servers_page = st.Page("pages/MockServers.py", title="Mock Servers")
 queues_page = st.Page("pages/Queues.py", title="Queues", url_path="queues")
 queue_details = st.Page("pages/QueueDetails.py", title="Queue details")
 json_array = st.Page("pages/JsonArray.py", title="Json Array")
@@ -30,7 +32,9 @@ def _sidebar_nav_button(label: str, page_path: str, key: str, icon: str = ":mate
             st.switch_page(page_path)
 
 load_brokers()
+load_mock_servers()
 brokers = st.session_state.get("brokers", [])
+mock_servers = st.session_state.get("mock_servers", [])
 
 st.sidebar.title("Qsmith")
 _sidebar_nav_button(
@@ -52,6 +56,12 @@ _sidebar_nav_button(
     key="nav_database_connections_page",
     icon=":material/database:",
 )
+_sidebar_nav_button(
+    label="Mock servers",
+    page_path="pages/MockServers.py",
+    key="nav_mock_servers_page",
+    icon=":material/deployed_code:",
+)
 
 st.sidebar.subheader("SQS brokers")
 for broker in brokers:
@@ -69,6 +79,24 @@ for broker in brokers:
                 st.session_state["queues_filter_broker_id"] = broker_id
                 st.session_state["nav_broker_id"] = broker_id
                 st.switch_page("pages/Queues.py")
+
+st.sidebar.subheader("Mock Servers")
+for server in mock_servers if isinstance(mock_servers, list) else []:
+    server_id = str(server.get("id") or "").strip()
+    endpoint = str(server.get("endpoint") or "").strip()
+    if not server_id:
+        continue
+    label = str(server.get("description") or server.get("code") or endpoint or server_id)
+    icon = ":material/play_circle:" if bool(server.get("is_active")) else ":material/pause_circle:"
+    _, label_col = st.sidebar.columns([1, 10], gap="small", vertical_alignment="center")
+    with label_col:
+        if st.button(
+            label,
+            key=f"open_mock_server_sidebar_{server_id}",
+            icon=icon,
+            type="tertiary",
+        ):
+            st.switch_page("pages/MockServers.py")
             
 st.sidebar.subheader("Datasources")
 _sidebar_nav_button(
@@ -98,7 +126,7 @@ _sidebar_nav_button(label="Tools", page_path="pages/Tools.py", key="nav_tools_pa
 pg = st.navigation(
     {
         "Home": [home],
-        "Configurations": [brokers_page, database_connections_page],
+        "Configurations": [brokers_page, database_connections_page, mock_servers_page],
         "Brokers & Queues": [queues_page, queue_details],
         "Data Sources": [json_array, database_datasources],
         "Scenarios": [scenarios, scenario_editor],

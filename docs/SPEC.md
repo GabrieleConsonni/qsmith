@@ -11,6 +11,7 @@ L'applicazione e composta da:
 La soluzione copre:
 - configurazione broker SQS (ElasticMQ/Amazon)
 - configurazione connessioni database (Postgres/Oracle/MSSQL)
+- configurazione mock server API/queue con trigger asincroni
 - gestione queue per broker
 - operazioni runtime su queue (test connessione, send, receive, ack)
 - gestione datasource 
@@ -27,6 +28,7 @@ Pagine disponibili:
 - `Configurations` 
     - `Brokers`
     - `Database Connections`
+    - `Mock Servers`
 - `SQS Brokers` 
     - `Queues`
         - `Queue details`
@@ -133,6 +135,20 @@ Obiettivi:
 - filtrare log per livello, tipo, subject, messaggio e intervallo data
 - pulire log vecchi per numero giorni
 
+### 4.10 Mock Servers
+Obiettivi:
+- creare/modificare/cancellare mock server con endpoint dedicato
+- configurare API mock (`method`, `path`, params/headers/body, response)
+- configurare queue binding verso queue esistenti
+- associare operazioni a trigger API e queue (incluso `run-scenario`)
+- attivare/disattivare runtime mock server
+
+Comportamento runtime:
+- route runtime sotto prefisso fisso `/mock/{server_endpoint}/...`
+- risposta API mock immediata, operazioni eseguite in background
+- listener queue avviati solo quando il server e attivo
+- su trigger queue viene eseguito `ACK` sempre (anche in caso errore operazioni)
+
 ## 5. API Funzionali Principali
 - `/broker/connection` CRUD broker connection
 - `/broker/{broker_id}/queue` CRUD queue e operazioni queue/messages
@@ -142,6 +158,8 @@ Obiettivi:
 - `/elaborations/scenario` elenco/gestione scenari ed esecuzione
 - `/elaborations/scenario/{scenario_id}/step/{scenario_step_id}/execute` esecuzione asincrona del singolo scenario-step
 - `/elaborations/execution/{execution_id}/events` stream SSE eventi runtime esecuzione
+- `/mock-server` CRUD configurazione mock server + activate/deactivate
+- `/mock/{server_endpoint}/{path}` runtime mock API dispatcher
 - `/logs/` elenco log
 - `/logs/{days}` pulizia log
 

@@ -17,6 +17,7 @@ from app.elaborations.api.operations_api import insert_operation_api
 from app.elaborations.models.dtos.configuration_operation_dto import (
     AssertConfigurationOperationDto,
     PublishConfigurationOperationDto,
+    RunScenarioConfigurationOperationDto,
     SaveInternalDBConfigurationOperationDto,
     SaveToExternalDBConfigurationOperationDto,
 )
@@ -36,6 +37,9 @@ from app.elaborations.services.operations.save_to_external_db_operation_executor
 )
 from app.elaborations.services.operations.save_to_internal_db_operation_executor import (
     SaveInternalDbOperationExecutor,
+)
+from app.elaborations.services.operations.run_scenario_operation_executor import (
+    RunScenarioOperationExecutor,
 )
 from app.data_sources.models.database_connection_config_types import (
     convert_database_connection_config,
@@ -285,6 +289,36 @@ def test_save_external_db_operation_executor_sqlserver(alembic_container, extern
 
     assert inserted_rows == 2
     assert result.result == [{"message": f"Created 2 rows in {table_name} table"}]
+
+
+def test_run_scenario_operation_executor_starts_execution(monkeypatch, alembic_container):
+    import elaborations.services.scenarios.scenario_executor_service as scenario_service_module
+
+    captured: dict[str, str] = {}
+
+    def _fake_execute_scenario_by_id(scenario_id: str):
+        captured["scenario_id"] = scenario_id
+        return "exec-run-scenario-1"
+
+    monkeypatch.setattr(
+        scenario_service_module,
+        "execute_scenario_by_id",
+        _fake_execute_scenario_by_id,
+    )
+
+    cfg = RunScenarioConfigurationOperationDto(scenario_id="scenario-123")
+
+    with managed_session() as session:
+        result = RunScenarioOperationExecutor().execute(
+            session,
+            "op-run-scenario",
+            cfg,
+            [{"id": 1}],
+        )
+
+    assert captured["scenario_id"] == "scenario-123"
+    assert result.result[0]["scenario_id"] == "scenario-123"
+    assert result.result[0]["execution_id"] == "exec-run-scenario-1"
 
 
 def test_save_external_db_operation_executor_oracle(alembic_container, external_oracle_container):

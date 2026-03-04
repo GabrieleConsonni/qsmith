@@ -25,6 +25,7 @@ Qsmith e un queue manager composto da backend FastAPI e UI Streamlit. Gestisce b
   - carica `.env`
   - esegue migrazioni Alembic all avvio
   - inizializza ElasticMQ creando code per i broker `elasticmq`
+  - bootstrap runtime dei mock server attivi
   - registra router API e handler di eccezioni
 
 **UI Streamlit**
@@ -35,6 +36,7 @@ Qsmith e un queue manager composto da backend FastAPI e UI Streamlit. Gestisce b
   - `app/ui/pages/DAtabaseDatasources.py`
   - `app/ui/pages/JsonArray.py`
   - `app/ui/pages/Logs.py`
+  - `app/ui/pages/MockServers.py`
   - `app/ui/pages/QueueDetails.py`
   - `app/ui/pages/Queues.py`
   - `app/ui/pages/ScenarioEditor.py`
@@ -47,6 +49,8 @@ Qsmith e un queue manager composto da backend FastAPI e UI Streamlit. Gestisce b
 - `/database` (database connections, test, objects metadata, preview)
 - `/elaborations` (scenari, step, operations)
   - include anche stream runtime SSE: `/elaborations/execution/{execution_id}/events`
+- `/mock-server` (CRUD configurazione mock server + activate/deactivate)
+- `/mock/{server_endpoint}/...` (runtime mock API trigger)
 - `/logs`
 - `/json_utils`
 
@@ -58,6 +62,11 @@ Qsmith e un queue manager composto da backend FastAPI e UI Streamlit. Gestisce b
 - `scenarios` elenco scenari
 - `scenario_steps` snapshot degli step usati nello scenario (code/description/type/configuration_json + ordine + on_failure)
 - `step_operations` snapshot delle operazioni usate nel singolo scenario_step (code/description/type/configuration_json + ordine)
+- `mock_servers` configurazioni server mock (endpoint + stato attivo)
+- `mock_server_apis` endpoint API mock configurati per server
+- `ms_api_operations` snapshot operazioni associate a ogni API mock
+- `mock_server_queues` binding queue configurati per server
+- `ms_queue_operations` snapshot operazioni associate a ogni queue binding mock
 - `logs` eventi applicativi
 
 **Configurazione Ambiente**

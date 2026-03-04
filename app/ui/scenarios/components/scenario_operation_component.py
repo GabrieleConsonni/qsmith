@@ -31,11 +31,13 @@ OPERATION_TYPE_PUBLISH = "publish"
 OPERATION_TYPE_SAVE_INTERNAL_DB = "save-internal-db"
 OPERATION_TYPE_SAVE_EXTERNAL_DB = "save-external-db"
 OPERATION_TYPE_ASSERT = "assert"
+OPERATION_TYPE_RUN_SCENARIO = "run-scenario"
 OPERATION_TYPE_OPTIONS = [
     OPERATION_TYPE_PUBLISH,
     OPERATION_TYPE_SAVE_INTERNAL_DB,
     OPERATION_TYPE_SAVE_EXTERNAL_DB,
     OPERATION_TYPE_ASSERT,
+    OPERATION_TYPE_RUN_SCENARIO,
 ]
 ASSERT_OBJECT_TYPE_JSON_DATA = "json-data"
 ASSERT_OBJECT_TYPE_OPTIONS = [ASSERT_OBJECT_TYPE_JSON_DATA]
@@ -88,6 +90,7 @@ def _operation_type_label(operation_type: str) -> str:
         OPERATION_TYPE_SAVE_INTERNAL_DB: "save-internal-db",
         OPERATION_TYPE_SAVE_EXTERNAL_DB: "save-external-db",
         OPERATION_TYPE_ASSERT: "assert",
+        OPERATION_TYPE_RUN_SCENARIO: "run-scenario",
     }
     return labels.get(operation_type, operation_type or "-")
 
@@ -353,6 +356,14 @@ def _render_operation_details(operation_item: dict):
             )
             st.markdown("**Json schema**")
             st.code(_pretty_json(schema), language="json")
+        return
+
+    if operation_type == OPERATION_TYPE_RUN_SCENARIO:
+        scenario_id = str(
+            _resolve_configuration_value(configuration_json, "scenario_id", "scenarioId")
+            or "-"
+        ).strip()
+        st.write(f"Scenario id: {scenario_id or '-'}")
         return
 
     st.code(_pretty_json(configuration_json), language="json")
@@ -636,6 +647,19 @@ def build_operation_creation_payload(dialog_nonce: int) -> tuple[dict | None, st
                 return None, "Il campo Compare keys e' obbligatorio."
             cfg["expected_json_array_id"] = expected_json_array_id
             cfg["compare_keys"] = compare_keys
+    elif operation_type == OPERATION_TYPE_RUN_SCENARIO:
+        scenario_id = str(
+            st.session_state.get(
+                f"scenario_add_operation_run_scenario_id_{dialog_nonce}"
+            )
+            or ""
+        ).strip()
+        if not scenario_id:
+            return None, "Il campo Scenario id e' obbligatorio."
+        cfg = {
+            "operationType": OPERATION_TYPE_RUN_SCENARIO,
+            "scenario_id": scenario_id,
+        }
     else:
         return None, f"Operation type non supportato: {operation_type}"
 
@@ -1014,6 +1038,12 @@ def _render_new_operation_form_panel(
                 selected_expected = json_array_by_id.get(selected_expected_id, {})
                 st.markdown("**Expected json-array preview**")
                 st.json(selected_expected.get("payload") or [], expanded=False)
+    elif operation_type == OPERATION_TYPE_RUN_SCENARIO:
+        st.text_input(
+            "Scenario id",
+            key=f"scenario_add_operation_run_scenario_id_{dialog_nonce}",
+            placeholder="scenario uuid",
+        )
 
     create_cols = st.columns([1, 1], gap="small")
     with create_cols[0]:

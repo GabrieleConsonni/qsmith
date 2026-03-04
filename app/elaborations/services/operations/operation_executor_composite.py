@@ -9,6 +9,7 @@ from elaborations.models.dtos.configuration_operation_dto import (
     ConfigurationOperationDto,
     ConfigurationOperationTypes,
     PublishConfigurationOperationDto,
+    RunScenarioConfigurationOperationDto,
     SaveInternalDBConfigurationOperationDto,
     SaveToExternalDBConfigurationOperationDto,
     convert_to_config_operation_type,
@@ -20,6 +21,9 @@ from elaborations.services.alembic.step_operation_execution_service import (
 from elaborations.services.operations.operation_executor import ExecutionResultDto, OperationExecutor
 from elaborations.services.operations.assert_operation_executor import AssertOperationExecutor
 from elaborations.services.operations.publish_to_queue_operation_executor import PublishToQueueOperationExecutor
+from elaborations.services.operations.run_scenario_operation_executor import (
+    RunScenarioOperationExecutor,
+)
 from elaborations.services.operations.save_to_external_db_operation_executor import SaveToExternalDbOperationExecutor
 from elaborations.services.operations.save_to_internal_db_operation_executor import SaveInternalDbOperationExecutor
 from elaborations.services.scenarios.execution_event_bus import (
@@ -41,6 +45,7 @@ _EXECUTOR_MAPPING: dict[type[ConfigurationOperationDto], type[OperationExecutor]
     PublishConfigurationOperationDto: PublishToQueueOperationExecutor,
     SaveInternalDBConfigurationOperationDto: SaveInternalDbOperationExecutor,
     SaveToExternalDBConfigurationOperationDto: SaveToExternalDbOperationExecutor,
+    RunScenarioConfigurationOperationDto: RunScenarioOperationExecutor,
     AssertConfigurationOperationDto: AssertOperationExecutor,
 }
 

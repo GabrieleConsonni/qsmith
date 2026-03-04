@@ -5,3 +5,4 @@ class OperationType(str,Enum):
     SAVE_INTERNAL_DB = "save-internal-db"
     SAVE_EXTERNAL_DB = "save-external-db"
     ASSERT = "assert"
+    RUN_SCENARIO = "run-scenario"

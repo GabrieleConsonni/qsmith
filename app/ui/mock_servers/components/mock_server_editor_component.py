@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 from uuid import uuid4
 
 import streamlit as st
@@ -730,6 +731,86 @@ def _edit_api_dialog(api_entry: dict, api_idx: int):
             _persist_draft(should_rerun=True)
 
 
+@st.dialog("Copy API", width="medium")
+def _copy_api_dialog(
+    source_api: dict,
+    copied_cfg: dict,
+):
+    draft = st.session_state.get(MOCK_SERVER_EDITOR_DRAFT_KEY)
+    if not isinstance(draft, dict):
+        st.error("Mock server non disponibile.")
+        return
+
+    source_ui_key = str(source_api.get("_ui_key") or _new_ui_key())
+    source_code = str(source_api.get("code") or "").strip()
+    source_description = str(source_api.get("description") or "")
+    default_code = f"{source_code}-copy" if source_code else "api-copy"
+    default_description = (
+        f"{source_description} copy"
+        if source_description
+        else default_code
+    )
+
+    code_key = f"mock_server_copy_api_code_{source_ui_key}"
+    description_key = f"mock_server_copy_api_desc_{source_ui_key}"
+    if code_key not in st.session_state:
+        st.session_state[code_key] = default_code
+    if description_key not in st.session_state:
+        st.session_state[description_key] = default_description
+
+    st.text_input("Code", key=code_key)
+    st.text_input("Description", key=description_key)
+
+    if st.button(
+        "Copy API",
+        key=f"mock_server_copy_api_confirm_{source_ui_key}",
+        icon=":material/content_copy:",
+        use_container_width=True,
+    ):
+        new_code = str(st.session_state.get(code_key) or "").strip()
+        new_description = str(st.session_state.get(description_key) or "")
+        if not new_code:
+            st.error("Il campo Code e' obbligatorio.")
+            return
+
+        source_operations = source_api.get("operations") or []
+        copied_operations: list[dict] = []
+        for op_idx, operation in enumerate(source_operations):
+            if not isinstance(operation, dict):
+                continue
+            copied_operations.append(
+                {
+                    "id": None,
+                    "order": _safe_int(operation.get("order"), op_idx + 1),
+                    "code": str(operation.get("code") or ""),
+                    "description": str(operation.get("description") or ""),
+                    "operation_type": str(operation.get("operation_type") or ""),
+                    "configuration_json": deepcopy(
+                        operation.get("configuration_json")
+                        if isinstance(operation.get("configuration_json"), dict)
+                        else {}
+                    ),
+                    "_ui_key": _new_ui_key(),
+                }
+            )
+
+        apis = draft.setdefault("apis", [])
+        apis.append(
+            {
+                "id": None,
+                "order": len(apis) + 1,
+                "code": new_code,
+                "description": new_description,
+                "method": str(copied_cfg.get("method") or "GET"),
+                "path": _normalize_path(copied_cfg.get("path")),
+                "configuration_json": deepcopy(copied_cfg),
+                "operations": copied_operations,
+                "_ui_key": _new_ui_key(),
+            }
+        )
+        _persist_draft(should_rerun=True)
+
+
 @st.dialog("Add Queue", width="medium")
 def _add_queue_dialog():
     draft = st.session_state.get(MOCK_SERVER_EDITOR_DRAFT_KEY)
@@ -962,7 +1043,7 @@ def _render_api_editor(api_entry: dict, api_idx: int, nonce: int):
                     height=120,
                 )
 
-            save_cols = st.columns([6, 2], gap="small", vertical_alignment="center")
+            save_cols = st.columns([4, 2, 2], gap="small", vertical_alignment="center")
             with save_cols[1]:
                 if st.button(
                     "Save API",
@@ -1012,6 +1093,53 @@ def _render_api_editor(api_entry: dict, api_idx: int, nonce: int):
                         ),
                     }
                     _persist_draft(should_rerun=True)
+            with save_cols[2]:
+                if st.button(
+                    "Copy",
+                    key=f"mock_server_copy_api_{api_ui_key}_{nonce}",
+                    icon=":material/content_copy:",
+                    use_container_width=True,
+                ):
+                    params_value, params_error = _rows_to_dict(params_rows, "Params")
+                    if params_error:
+                        st.error(params_error)
+                        return
+                    auth_value, auth_error = _rows_to_dict(auth_rows, "Authorization")
+                    if auth_error:
+                        st.error(auth_error)
+                        return
+                    headers_value, headers_error = _rows_to_dict(headers_rows, "Headers")
+                    if headers_error:
+                        st.error(headers_error)
+                        return
+                    response_headers_value, response_headers_error = _rows_to_dict(
+                        response_headers_rows,
+                        "Response headers",
+                    )
+                    if response_headers_error:
+                        st.error(response_headers_error)
+                        return
+
+                    current_cfg = (
+                        api_entry.get("configuration_json")
+                        if isinstance(api_entry.get("configuration_json"), dict)
+                        else {}
+                    )
+                    copied_cfg = {
+                        **current_cfg,
+                        "method": str(selected_method or "GET").upper(),
+                        "path": _normalize_path(selected_path),
+                        "params": params_value or {},
+                        "authorization": auth_value or {},
+                        "headers": headers_value or {},
+                        "body": _parse_json_body(st.session_state.get(body_key) or ""),
+                        "response_status": int(st.session_state.get(status_key) or 200),
+                        "response_headers": response_headers_value or {},
+                        "response_body": _parse_json_body(
+                            st.session_state.get(response_body_key) or ""
+                        ),
+                    }
+                    _copy_api_dialog(api_entry, copied_cfg)
 
             st.divider()
             st.markdown("**Operations**")

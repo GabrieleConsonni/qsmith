@@ -2,6 +2,7 @@ import streamlit as st
 
 from brokers.services.data_loader_service import load_brokers
 from mock_servers.services.data_loader_service import load_mock_servers
+from mock_servers.services.state_keys import SELECTED_MOCK_SERVER_ID_KEY
 
 st.set_page_config(page_title="Qsmith", layout="wide", page_icon=":material/construction:")
 
@@ -12,6 +13,7 @@ database_connections_page = st.Page(
     title="Database Connections",
 )
 mock_servers_page = st.Page("pages/MockServers.py", title="Mock Servers")
+mock_server_editor_page = st.Page("pages/MockServerEditor.py", title="Mock Server editor")
 queues_page = st.Page("pages/Queues.py", title="Queues", url_path="queues")
 queue_details = st.Page("pages/QueueDetails.py", title="Queue details")
 json_array = st.Page("pages/JsonArray.py", title="Json Array")
@@ -80,24 +82,6 @@ for broker in brokers:
                 st.session_state["nav_broker_id"] = broker_id
                 st.switch_page("pages/Queues.py")
 
-st.sidebar.subheader("Mock Servers")
-for server in mock_servers if isinstance(mock_servers, list) else []:
-    server_id = str(server.get("id") or "").strip()
-    endpoint = str(server.get("endpoint") or "").strip()
-    if not server_id:
-        continue
-    label = str(server.get("description") or server.get("code") or endpoint or server_id)
-    icon = ":material/play_circle:" if bool(server.get("is_active")) else ":material/pause_circle:"
-    _, label_col = st.sidebar.columns([1, 10], gap="small", vertical_alignment="center")
-    with label_col:
-        if st.button(
-            label,
-            key=f"open_mock_server_sidebar_{server_id}",
-            icon=icon,
-            type="tertiary",
-        ):
-            st.switch_page("pages/MockServers.py")
-            
 st.sidebar.subheader("Datasources")
 _sidebar_nav_button(
     label="Json Array",
@@ -118,6 +102,24 @@ _sidebar_nav_button(
     key="nav_scenarios_page",
     icon=":material/experiment:",
 )
+st.sidebar.subheader("Mock Servers")
+for server in mock_servers if isinstance(mock_servers, list) else []:
+    server_id = str(server.get("id") or "").strip()
+    endpoint = str(server.get("endpoint") or "").strip()
+    if not server_id:
+        continue
+    label = str(server.get("description") or server.get("code") or endpoint or server_id)
+    icon = ":material/play_circle:" if bool(server.get("is_active")) else ":material/pause_circle:"
+    _, label_col = st.sidebar.columns([1, 10], gap="small", vertical_alignment="center")
+    with label_col:
+        if st.button(
+            label,
+            key=f"open_mock_server_sidebar_{server_id}",
+            icon=icon,
+            type="tertiary",
+        ):
+            st.session_state[SELECTED_MOCK_SERVER_ID_KEY] = server_id
+            st.switch_page("pages/MockServerEditor.py")
 st.sidebar.subheader("Logs & Tools")
 _sidebar_nav_button(label="Logs", page_path="pages/Logs.py", key="nav_logs_page")
 _sidebar_nav_button(label="Tools", page_path="pages/Tools.py", key="nav_tools_page")
@@ -130,6 +132,7 @@ pg = st.navigation(
         "Brokers & Queues": [queues_page, queue_details],
         "Data Sources": [json_array, database_datasources],
         "Scenarios": [scenarios, scenario_editor],
+        "Mock Servers": [mock_server_editor_page],
         "Logs & Tools": [logs, tools]
     },
     position="hidden",

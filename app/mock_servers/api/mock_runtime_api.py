@@ -1,7 +1,7 @@
 import json
 
 from fastapi import APIRouter, BackgroundTasks, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from mock_servers.services.runtime.mock_runtime_dispatcher import (
     dispatch_mock_runtime_request,
@@ -10,6 +10,14 @@ from mock_servers.services.runtime.mock_runtime_dispatcher import (
 router = APIRouter()
 
 _RUNTIME_METHODS = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+_UNSAFE_RESPONSE_HEADERS = {
+    "content-length",
+    "transfer-encoding",
+    "connection",
+    "keep-alive",
+    "date",
+    "server",
+}
 
 
 def _query_params_as_dict(request: Request) -> dict[str, str]:
@@ -18,6 +26,48 @@ def _query_params_as_dict(request: Request) -> dict[str, str]:
         if key not in result:
             result[key] = value
     return result
+
+
+def _sanitize_response_headers(headers: dict | None) -> dict[str, str]:
+    sanitized: dict[str, str] = {}
+    for key, value in (headers or {}).items():
+        normalized_key = str(key).strip()
+        if not normalized_key:
+            continue
+        if normalized_key.lower() in _UNSAFE_RESPONSE_HEADERS:
+            continue
+        sanitized[normalized_key] = str(value)
+    return sanitized
+
+
+def _build_runtime_response(
+    status_code: int,
+    headers: dict | None,
+    response_body: object,
+):
+    safe_headers = _sanitize_response_headers(headers)
+    if isinstance(response_body, (dict, list, int, float, bool)):
+        return JSONResponse(
+            status_code=status_code,
+            headers=safe_headers,
+            content=response_body,
+        )
+    if response_body is None:
+        return Response(
+            status_code=status_code,
+            headers=safe_headers,
+            content=b"",
+        )
+    raw_content = (
+        response_body
+        if isinstance(response_body, (str, bytes))
+        else str(response_body)
+    )
+    return Response(
+        status_code=status_code,
+        headers=safe_headers,
+        content=raw_content,
+    )
 
 
 async def _dispatch_runtime_request(
@@ -52,10 +102,10 @@ async def _dispatch_runtime_request(
             content={"detail": "Mock route not found or inactive."},
         )
     status_code, headers, response_body = dispatch_result
-    return JSONResponse(
-        status_code=status_code,
+    return _build_runtime_response(
+        status_code=int(status_code or 200),
         headers=headers,
-        content=response_body,
+        response_body=response_body,
     )
 
 

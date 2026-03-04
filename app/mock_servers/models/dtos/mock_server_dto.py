@@ -41,6 +41,7 @@ class MockServerApiConfigurationDto(BaseModel):
     method: str
     path: str
     params: dict | None = None
+    authorization: dict | None = None
     headers: dict | None = None
     body: dict | list | str | int | float | bool | None = None
     body_match: str | None = "contains"

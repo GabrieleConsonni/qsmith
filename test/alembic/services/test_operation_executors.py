@@ -15,6 +15,7 @@ from app._alembic.services.alembic_config_service import url_from_env
 from app._alembic.services.session_context_manager import managed_session
 from app.elaborations.api.operations_api import insert_operation_api
 from app.elaborations.models.dtos.configuration_operation_dto import (
+    AssertConfigurationOperationDto,
     PublishConfigurationOperationDto,
     SaveInternalDBConfigurationOperationDto,
     SaveToExternalDBConfigurationOperationDto,
@@ -23,6 +24,9 @@ from app.elaborations.models.dtos.create_operation_dto import CreateOperationDto
 from app.elaborations.services.alembic.operation_service import OperationService
 from app.elaborations.services.operations.operation_executor_composite import (
     execute_operations,
+)
+from app.elaborations.services.operations.assert_operation_executor import (
+    AssertOperationExecutor,
 )
 from app.elaborations.services.operations.publish_to_queue_operation_executor import (
     PublishToQueueOperationExecutor,
@@ -102,6 +106,16 @@ def _insert_database_datasource_payload(session, payload: dict) -> str:
         code=_new_name("ds"),
         description="test database datasource",
         json_type=JsonType.DATABASE_TABLE.value,
+        payload=payload,
+    )
+    return JsonFilesService().insert(session, entity)
+
+
+def _insert_json_array_payload(session, payload: list[dict] | dict) -> str:
+    entity = JsonPayloadEntity(
+        code=_new_name("json_arr"),
+        description="test json array",
+        json_type=JsonType.JSON_ARRAY.value,
         payload=payload,
     )
     return JsonFilesService().insert(session, entity)
@@ -309,6 +323,148 @@ def test_save_external_db_operation_executor_oracle(alembic_container, external_
     assert inserted_rows == 2
     assert result.result == [{"message": f"Created 2 rows in {table_name} table"}]
 
+
+def test_assert_not_empty_operation_executor_passes(alembic_container):
+    cfg = AssertConfigurationOperationDto(
+        evaluated_object_type="json-data",
+        assert_type="not-empty",
+    )
+    data = [{"id": 1, "name": "first"}]
+
+    with managed_session() as session:
+        result = AssertOperationExecutor().execute(
+            session,
+            "op-assert-not-empty",
+            cfg,
+            data,
+        )
+
+    assert result.data == data
+    assert result.result == [{"message": "Assert 'not-empty' passed for 'json-data' data."}]
+
+
+def test_assert_empty_operation_executor_fails_with_custom_message(alembic_container):
+    cfg = AssertConfigurationOperationDto(
+        evaluated_object_type="json-data",
+        assert_type="empty",
+        error_message="Expected no rows.",
+    )
+
+    with managed_session() as session:
+        with pytest.raises(ValueError, match="Expected no rows."):
+            AssertOperationExecutor().execute(
+                session,
+                "op-assert-empty",
+                cfg,
+                [{"id": 1}],
+            )
+
+
+def test_assert_schema_validation_operation_executor_validates_rows(alembic_container):
+    cfg = AssertConfigurationOperationDto(
+        evaluated_object_type="json-data",
+        assert_type="schema-validation",
+        json_schema={
+            "type": "object",
+            "required": ["id", "name"],
+            "properties": {
+                "id": {"type": "integer"},
+                "name": {"type": "string"},
+            },
+            "additionalProperties": True,
+        },
+    )
+
+    with managed_session() as session:
+        ok_result = AssertOperationExecutor().execute(
+            session,
+            "op-assert-schema-ok",
+            cfg,
+            [{"id": 1, "name": "a"}, {"id": 2, "name": "b"}],
+        )
+        assert ok_result.result == [
+            {"message": "Assert 'schema-validation' passed for 'json-data' data."}
+        ]
+
+        with pytest.raises(ValueError, match="does not match json schema"):
+            AssertOperationExecutor().execute(
+                session,
+                "op-assert-schema-ko",
+                cfg,
+                [{"id": "wrong", "name": "a"}],
+            )
+
+
+def test_assert_contains_operation_executor_uses_expected_json_array(alembic_container):
+    with managed_session() as session:
+        expected_json_array_id = _insert_json_array_payload(
+            session,
+            [
+                {"id": 1, "code": "A"},
+                {"id": 2, "code": "B"},
+            ],
+        )
+        cfg = AssertConfigurationOperationDto(
+            evaluated_object_type="json-data",
+            assert_type="contains",
+            expected_json_array_id=expected_json_array_id,
+            compare_keys=["id", "code"],
+        )
+
+        ok_result = AssertOperationExecutor().execute(
+            session,
+            "op-assert-contains-ok",
+            cfg,
+            [{"id": 2, "code": "B"}],
+        )
+        assert ok_result.result == [
+            {"message": "Assert 'contains' passed for 'json-data' data."}
+        ]
+
+        with pytest.raises(ValueError, match="not contained in expected json-array"):
+            AssertOperationExecutor().execute(
+                session,
+                "op-assert-contains-ko",
+                cfg,
+                [{"id": 3, "code": "C"}],
+            )
+
+
+def test_assert_json_array_equals_operation_executor_is_order_insensitive(alembic_container):
+    with managed_session() as session:
+        expected_json_array_id = _insert_json_array_payload(
+            session,
+            [
+                {"id": 1, "code": "A"},
+                {"id": 2, "code": "B"},
+            ],
+        )
+        cfg = AssertConfigurationOperationDto(
+            evaluated_object_type="json-data",
+            assert_type="json-array-equals",
+            expected_json_array_id=expected_json_array_id,
+            compare_keys=["id", "code"],
+        )
+
+        ok_result = AssertOperationExecutor().execute(
+            session,
+            "op-assert-equals-ok",
+            cfg,
+            [{"id": 2, "code": "B"}, {"id": 1, "code": "A"}],
+        )
+        assert ok_result.result == [
+            {"message": "Assert 'json-array-equals' passed for 'json-data' data."}
+        ]
+
+        with pytest.raises(ValueError, match="not equal to expected json-array"):
+            AssertOperationExecutor().execute(
+                session,
+                "op-assert-equals-ko",
+                cfg,
+                [{"id": 1, "code": "A"}],
+            )
+
+
 def test_execute_operations_raises_when_operation_not_found(alembic_container):
     with managed_session() as session:
         with pytest.raises(ValueError, match="Operation with id 'missing-op' not found"):
@@ -333,3 +489,28 @@ def test_insert_operation_api_persists_scalar_fields(alembic_container):
         assert entity.code == dto.code
         assert entity.description == dto.description
         assert entity.operation_type == dto.cfg.operationType
+
+
+def test_insert_operation_api_persists_assert_configuration(alembic_container):
+    dto = CreateOperationDto(
+        code=_new_name("op_assert"),
+        description="api assert operation",
+        cfg={
+            "operationType": "assert",
+            "evaluated_object_type": "json-data",
+            "assert_type": "contains",
+            "expected_json_array_id": "json-arr-id",
+            "compare_keys": ["id", "code"],
+            "error_message": "Assertion failed.",
+        },
+    )
+
+    created_operation_id = asyncio.run(insert_operation_api(dto))["id"]
+
+    with managed_session() as session:
+        entity = OperationService().get_by_id(session, created_operation_id)
+        assert entity is not None
+        assert entity.operation_type == "assert"
+        assert entity.configuration_json["assert_type"] == "contains"
+        assert entity.configuration_json["evaluated_object_type"] == "json-data"
+        assert entity.configuration_json["compare_keys"] == ["id", "code"]

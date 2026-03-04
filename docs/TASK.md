@@ -199,25 +199,25 @@
 
 
 ## QSM-030 - JsonArray Assert operations 
-- [ ] aggiungere una nuova operation di tipo assert. Essa ha due field generali.
+- [x] aggiungere una nuova operation di tipo assert. Essa ha due field generali.
     - Error message
     - evaluetedObjectType: `Json\Data`, `Table`, etc ... (ampliabile)
-- [ ] per il tipo `Json\Data` Ã¨ possibile configurare:
-    - [ ] `NotEmpty` <-- verifica che i dati non siano vuoti
-    - [ ] `Empty` <-- verifica che i dati siano vuoti
-    - [ ] `SchemaValidation` <-- verifica che i dati in formato json rispettino uno schema
+- [x] per il tipo `Json\Data` Ã¨ possibile configurare:
+    - [x] `NotEmpty` <-- verifica che i dati non siano vuoti
+    - [x] `Empty` <-- verifica che i dati siano vuoti
+    - [x] `SchemaValidation` <-- verifica che i dati in formato json rispettino uno schema
         - impostare lo schema per la verifica
-    - [ ] `Contains` <-- verifica che i dati siano contenuti nel json array impostato
+    - [x] `Contains` <-- verifica che i dati siano contenuti nel json array impostato
         - impostare il json array expected
         - impostare un array di keys per fare il confronto
-    - [ ] `JsonArrayEquals` <-- verifica che i dati siano uguali al json array impostato
+    - [x] `JsonArrayEquals` <-- verifica che i dati siano uguali al json array impostato
         - impostare il json array expected
-- [ ] introdurre una family `assert` con un evalutor orchestratore\composite + strategy interne simile a quanto fatto per step_executor (NotEmptyData, EmptyData, ecc.).
-- [ ] modificare il dialog delle operazioni per integrare questa funzionalitÃ 
-- [ ] integrare i test esistenti
+- [x] introdurre una family `assert` con un evalutor orchestratore\composite + strategy interne simile a quanto fatto per step_executor (NotEmptyData, EmptyData, ecc.).
+- [x] modificare il dialog delle operazioni per integrare questa funzionalitÃ 
+- [x] integrare i test esistenti
 
 
-## QSM-030 - Table Assert Operations (prima parte)
+## QSM-031 - Table Assert Operations (prima parte)
 - [ ] Aggiungere all'evalutor degli assert anche il tipo Table
 - [ ] per il tipo Table Ã¨ possibile configurare:
     - [ ] `Exists` <-- verifica che una tabella esista a db
@@ -226,18 +226,22 @@
         - impostare connessione e nome tabella
         - impostare l'expectedCount 
 
-## QSM-031 - Table Assert Operations (seconda parte)
+
+## QSM-032 - Table Assert Operations (seconda parte)
 - [ ] aggiungere all'evaluator degli assert table
-    - [ ] contains <-- verifica che i dati siano contenuti nella tabella
+    - [ ] `Contains` <-- verifica che i dati siano contenuti nella tabella
         - impostare connessione e nome tabella expected
         - impostare il mapping data keys con le colonne della tabella 
-    - [ ] equals <-- verifica che due tabelle abbiano lo stesso contenuto.
+    - [ ] `TableEquals` <-- verifica che due tabelle abbiano lo stesso contenuto utilizzando le funzionalità native dei db.
         - impostare connessione 
         - nome tabella expected
         - nome tabella actual
 
+## QSM-033 - Mock servers
+- [ ] Aggiungere una pagina e relativa anagrafica per i mock server
 
-## QSM-029 - Short Actions
+
+## QSM- - Short Actions
 - [ ] aggiungere una sezione in home, sopra i `Test scenario executions` 
 - [ ] Mettere i seguenti bottoni:
      a. Configura connessione broker
@@ -250,3 +254,4 @@
     [vuoto | c | d | vuoto] 
     Test scenario Execution
     divider
+

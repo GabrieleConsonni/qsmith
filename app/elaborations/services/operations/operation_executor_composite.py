@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from _alembic.models.step_operation_execution_entity import StepOperationExecutionEntity
 from _alembic.models.step_operation_entity import StepOperationEntity
 from elaborations.models.dtos.configuration_operation_dto import (
+    AssertConfigurationOperationDto,
     ConfigurationOperationDto,
     ConfigurationOperationTypes,
     PublishConfigurationOperationDto,
@@ -17,6 +18,7 @@ from elaborations.services.alembic.step_operation_execution_service import (
     StepOperationExecutionService,
 )
 from elaborations.services.operations.operation_executor import ExecutionResultDto, OperationExecutor
+from elaborations.services.operations.assert_operation_executor import AssertOperationExecutor
 from elaborations.services.operations.publish_to_queue_operation_executor import PublishToQueueOperationExecutor
 from elaborations.services.operations.save_to_external_db_operation_executor import SaveToExternalDbOperationExecutor
 from elaborations.services.operations.save_to_internal_db_operation_executor import SaveInternalDbOperationExecutor
@@ -39,6 +41,7 @@ _EXECUTOR_MAPPING: dict[type[ConfigurationOperationDto], type[OperationExecutor]
     PublishConfigurationOperationDto: PublishToQueueOperationExecutor,
     SaveInternalDBConfigurationOperationDto: SaveInternalDbOperationExecutor,
     SaveToExternalDBConfigurationOperationDto: SaveToExternalDbOperationExecutor,
+    AssertConfigurationOperationDto: AssertOperationExecutor,
 }
 
 

@@ -24,15 +24,32 @@ from scenarios.services.state_keys import (
     OPERATIONS_CATALOG_KEY,
     SCENARIO_FEEDBACK_KEY,
     STEP_EDITOR_BROKERS_KEY,
+    STEP_EDITOR_JSON_ARRAYS_KEY,
 )
 
 OPERATION_TYPE_PUBLISH = "publish"
 OPERATION_TYPE_SAVE_INTERNAL_DB = "save-internal-db"
 OPERATION_TYPE_SAVE_EXTERNAL_DB = "save-external-db"
+OPERATION_TYPE_ASSERT = "assert"
 OPERATION_TYPE_OPTIONS = [
     OPERATION_TYPE_PUBLISH,
     OPERATION_TYPE_SAVE_INTERNAL_DB,
     OPERATION_TYPE_SAVE_EXTERNAL_DB,
+    OPERATION_TYPE_ASSERT,
+]
+ASSERT_OBJECT_TYPE_JSON_DATA = "json-data"
+ASSERT_OBJECT_TYPE_OPTIONS = [ASSERT_OBJECT_TYPE_JSON_DATA]
+ASSERT_TYPE_NOT_EMPTY = "not-empty"
+ASSERT_TYPE_EMPTY = "empty"
+ASSERT_TYPE_SCHEMA_VALIDATION = "schema-validation"
+ASSERT_TYPE_CONTAINS = "contains"
+ASSERT_TYPE_JSON_ARRAY_EQUALS = "json-array-equals"
+ASSERT_TYPE_OPTIONS = [
+    ASSERT_TYPE_NOT_EMPTY,
+    ASSERT_TYPE_EMPTY,
+    ASSERT_TYPE_SCHEMA_VALIDATION,
+    ASSERT_TYPE_CONTAINS,
+    ASSERT_TYPE_JSON_ARRAY_EQUALS,
 ]
 OPERATION_STATUS_SUCCESS = "success"
 OPERATION_STATUS_ERROR = "error"
@@ -70,12 +87,35 @@ def _operation_type_label(operation_type: str) -> str:
         OPERATION_TYPE_PUBLISH: "publish",
         OPERATION_TYPE_SAVE_INTERNAL_DB: "save-internal-db",
         OPERATION_TYPE_SAVE_EXTERNAL_DB: "save-external-db",
+        OPERATION_TYPE_ASSERT: "assert",
     }
     return labels.get(operation_type, operation_type or "-")
 
 
 def _broker_label(broker_item: dict) -> str:
     return str(broker_item.get("description") or broker_item.get("code") or "-")
+
+
+def _json_array_label(json_array_item: dict) -> str:
+    return str(json_array_item.get("description") or json_array_item.get("code") or "-")
+
+
+def _assert_object_type_label(object_type: str) -> str:
+    labels = {
+        ASSERT_OBJECT_TYPE_JSON_DATA: "json-data",
+    }
+    return labels.get(object_type, object_type or "-")
+
+
+def _assert_type_label(assert_type: str) -> str:
+    labels = {
+        ASSERT_TYPE_NOT_EMPTY: "not-empty",
+        ASSERT_TYPE_EMPTY: "empty",
+        ASSERT_TYPE_SCHEMA_VALIDATION: "schema-validation",
+        ASSERT_TYPE_CONTAINS: "contains",
+        ASSERT_TYPE_JSON_ARRAY_EQUALS: "json-array-equals",
+    }
+    return labels.get(assert_type, assert_type or "-")
 
 
 def _queue_label(queue_item: dict) -> str:
@@ -129,6 +169,33 @@ def _resolve_configuration_value(configuration_json: dict, *keys: str):
             continue
         return value
     return None
+
+
+def _normalize_token(value: object) -> str:
+    return str(value or "").strip().replace("_", "-").lower()
+
+
+def _parse_compare_keys(value: object) -> list[str]:
+    if isinstance(value, list):
+        return [str(item or "").strip() for item in value if str(item or "").strip()]
+    raw = str(value or "").replace(";", ",").replace("\n", ",")
+    return [item.strip() for item in raw.split(",") if item and item.strip()]
+
+
+def _parse_json_dict(value: object) -> tuple[dict | None, str | None]:
+    if isinstance(value, dict):
+        return value, None
+    raw_value = str(value or "").strip()
+    if not raw_value:
+        return None, "Il campo Json schema e' obbligatorio."
+    try:
+        parsed = json.loads(raw_value)
+    except json.JSONDecodeError as exc:
+        return None, f"Json schema non valido: {str(exc)}"
+    if not isinstance(parsed, dict):
+        return None, "Json schema deve essere un oggetto JSON."
+    return parsed, None
+
 
 def _connection_label(connection_item: dict) -> str:
     return str(connection_item.get("description") or connection_item.get("code") or "-")
@@ -229,6 +296,63 @@ def _render_operation_details(operation_item: dict):
             connection_label = connection_id
         st.write(f"Connection: {connection_label}")
         st.write(f"Table: {table_name or '-'}")
+        return
+
+    if operation_type == OPERATION_TYPE_ASSERT:
+        load_step_editor_context(force=False)
+        json_arrays = _safe_list(st.session_state.get(STEP_EDITOR_JSON_ARRAYS_KEY, []))
+        json_arrays_by_id = _map_by_id(json_arrays)
+
+        evaluated_object_type = _normalize_token(
+            _resolve_configuration_value(
+                configuration_json,
+                "evaluated_object_type",
+                "evaluetedObjectType",
+                "evaluatedObjectType",
+            )
+        )
+        assert_type = _normalize_token(
+            _resolve_configuration_value(configuration_json, "assert_type", "assertType")
+        )
+        error_message = str(
+            _resolve_configuration_value(configuration_json, "error_message", "errorMessage")
+            or ""
+        ).strip()
+
+        st.write(f"Target: {_assert_object_type_label(evaluated_object_type)}")
+        st.write(f"Assert: {_assert_type_label(assert_type)}")
+        if error_message:
+            st.write(f"Error message: {error_message}")
+
+        if assert_type in {ASSERT_TYPE_CONTAINS, ASSERT_TYPE_JSON_ARRAY_EQUALS}:
+            expected_json_array_id = str(
+                _resolve_configuration_value(
+                    configuration_json,
+                    "expected_json_array_id",
+                    "expectedJsonArrayId",
+                    "json_array_id",
+                )
+                or ""
+            ).strip()
+            compare_keys = _parse_compare_keys(
+                _resolve_configuration_value(configuration_json, "compare_keys", "compareKeys")
+            )
+            expected_json_array = json_arrays_by_id.get(expected_json_array_id, {})
+            expected_label = _json_array_label(expected_json_array)
+            if expected_label == "-" and expected_json_array_id:
+                expected_label = expected_json_array_id
+            st.write(f"Expected json-array: {expected_label}")
+            st.write(f"Compare keys: {', '.join(compare_keys) if compare_keys else '-'}")
+            if isinstance(expected_json_array, dict) and expected_json_array:
+                st.markdown("**Expected preview**")
+                st.json(expected_json_array.get("payload") or [], expanded=False)
+
+        if assert_type == ASSERT_TYPE_SCHEMA_VALIDATION:
+            schema = _safe_dict(
+                _resolve_configuration_value(configuration_json, "json_schema", "jsonSchema")
+            )
+            st.markdown("**Json schema**")
+            st.code(_pretty_json(schema), language="json")
         return
 
     st.code(_pretty_json(configuration_json), language="json")
@@ -463,6 +587,55 @@ def build_operation_creation_payload(dialog_nonce: int) -> tuple[dict | None, st
             "connection_id": connection_id,
             "table_name": table_name,
         }
+    elif operation_type == OPERATION_TYPE_ASSERT:
+        evaluated_object_type = _normalize_token(
+            st.session_state.get(
+                f"scenario_add_operation_assert_object_type_{dialog_nonce}"
+            )
+            or ASSERT_OBJECT_TYPE_JSON_DATA
+        )
+        assert_type = _normalize_token(
+            st.session_state.get(f"scenario_add_operation_assert_type_{dialog_nonce}")
+            or ASSERT_TYPE_NOT_EMPTY
+        )
+        error_message = str(
+            st.session_state.get(f"scenario_add_operation_assert_error_message_{dialog_nonce}")
+            or ""
+        ).strip()
+
+        cfg = {
+            "operationType": OPERATION_TYPE_ASSERT,
+            "evaluated_object_type": evaluated_object_type,
+            "assert_type": assert_type,
+        }
+        if error_message:
+            cfg["error_message"] = error_message
+
+        if assert_type == ASSERT_TYPE_SCHEMA_VALIDATION:
+            schema, parse_error = _parse_json_dict(
+                st.session_state.get(f"scenario_add_operation_assert_schema_{dialog_nonce}")
+            )
+            if parse_error:
+                return None, parse_error
+            cfg["json_schema"] = schema
+        elif assert_type in {ASSERT_TYPE_CONTAINS, ASSERT_TYPE_JSON_ARRAY_EQUALS}:
+            expected_json_array_id = str(
+                st.session_state.get(
+                    f"scenario_add_operation_assert_expected_json_array_id_{dialog_nonce}"
+                )
+                or ""
+            ).strip()
+            compare_keys = _parse_compare_keys(
+                st.session_state.get(
+                    f"scenario_add_operation_assert_compare_keys_{dialog_nonce}"
+                )
+            )
+            if not expected_json_array_id:
+                return None, "Il campo Expected json-array e' obbligatorio."
+            if not compare_keys:
+                return None, "Il campo Compare keys e' obbligatorio."
+            cfg["expected_json_array_id"] = expected_json_array_id
+            cfg["compare_keys"] = compare_keys
     else:
         return None, f"Operation type non supportato: {operation_type}"
 
@@ -666,14 +839,19 @@ def _render_new_operation_form_panel(
     load_step_editor_context(force=False)
     load_database_connections(force=False)
     brokers = st.session_state.get(STEP_EDITOR_BROKERS_KEY, [])
+    json_arrays = st.session_state.get(STEP_EDITOR_JSON_ARRAYS_KEY, [])
     database_connections = st.session_state.get(DATABASE_CONNECTIONS_KEY, [])
     if not isinstance(brokers, list):
         brokers = []
+    if not isinstance(json_arrays, list):
+        json_arrays = []
     if not isinstance(database_connections, list):
         database_connections = []
 
     broker_ids = [str(item.get("id")) for item in brokers if item.get("id")]
     broker_by_id = {str(item.get("id")): item for item in brokers if item.get("id")}
+    json_array_ids = [str(item.get("id")) for item in json_arrays if item.get("id")]
+    json_array_by_id = {str(item.get("id")): item for item in json_arrays if item.get("id")}
     database_connection_ids = [
         str(item.get("id")) for item in database_connections if item.get("id")
     ]
@@ -760,6 +938,82 @@ def _render_new_operation_form_panel(
         )
         if not database_connection_ids:
             st.info("Nessuna connection database configurata.")
+    elif operation_type == OPERATION_TYPE_ASSERT:
+        st.text_input(
+            "Error message",
+            key=f"scenario_add_operation_assert_error_message_{dialog_nonce}",
+            placeholder="Optional custom failure message",
+        )
+        object_type_key = f"scenario_add_operation_assert_object_type_{dialog_nonce}"
+        _normalize_select_key(object_type_key, ASSERT_OBJECT_TYPE_OPTIONS)
+        st.selectbox(
+            "Evaluated object type",
+            options=ASSERT_OBJECT_TYPE_OPTIONS,
+            format_func=_assert_object_type_label,
+            key=object_type_key,
+            disabled=True,
+        )
+
+        assert_type_key = f"scenario_add_operation_assert_type_{dialog_nonce}"
+        _normalize_select_key(assert_type_key, ASSERT_TYPE_OPTIONS)
+        selected_assert_type = st.selectbox(
+            "Assert type",
+            options=ASSERT_TYPE_OPTIONS,
+            format_func=_assert_type_label,
+            key=assert_type_key,
+        )
+
+        if selected_assert_type == ASSERT_TYPE_SCHEMA_VALIDATION:
+            schema_key = f"scenario_add_operation_assert_schema_{dialog_nonce}"
+            if schema_key not in st.session_state:
+                st.session_state[schema_key] = "{}"
+            st.text_area(
+                "Json schema",
+                key=schema_key,
+                height=220,
+            )
+            if st.button(
+                "Beautify schema",
+                key=f"scenario_add_operation_assert_schema_beautify_{dialog_nonce}",
+                icon=":material/auto_fix_high:",
+                type="secondary",
+                use_container_width=True,
+            ):
+                schema, parse_error = _parse_json_dict(st.session_state.get(schema_key))
+                if parse_error:
+                    st.error(parse_error)
+                else:
+                    st.session_state[schema_key] = _pretty_json(schema or {})
+
+        if selected_assert_type in {ASSERT_TYPE_CONTAINS, ASSERT_TYPE_JSON_ARRAY_EQUALS}:
+            expected_key = (
+                f"scenario_add_operation_assert_expected_json_array_id_{dialog_nonce}"
+            )
+            _normalize_select_key(expected_key, json_array_ids or [""])
+            selected_expected_id = st.selectbox(
+                "Expected json-array",
+                options=json_array_ids or [""],
+                format_func=lambda _id: (
+                    _json_array_label(json_array_by_id.get(_id, {}))
+                    if _id
+                    else "Nessun json-array disponibile"
+                ),
+                key=expected_key,
+                disabled=not bool(json_array_ids),
+            )
+            compare_keys_key = f"scenario_add_operation_assert_compare_keys_{dialog_nonce}"
+            st.text_input(
+                "Compare keys",
+                key=compare_keys_key,
+                placeholder="id, code",
+                help="Comma-separated keys used for order-insensitive comparison.",
+            )
+            if not json_array_ids:
+                st.info("Nessun json-array configurato.")
+            else:
+                selected_expected = json_array_by_id.get(selected_expected_id, {})
+                st.markdown("**Expected json-array preview**")
+                st.json(selected_expected.get("payload") or [], expanded=False)
 
     create_cols = st.columns([1, 1], gap="small")
     with create_cols[0]:

@@ -23,29 +23,17 @@ class DataFromDbStepExecutor(StepExecutor):
         connection_id = ""
         table_name = ""
         data_source_id = str(cfg.dataset_id or "").strip()
-        if data_source_id:
-            datasource_payload = self.load_database_datasource_payload(session, data_source_id)
-            connection_id = str(datasource_payload.get("connection_id") or "").strip()
-            object_name = str(datasource_payload.get("object_name") or "").strip()
-            schema = str(datasource_payload.get("schema") or "").strip()
-            table_name = (
-                object_name if not schema or "." in object_name else f"{schema}.{object_name}"
-            )
-            if not connection_id:
-                raise ValueError(f"Database datasource '{data_source_id}' has no connection_id")
-            if not table_name:
-                raise ValueError(f"Database datasource '{data_source_id}' has no object_name")
-        else:
-            # Backward compatibility for existing DATA_FROM_DB steps created before data_source_id.
-            configuration_json = (
-                scenario_step.configuration_json
-                if isinstance(scenario_step.configuration_json, dict)
-                else {}
-            )
-            connection_id = str(configuration_json.get("connection_id") or "").strip()
-            table_name = str(configuration_json.get("table_name") or "").strip()
-            if not connection_id or not table_name:
-                raise ValueError("DATA_FROM_DB step requires data_source_id or legacy connection_id/table_name")
+        datasource_payload = self.load_database_datasource_payload(session, data_source_id)
+        connection_id = str(datasource_payload.get("connection_id") or "").strip()
+        object_name = str(datasource_payload.get("object_name") or "").strip()
+        schema = str(datasource_payload.get("schema") or "").strip()
+        table_name = (
+            object_name if not schema or "." in object_name else f"{schema}.{object_name}"
+        )
+        if not connection_id:
+            raise ValueError(f"Database datasource '{data_source_id}' has no connection_id")
+        if not table_name:
+            raise ValueError(f"Database datasource '{data_source_id}' has no object_name")
 
         database_connection_cfg: DatabaseConnectionConfigTypes = load_database_connection(connection_id)
         engine = create_sqlalchemy_engine(database_connection_cfg)
@@ -55,6 +43,7 @@ class DataFromDbStepExecutor(StepExecutor):
         rows = DatabaseTableReader.read_full_table(engine, ReadTableConfig(
                 table_name=table_name,
         ))
+        
         total_rows = len(rows) if isinstance(rows, list) else 0
 
         results = self.execute_operations(session, scenario_step.id, rows)

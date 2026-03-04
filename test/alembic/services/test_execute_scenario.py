@@ -121,5 +121,81 @@ def test_execution(alembic_container):
         assert len(logs) > 0
 
 
+def test_execution_with_assert_failure_marks_error_statuses(alembic_container):
+    with managed_session() as session:
+        scenario_id = ScenarioService().insert(
+            session,
+            ScenarioEntity(code="scenario_assert_error"),
+        )
+        scenario_step_id = ScenarioStepService().insert(
+            session,
+            ScenarioStepEntity(
+                scenario_id=scenario_id,
+                code="step_assert_error",
+                step_type=StepType.DATA.value,
+                configuration_json={
+                    "stepType": "data",
+                    "data": [{"id": 1, "code": "A"}],
+                },
+                order=0,
+            ),
+        )
+        StepOperationService().insert(
+            session,
+            StepOperationEntity(
+                scenario_step_id=scenario_step_id,
+                code="assert_empty",
+                operation_type=OperationType.ASSERT.value,
+                configuration_json={
+                    "operationType": "assert",
+                    "evaluated_object_type": "json-data",
+                    "assert_type": "empty",
+                    "error_message": "Expected no rows from step.",
+                },
+                order=0,
+            ),
+        )
+
+    _execute(
+        ScenarioExecutionInput(
+            execution_id=str(uuid4()),
+            scenario_id=scenario_id,
+            scenario_code="scenario_assert_error",
+        )
+    )
+
+    with managed_session() as session:
+        scenario_executions = ScenarioExecutionService().get_all_by_scenario_id(
+            session,
+            scenario_id=scenario_id,
+            limit=10,
+        )
+        assert len(scenario_executions) == 1
+        scenario_execution = scenario_executions[0]
+        assert str(scenario_execution.status or "").strip().lower() == "error"
+        assert scenario_execution.finished_at is not None
+        assert "Expected no rows from step." in str(scenario_execution.error_message or "")
+
+        step_executions = ScenarioStepExecutionService().get_all_by_execution_id(
+            session,
+            scenario_execution.id,
+        )
+        assert len(step_executions) == 1
+        step_execution = step_executions[0]
+        assert str(step_execution.status or "").strip().lower() == "error"
+        assert step_execution.finished_at is not None
+        assert "Expected no rows from step." in str(step_execution.error_message or "")
+
+        operation_executions = StepOperationExecutionService().get_all_by_step_execution_id(
+            session,
+            step_execution.id,
+        )
+        assert len(operation_executions) == 1
+        operation_execution = operation_executions[0]
+        assert str(operation_execution.status or "").strip().lower() == "error"
+        assert operation_execution.finished_at is not None
+        assert "Expected no rows from step." in str(operation_execution.error_message or "")
+
+
 if __name__ == "__main__":
     unittest.main()

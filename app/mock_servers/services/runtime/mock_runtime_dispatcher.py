@@ -68,6 +68,8 @@ def _map_matches(expected_map: dict, actual_map: dict, *, normalize_keys: bool) 
 def _body_matches(route: MockApiRoute, body_json, body_raw: str) -> bool:
     if route.body is None:
         return True
+    if isinstance(route.body, str) and route.body.strip().upper() == "ANY":
+        return True
     actual = body_json if body_json is not None else body_raw
     if route.body_match == "equals":
         return route.body == actual

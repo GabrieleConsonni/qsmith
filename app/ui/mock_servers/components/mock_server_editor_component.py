@@ -78,6 +78,160 @@ def _pretty_json(value: object) -> str:
     return json.dumps(value, indent=2, ensure_ascii=True)
 
 
+def _json_literal_to_text(value: object) -> str:
+    return json.dumps(value, ensure_ascii=True)
+
+
+def _parse_json_literal(
+    raw_value: str,
+    *,
+    field_label: str,
+    row_idx: int,
+) -> tuple[object | None, str | None]:
+    raw_text = str(raw_value or "").strip()
+    if not raw_text:
+        return None, f"{field_label}: valore obbligatorio alla riga {row_idx}."
+    try:
+        return json.loads(raw_text), None
+    except json.JSONDecodeError as exc:
+        return (
+            None,
+            (
+                f"{field_label}: valore JSON non valido alla riga {row_idx} "
+                f"({str(exc)})."
+            ),
+        )
+
+
+def _dict_to_rows(source: dict) -> list[dict]:
+    if not isinstance(source, dict):
+        return []
+    rows: list[dict] = []
+    for key, value in source.items():
+        rows.append(
+            {
+                "row_id": _new_ui_key(),
+                "key": str(key),
+                "value_text": _json_literal_to_text(value),
+            }
+        )
+    return rows
+
+
+def _ensure_kv_editor_state(editor_state_key: str, source: dict):
+    if editor_state_key not in st.session_state or not isinstance(
+        st.session_state.get(editor_state_key),
+        list,
+    ):
+        st.session_state[editor_state_key] = _dict_to_rows(source)
+
+
+def _render_kv_rows_container(
+    *,
+    editor_state_key: str,
+    key_prefix: str,
+):
+    rows = st.session_state.get(editor_state_key)
+    if not isinstance(rows, list):
+        rows = []
+        st.session_state[editor_state_key] = rows
+
+    with st.container(border=True):
+        st.caption(
+            'Inserire JSON literal (es: `"abc"`, 1, true, null, {"a":1}, [1,2]).'
+        )
+        if not rows:
+            st.caption("Nessun elemento configurato.")
+
+        for idx, row in enumerate(rows):
+            row_id = str(row.get("row_id") or _new_ui_key())
+            row["row_id"] = row_id
+            key_input_key = f"{key_prefix}_key_{row_id}"
+            value_input_key = f"{key_prefix}_value_{row_id}"
+            if key_input_key not in st.session_state:
+                st.session_state[key_input_key] = str(row.get("key") or "")
+            if value_input_key not in st.session_state:
+                st.session_state[value_input_key] = str(row.get("value_text") or "")
+
+            row_cols = st.columns([3, 5, 1], gap="small", vertical_alignment="center")
+            with row_cols[0]:
+                st.text_input(
+                    "Key",
+                    key=key_input_key,
+                    label_visibility="collapsed",
+                    placeholder=f"key_{idx + 1}",
+                )
+            with row_cols[1]:
+                st.text_input(
+                    "Value",
+                    key=value_input_key,
+                    label_visibility="collapsed",
+                    placeholder='es: "abc", 1, true, null, {"a":1}, [1,2]',
+                )
+            with row_cols[2]:
+                if st.button(
+                    "",
+                    key=f"{key_prefix}_delete_{row_id}",
+                    icon=":material/delete:",
+                    help="Delete row",
+                    use_container_width=True,
+                ):
+                    rows.pop(idx)
+                    st.session_state[editor_state_key] = rows
+                    st.rerun()
+
+            row["key"] = str(st.session_state.get(key_input_key) or "")
+            row["value_text"] = str(st.session_state.get(value_input_key) or "")
+
+        add_cols = st.columns([8, 1], gap="small", vertical_alignment="center")
+        with add_cols[1]:
+            if st.button(
+                "",
+                key=f"{key_prefix}_add",
+                icon=":material/add:",
+                help="Add row",
+                use_container_width=True,
+            ):
+                rows.append(
+                    {
+                        "row_id": _new_ui_key(),
+                        "key": "",
+                        "value_text": "",
+                    }
+                )
+                st.session_state[editor_state_key] = rows
+                st.rerun()
+
+    return rows
+
+
+def _rows_to_dict(rows: list[dict], field_label: str) -> tuple[dict | None, str | None]:
+    if not isinstance(rows, list) or not rows:
+        return {}, None
+
+    result: dict = {}
+    seen_keys: set[str] = set()
+    for idx, row in enumerate(rows, start=1):
+        key = str((row or {}).get("key") or "").strip()
+        if not key:
+            return None, f"{field_label}: chiave obbligatoria alla riga {idx}."
+        if key in seen_keys:
+            return None, f"{field_label}: chiave duplicata '{key}' alla riga {idx}."
+
+        value, parse_error = _parse_json_literal(
+            str((row or {}).get("value_text") or ""),
+            field_label=field_label,
+            row_idx=idx,
+        )
+        if parse_error:
+            return None, parse_error
+
+        seen_keys.add(key)
+        result[key] = value
+
+    return result, None
+
+
 def _parse_json_dict(
     raw_value: str,
     *,
@@ -726,30 +880,31 @@ def _render_api_editor(api_entry: dict, api_idx: int, nonce: int):
             cfg = api_entry.get("configuration_json") if isinstance(api_entry.get("configuration_json"), dict) else {}
             method_key = f"mock_server_api_method_{api_ui_key}_{nonce}"
             path_key = f"mock_server_api_path_{api_ui_key}_{nonce}"
-            params_key = f"mock_server_api_params_{api_ui_key}_{nonce}"
-            auth_key = f"mock_server_api_auth_{api_ui_key}_{nonce}"
-            headers_key = f"mock_server_api_headers_{api_ui_key}_{nonce}"
+            params_state_key = f"mock_server_api_params_rows_{api_ui_key}_{nonce}"
+            auth_state_key = f"mock_server_api_auth_rows_{api_ui_key}_{nonce}"
+            headers_state_key = f"mock_server_api_headers_rows_{api_ui_key}_{nonce}"
             body_key = f"mock_server_api_body_{api_ui_key}_{nonce}"
             status_key = f"mock_server_api_status_{api_ui_key}_{nonce}"
-            response_headers_key = f"mock_server_api_response_headers_{api_ui_key}_{nonce}"
+            response_headers_state_key = (
+                f"mock_server_api_response_headers_rows_{api_ui_key}_{nonce}"
+            )
             response_body_key = f"mock_server_api_response_body_{api_ui_key}_{nonce}"
 
             if method_key not in st.session_state:
                 st.session_state[method_key] = str(cfg.get("method") or api_entry.get("method") or "GET")
             if path_key not in st.session_state:
                 st.session_state[path_key] = _normalize_path(cfg.get("path") or api_entry.get("path"))
-            if params_key not in st.session_state:
-                st.session_state[params_key] = _pretty_json(cfg.get("params") or {})
-            if auth_key not in st.session_state:
-                st.session_state[auth_key] = _pretty_json(cfg.get("authorization") or {})
-            if headers_key not in st.session_state:
-                st.session_state[headers_key] = _pretty_json(cfg.get("headers") or {})
+            _ensure_kv_editor_state(params_state_key, cfg.get("params") or {})
+            _ensure_kv_editor_state(auth_state_key, cfg.get("authorization") or {})
+            _ensure_kv_editor_state(headers_state_key, cfg.get("headers") or {})
+            _ensure_kv_editor_state(
+                response_headers_state_key,
+                cfg.get("response_headers") or {},
+            )
             if body_key not in st.session_state:
                 st.session_state[body_key] = _pretty_json(cfg.get("body"))
             if status_key not in st.session_state:
                 st.session_state[status_key] = int(cfg.get("response_status") or 200)
-            if response_headers_key not in st.session_state:
-                st.session_state[response_headers_key] = _pretty_json(cfg.get("response_headers") or {})
             if response_body_key not in st.session_state:
                 st.session_state[response_body_key] = _pretty_json(cfg.get("response_body"))
 
@@ -771,22 +926,19 @@ def _render_api_editor(api_entry: dict, api_idx: int, nonce: int):
                 ["Params", "Authorization", "Headers", "Body"]
             )
             with tab_params:
-                st.text_area(
-                    "Params (JSON)",
-                    key=params_key,
-                    height=160,
+                params_rows = _render_kv_rows_container(
+                    editor_state_key=params_state_key,
+                    key_prefix=f"{params_state_key}_row",
                 )
             with tab_auth:
-                st.text_area(
-                    "Authorization (JSON)",
-                    key=auth_key,
-                    height=160,
+                auth_rows = _render_kv_rows_container(
+                    editor_state_key=auth_state_key,
+                    key_prefix=f"{auth_state_key}_row",
                 )
             with tab_headers:
-                st.text_area(
-                    "Headers (JSON)",
-                    key=headers_key,
-                    height=160,
+                headers_rows = _render_kv_rows_container(
+                    editor_state_key=headers_state_key,
+                    key_prefix=f"{headers_state_key}_row",
                 )
             with tab_body:
                 st.text_area(
@@ -800,10 +952,9 @@ def _render_api_editor(api_entry: dict, api_idx: int, nonce: int):
                     max_value=599,
                     key=status_key,
                 )
-                st.text_area(
-                    "Response headers (JSON)",
-                    key=response_headers_key,
-                    height=120,
+                response_headers_rows = _render_kv_rows_container(
+                    editor_state_key=response_headers_state_key,
+                    key_prefix=f"{response_headers_state_key}_row",
                 )
                 st.text_area(
                     "Response body (JSON or string)",
@@ -819,34 +970,21 @@ def _render_api_editor(api_entry: dict, api_idx: int, nonce: int):
                     icon=":material/save:",
                     use_container_width=True,
                 ):
-                    params_value, params_error = _parse_json_dict(
-                        st.session_state.get(params_key),
-                        field_label="Params",
-                        allow_empty=True,
-                    )
+                    params_value, params_error = _rows_to_dict(params_rows, "Params")
                     if params_error:
                         st.error(params_error)
                         return
-                    auth_value, auth_error = _parse_json_dict(
-                        st.session_state.get(auth_key),
-                        field_label="Authorization",
-                        allow_empty=True,
-                    )
+                    auth_value, auth_error = _rows_to_dict(auth_rows, "Authorization")
                     if auth_error:
                         st.error(auth_error)
                         return
-                    headers_value, headers_error = _parse_json_dict(
-                        st.session_state.get(headers_key),
-                        field_label="Headers",
-                        allow_empty=True,
-                    )
+                    headers_value, headers_error = _rows_to_dict(headers_rows, "Headers")
                     if headers_error:
                         st.error(headers_error)
                         return
-                    response_headers_value, response_headers_error = _parse_json_dict(
-                        st.session_state.get(response_headers_key),
-                        field_label="Response headers",
-                        allow_empty=True,
+                    response_headers_value, response_headers_error = _rows_to_dict(
+                        response_headers_rows,
+                        "Response headers",
                     )
                     if response_headers_error:
                         st.error(response_headers_error)

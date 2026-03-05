@@ -1,111 +1,163 @@
-# Qsmith - Contesto Progetto per Codex
+﻿# Qsmith - Contesto Progetto per Codex
 
-**Panoramica**
-Qsmith e un queue manager composto da backend FastAPI e UI Streamlit. Gestisce broker SQS (ElasticMQ/Amazon), queue, connessioni database, sorgenti dati JSON array/table e orchestrazione di scenari (step/operations). Usa PostgreSQL come storage principale e puo inizializzare le queue ElasticMQ all'avvio.
+## Panoramica
+Qsmith e un'applicazione per test e orchestrazione di flussi su broker SQS, datasource e scenari.
+Il progetto e composto da:
+- backend FastAPI
+- UI Streamlit multipage
 
-**Stack Tecnologico**
+Domini principali:
+- broker/queue (send, receive, ack, metriche)
+- datasource JSON array e datasource tabellari database
+- scenari di test (step + operation) con esecuzioni persistite
+- mock server API/queue con attivazione runtime
+- logs applicativi
+
+## Stack tecnologico
 - Python 3.13
-- FastAPI, Pydantic
+- FastAPI + Pydantic
 - SQLAlchemy 2 + Alembic
 - PostgreSQL
-- ElasticMQ (emulatore SQS in locale)
-- Docker, Testcontainers
-- Streamlit (UI)
+- ElasticMQ (SQS locale)
+- Streamlit
+- Docker / Docker Compose
+- Testcontainers (test backend)
 
-**Mappa Repository**
-- `app/` codice applicazione backend FastAPI
-- `app/ui/` UI web Streamlit (multipage)
-- `alembic/` migrazioni database
-- `elasticmq/` docker-compose e config per ElasticMQ
+## Mappa repository
+- `app/` codice backend + UI
+- `app/main.py` entrypoint API FastAPI
+- `app/ui/Qsmith.py` entrypoint UI Streamlit
+- `alembic/` migrazioni DB
+- `elasticmq/` compose/config ElasticMQ locale
 - `docker/` Dockerfile API/UI
 - `docs/` documentazione
+  - `docs/TASK.md` backlog QSM
+  - `docs/SPEC.md` specifica funzionale
+  - `docs/STORY_INDEX.md` indice storie
+  - `docs/stories/` storie QSM
+  - `docs/bugs/` bug log (formato `QSMB-XXX`)
 
-**Entry Point e Flusso di Avvio**
-- `app/main.py`:
-  - carica `.env`
-  - esegue migrazioni Alembic all avvio
-  - inizializza ElasticMQ creando code per i broker `elasticmq`
-  - bootstrap runtime dei mock server attivi
-  - registra router API e handler di eccezioni
+## Entry point e bootstrap
+In `app/main.py` all'avvio:
+1. carica `.env`
+2. esegue migrazioni Alembic
+3. inizializza ElasticMQ (`init_elasticmq`)
+4. registra router API
+5. a startup bootstrap dei mock server attivi (`MockServerRuntimeRegistry.bootstrap_active_servers()`)
 
-**UI Streamlit**
-- Entry point: `app/ui/Qsmith.py`
-- Pagine principali:
-  - `app/ui/pages/Brokers.py`
-  - `app/ui/pages/DatabaseConnections.py`
-  - `app/ui/pages/DAtabaseDatasources.py`
-  - `app/ui/pages/JsonArray.py`
-  - `app/ui/pages/Logs.py`
-  - `app/ui/pages/MockServers.py`
-  - `app/ui/pages/QueueDetails.py`
-  - `app/ui/pages/Queues.py`
-  - `app/ui/pages/ScenarioEditor.py`
-  - `app/ui/pages/Scenarios.py`
-  - `app/ui/pages/Tools.py`
+## UI Streamlit
+Entry point: `app/ui/Qsmith.py`
 
-**Router API principali**
-- `/broker` (connection e queue operations)
-- `/data-source` (json-array, database datasources)
-- `/database` (database connections, test, objects metadata, preview)
-- `/elaborations` (scenari, step, operations)
-  - include anche stream runtime SSE: `/elaborations/execution/{execution_id}/events`
-- `/mock-server` (CRUD configurazione mock server + activate/deactivate)
-- `/mock/{server_endpoint}/...` (runtime mock API trigger)
+Pagine principali:
+- `app/ui/pages/Home.py`
+- `app/ui/pages/Brokers.py`
+- `app/ui/pages/DatabaseConnections.py`
+- `app/ui/pages/DatabaseDataSources.py`
+- `app/ui/pages/MockServers.py`
+- `app/ui/pages/MockServerEditor.py`
+- `app/ui/pages/Queues.py`
+- `app/ui/pages/QueueDetails.py`
+- `app/ui/pages/JsonArray.py`
+- `app/ui/pages/Scenarios.py`
+- `app/ui/pages/ScenarioEditor.py`
+- `app/ui/pages/Logs.py`
+- `app/ui/pages/Tools.py`
+
+Organizzazione UI modulare gia presente in package dedicati:
+- `app/ui/brokers`
+- `app/ui/database_connections`
+- `app/ui/database_datasources`
+- `app/ui/json_arrays`
+- `app/ui/mock_servers`
+- `app/ui/scenarios`
+- `app/ui/queues`
+
+## Router API principali
+- `/broker`
+  - connessioni broker
+  - queue del broker
+  - messaggi queue (send/receive/ack/test)
+- `/data-source`
+  - json-array datasource
+  - database table datasource
+- `/database`
+  - database connections + test + metadata oggetti + preview
+- `/elaborations`
+  - steps, operations, scenarios
+  - scenario_steps / step_operations (snapshot)
+  - scenario executions
+  - SSE runtime: `/elaborations/execution/{execution_id}/events`
+- `/mock-server`
+  - CRUD mock server + activate/deactivate
+- runtime mock API
+  - route dinamiche sotto `/mock/{server_endpoint}/...`
 - `/logs`
 - `/json_utils`
 
-**Concetti Chiave (Modello Dati)**
-- `json_payloads` config JSON generiche con tipo (`BROKER_CONNECTION`, ecc.)
-- `queues` configurazioni code legate a un broker
-- `operations` definizioni di operazioni con `operation_type` e configurazione JSON
-- `steps` definizioni di step con `step_type` e configurazione JSON
-- `scenarios` elenco scenari
-- `scenario_steps` snapshot degli step usati nello scenario (code/description/type/configuration_json + ordine + on_failure)
-- `step_operations` snapshot delle operazioni usate nel singolo scenario_step (code/description/type/configuration_json + ordine)
-- `mock_servers` configurazioni server mock (endpoint + stato attivo)
-- `mock_server_apis` endpoint API mock configurati per server
-- `ms_api_operations` snapshot operazioni associate a ogni API mock
-- `mock_server_queues` binding queue configurati per server
-- `ms_queue_operations` snapshot operazioni associate a ogni queue binding mock
-- `logs` eventi applicativi
+## Modello dati (alto livello)
+- `json_payloads` configurazioni JSON tipizzate
+- `queues` configurazioni queue per broker
+- `steps`, `operations` anagrafiche riusabili
+- `scenarios` anagrafica scenari
+- `scenario_steps` snapshot funzionale step nello scenario
+- `step_operations` snapshot funzionale operation nello scenario step
+- `scenario_executions`, `scenario_step_executions`, `step_operation_executions`
+- `mock_servers`, `mock_server_apis`, `ms_api_operations`
+- `mock_server_queues`, `ms_queue_operations`
+- `logs`
 
-**Configurazione Ambiente**
-File `.env` (valori di esempio, non usare credenziali reali nei documenti):
-```
+Nota: runtime scenario usa gli snapshot (`scenario_steps`/`step_operations`), non lookup diretto da anagrafica step/operation.
+
+## Configurazione ambiente
+Valori esempio `.env`:
+```env
 DATABASE_URL=postgresql://<user>:<password>@<host>:<port>/<db>
 HOST_IP=<host>
 ```
-Nota: il percorso operativo standard e via Docker.
 
-**Avvio (Obbligatorio via Docker)**
-Avvio solo tramite Docker:
-```
+Non inserire credenziali reali nei documenti.
+
+## Avvio e stop
+Avvio stack API + UI:
+```bash
 docker compose -f docker-compose.yml up --build -d
 ```
-Per fermare:
-```
+
+Stop:
+```bash
 docker compose -f docker-compose.yml down
 ```
-Script alternativo:
-```
+
+Script Windows alternativo:
+```bat
 docker-run-dev.bat
 ```
 
-**Docker**
-- `docker-compose.yml` avvia:
-  - `qsmith` (API FastAPI) su `:9082` con debugpy (porta `5678`)
-  - `qsmith-ui` (Streamlit) su `:8501`
-La UI usa `QSMITH_API_BASE_URL` (default in compose: `http://qsmith:9082`).
+## Servizi e URL utili
+Da `docker-compose.yml`:
+- API `qsmith`: `http://localhost:9082`
+- UI `qsmith-ui`: `http://localhost:8501`
+- Debugpy API: `localhost:5678`
 
-**ElasticMQ (SQS locale)**
-- `elasticmq/docker-compose.yml`
-- Console web: `http://localhost:9325`
-
-**API e Strumenti**
+Altri endpoint:
 - Swagger: `http://localhost:9082/docs`
 - OpenAPI: `http://localhost:9082/openapi.json`
-- UI Web (Streamlit): `http://localhost:8501`
 
-**Test**
-- `pytest app/test`
-- Richiede Docker (Testcontainers avvia PostgreSQL)
+ElasticMQ locale (opzionale, compose dedicato in `elasticmq/`):
+- SQS endpoint: `http://localhost:9324`
+- Console: `http://localhost:9325`
+
+## Test
+Comando principale:
+```bash
+pytest test
+```
+
+I test usano Testcontainers, quindi Docker deve essere disponibile.
+
+## Regole operative docs
+Quando cambia il comportamento funzionale o il piano di lavoro:
+- aggiornare `docs/SPEC.md`
+- aggiornare `docs/stories/QSM-*.md`
+- aggiornare `docs/STORY_INDEX.md` se cambiano le storie
+- aggiornare `docs/CODEX_CONTEXT.md` se cambia il contesto progetto

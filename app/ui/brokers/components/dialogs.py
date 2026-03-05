@@ -343,6 +343,69 @@ def queue_settings_dialog(broker_id: str, queue_id: str):
         )
 
 
+@st.dialog("Queue actions")
+def queue_actions_dialog(broker_id: str, queue_item: dict):
+    queue_id = str(queue_item.get("id") or "").strip()
+    if not queue_id:
+        st.error("Queue non valida.")
+        return
+
+    dialog_suffix = f"queue_actions_{queue_id}"
+    st.text_input(
+        "Code",
+        key=f"{dialog_suffix}_code",
+        value=str(queue_item.get("code") or ""),
+    )
+    st.text_input(
+        "Description",
+        key=f"{dialog_suffix}_description",
+        value=str(queue_item.get("description") or ""),
+    )
+
+    action_cols = st.columns([1, 1], gap="small", vertical_alignment="center")
+    with action_cols[0]:
+        if st.button(
+            "Save",
+            key=f"{dialog_suffix}_save",
+            icon=":material/save:",
+            use_container_width=True,
+        ):
+            code = str(st.session_state.get(f"{dialog_suffix}_code") or "").strip()
+            description = str(st.session_state.get(f"{dialog_suffix}_description") or "")
+            if not code:
+                st.error("Il campo Code e' obbligatorio.")
+                return
+            try:
+                api_put(
+                    f"/broker/{broker_id}/queue/{queue_id}",
+                    {
+                        "code": code,
+                        "description": description,
+                    },
+                )
+            except Exception as exc:
+                st.error(f"Errore aggiornamento queue: {str(exc)}")
+                return
+
+            load_queues(broker_id)
+            st.rerun()
+    with action_cols[1]:
+        if st.button(
+            "Delete",
+            key=f"{dialog_suffix}_delete",
+            icon=":material/delete:",
+            use_container_width=True,
+        ):
+            try:
+                api_delete(f"/broker/{broker_id}/queue/{queue_id}")
+            except Exception as exc:
+                st.error(f"Errore cancellazione queue: {str(exc)}")
+                return
+
+            load_queues(broker_id)
+            st.rerun()
+
+
 @st.dialog("Conferma eliminazione queue")
 def delete_queue_dialog(broker_id: str, queue_item: dict):
     queue_id = queue_item.get("id", "")

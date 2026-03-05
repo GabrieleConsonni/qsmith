@@ -3,8 +3,7 @@ import streamlit as st
 from brokers.components.common import format_count, format_last_update
 from brokers.components.dialogs import (
     add_queue_dialog,
-    delete_queue_dialog,
-    queue_settings_dialog,
+    queue_actions_dialog,
 )
 from brokers.services.data_loader_service import load_queues
 
@@ -35,7 +34,7 @@ def render_queues_component(broker: dict):
     else:
         for queue_item in queues:
             with st.container(border=True):
-                row_cols = st.columns([2, 2, 2, 1, 1, 1], gap="small", vertical_alignment="center")
+                row_cols = st.columns([2, 2, 2, 1, 1], gap="small", vertical_alignment="center")
                 queue_label = queue_item.get("description") or queue_item.get("code") or "-"
                 row_cols[0].write(queue_label)
                 with row_cols[1]:
@@ -55,23 +54,13 @@ def render_queues_component(broker: dict):
                 with row_cols[4]:
                     if st.button(
                         "",
-                        key=f"queue_settings_{queue_item.get('id')}",
+                        key=f"queue_more_actions_{queue_item.get('id')}",
                         type="secondary",
                         use_container_width=True,
-                        help="Settings",
-                        icon=":material/settings:",
+                        help="Actions",
+                        icon=":material/more_vert:",
                     ):
-                        queue_settings_dialog(broker_id, queue_item.get("id"))
-                with row_cols[5]:
-                    if st.button(
-                        "",
-                        key=f"queue_delete_{queue_item.get('id')}",
-                        type="secondary",
-                        use_container_width=True,
-                        help="Delete",
-                        icon=":material/delete:",
-                    ):
-                        delete_queue_dialog(broker_id, queue_item)
+                        queue_actions_dialog(broker_id, queue_item)
 
     loaded_at = st.session_state.get("queues_loaded_at")
     timestamp_label = format_last_update(loaded_at) if loaded_at else "-"

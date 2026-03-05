@@ -1,6 +1,7 @@
 import json
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 from brokers.components.common import format_count
 from queues.services.queue_service import (
@@ -31,6 +32,35 @@ def _send_write_body_key(queue_id: str) -> str:
 
 def _receive_messages_key(queue_id: str) -> str:
     return f"queue_receive_messages_data_{queue_id}"
+
+
+def _receive_messages_acked_key(queue_id: str) -> str:
+    return f"queue_receive_messages_acked_{queue_id}"
+
+
+def _copy_queue_url_button(queue_url: str, queue_id: str):
+    escaped_url = json.dumps(str(queue_url or ""))
+    components.html(
+        f"""
+        <button
+          id="copy-queue-url-{queue_id}"
+          style="
+            width: 100%;
+            border: 1px solid #cfd4da;
+            border-radius: 8px;
+            background: #ffffff;
+            color: #111827;
+            padding: 8px 10px;
+            cursor: pointer;
+            font-size: 13px;
+          "
+          onclick="navigator.clipboard.writeText({escaped_url}); this.innerText='Copied';"
+        >
+          Copy URL
+        </button>
+        """,
+        height=40,
+    )
 
 
 def _apply_tab_label_style():
@@ -243,10 +273,25 @@ def queue_ack_received_messages_dialog(messages_count: int):
     st.write(f"Messages confirmed: **{messages_count}**")
 
 
+@st.dialog("Receive and ack messages")
+def queue_receive_and_ack_messages_dialog(received_count: int, acked_count: int):
+    st.success("Messages received and confirmed successfully.")
+    st.write(f"Messages read: **{received_count}**")
+    st.write(f"Messages confirmed: **{acked_count}**")
+
+
 def render_queue_details_component(queue_data: dict, broker_id: str, queue_id: str):
     
     queue_label = queue_data.get("description") or queue_data.get("code") or queue_id
+    queue_cfg = queue_data.get("configurationQueue") or {}
+    queue_url = str(queue_cfg.get("url") or "").strip()
     st.header(f"Queue [{queue_label}]")
+    if queue_url:
+        queue_url_cols = st.columns([9, 2], gap="small", vertical_alignment="center")
+        with queue_url_cols[0]:
+            st.markdown(f"`{queue_url}`")
+        with queue_url_cols[1]:
+            _copy_queue_url_button(queue_url, queue_id)
     st.caption("Send and receive messages, test connection and manage json-array datasources.")
 
     with st.container(border=True):
@@ -380,8 +425,11 @@ def render_queue_details_component(queue_data: dict, broker_id: str, queue_id: s
 
         with tab_receive:
             received_messages_key = _receive_messages_key(queue_id)
+            received_messages_acked_key = _receive_messages_acked_key(queue_id)
             if received_messages_key not in st.session_state:
                 st.session_state[received_messages_key] = []
+            if received_messages_acked_key not in st.session_state:
+                st.session_state[received_messages_acked_key] = False
 
             receive_cols = st.columns([1, 4, 1], gap="small", vertical_alignment="top")
             with receive_cols[0]:
@@ -402,6 +450,45 @@ def render_queue_details_component(queue_data: dict, broker_id: str, queue_id: s
                         st.session_state[received_messages_key] = (
                             received if isinstance(received, list) else [received]
                         )
+                        st.session_state[received_messages_acked_key] = False
+                        st.rerun()
+                if st.button(
+                    "",
+                    key=f"queue_receive_ack_messages_{queue_id}",
+                    icon=":material/done_all:",
+                    help="Receive and ack messages",
+                    use_container_width=True,
+                ):
+                    try:
+                        with st.spinner("Receiving and acknowledging messages..."):
+                            received = receive_queue_messages(broker_id, queue_id, count=10)
+                            received_items = received if isinstance(received, list) else [received]
+                            if not received_items:
+                                st.session_state[received_messages_key] = []
+                                st.session_state[received_messages_acked_key] = False
+                                st.info("Nessun messaggio disponibile.")
+                                return
+                            ack_results = receive_queue_messages_ack(
+                                broker_id,
+                                queue_id,
+                                received_items,
+                            )
+                    except Exception as exc:
+                        st.error(f"Errore receive+ack messaggi: {str(exc)}")
+                    else:
+                        acked_items = ack_results if isinstance(ack_results, list) else []
+                        received_count = len(received_items)
+                        acked_count = len(acked_items)
+                        if acked_count != received_count:
+                            st.session_state[received_messages_key] = received_items
+                            st.session_state[received_messages_acked_key] = False
+                            st.error(
+                                f"Ack parziale: ricevuti {received_count}, confermati {acked_count}."
+                            )
+                            return
+                        st.session_state[received_messages_key] = received_items
+                        st.session_state[received_messages_acked_key] = True
+                        queue_receive_and_ack_messages_dialog(received_count, acked_count)
                         st.rerun()
 
             with receive_cols[1]:
@@ -411,24 +498,33 @@ def render_queue_details_component(queue_data: dict, broker_id: str, queue_id: s
             with receive_cols[2]:
                 st.caption("Actions")
                 has_messages = bool(st.session_state.get(received_messages_key))
+                messages_already_acked = bool(st.session_state.get(received_messages_acked_key))
                 
                 if st.button(
                     "",
                     key=f"queue_ack_{queue_id}",
                     icon=":material/check:",
                     help="Ack received messages",
-                    disabled=not has_messages,
+                    disabled=(not has_messages) or messages_already_acked,
                     use_container_width=True,
                 ):
                     messages_to_ack = st.session_state.get(received_messages_key, [])
-                    acked_count = len(messages_to_ack)
                     try:
-                        with st.spinner("Receiving messages..."):
-                            receive_queue_messages_ack(broker_id, queue_id, messages_to_ack)
+                        with st.spinner("Acknowledging messages..."):
+                            ack_results = receive_queue_messages_ack(broker_id, queue_id, messages_to_ack)
                     except Exception as exc:
                         st.error(f"Errore ack messaggi: {str(exc)}")
                     else:
+                        acked_items = ack_results if isinstance(ack_results, list) else []
+                        acked_count = len(acked_items)
+                        requested_count = len(messages_to_ack)
+                        if acked_count != requested_count:
+                            st.error(
+                                f"Ack parziale: richiesti {requested_count}, confermati {acked_count}."
+                            )
+                            return
                         st.session_state[_receive_messages_key(queue_id)] = []
+                        st.session_state[received_messages_acked_key] = False
                         queue_ack_received_messages_dialog(acked_count)
                         st.rerun()
                 
@@ -451,5 +547,6 @@ def render_queue_details_component(queue_data: dict, broker_id: str, queue_id: s
                     use_container_width=True,
                 ):
                     st.session_state[received_messages_key] = []
+                    st.session_state[received_messages_acked_key] = False
                     st.rerun()
 

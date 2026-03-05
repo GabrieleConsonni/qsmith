@@ -132,21 +132,56 @@ class AmazonSQSConnectionService(QueueConnectionService):
         sqs,queue_url = self.test_connection(config,queue_id)
 
         deleted_msgs:list[dict] = []
-        for m in messages:
+        failures: list[dict[str, str]] = []
+        for index, m in enumerate(messages, start=1):
+            if not isinstance(m, dict):
+                failures.append(
+                    {
+                        "message_id": f"index-{index}",
+                        "error": "Invalid message format.",
+                    }
+                )
+                continue
+
+            mid = str(m.get("MessageId") or f"index-{index}")
+            receipt_handle = m.get("ReceiptHandle")
+            if not receipt_handle:
+                failures.append(
+                    {
+                        "message_id": mid,
+                        "error": "Missing ReceiptHandle.",
+                    }
+                )
+                continue
+
             try:
                 sqs.delete_message(
                     QueueUrl=queue_url,
-                    ReceiptHandle=m["ReceiptHandle"]
+                    ReceiptHandle=receipt_handle
                 )
-                mid = m["MessageId"]
                 deleted_msgs.append({
                     "status": "ok",
                     "message_id": mid
                 })
-                print(f" Messaggio eliminato  MessageId={mid} ")
             except ClientError as e:
-                mid = m.get("MessageId", "unknown")
-                print(f" Errore eliminazione messaggio  MessageId={mid} Error={e}")
+                error_info = e.response.get("Error", {})
+                error_code = str(error_info.get("Code") or "ClientError")
+                error_message = str(error_info.get("Message") or str(e))
+                failures.append(
+                    {
+                        "message_id": mid,
+                        "error": f"{error_code}: {error_message}",
+                    }
+                )
+
+        if failures:
+            failed_ids = ", ".join(item["message_id"] for item in failures[:5])
+            if len(failures) > 5:
+                failed_ids = f"{failed_ids}, ..."
+            raise QsmithAppException(
+                f"ACK failed for {len(failures)} of {len(messages)} message(s). "
+                f"Deleted={len(deleted_msgs)}. Failed IDs: {failed_ids}"
+            )
 
         return deleted_msgs
 

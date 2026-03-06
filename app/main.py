@@ -1,5 +1,8 @@
+import logging
+import time
+
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 from alembic_runner import run_alembic_migrations
 from elasticmq.elasticmq_config import init_elasticmq
@@ -27,6 +30,23 @@ from mock_servers.services.runtime.mock_server_runtime_registry import (
     MockServerRuntimeRegistry,
 )
 
+
+def _build_api_access_logger() -> logging.Logger:
+    logger = logging.getLogger("qsmith.api")
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+        )
+        logger.addHandler(handler)
+    return logger
+
+
+api_access_logger = _build_api_access_logger()
+
+
 def load_environment():
     load_dotenv()
 
@@ -43,6 +63,45 @@ def load_environment():
 load_environment()
 
 app = FastAPI()
+
+
+@app.middleware("http")
+async def log_incoming_api_calls(request: Request, call_next):
+    started_at = time.perf_counter()
+    client_host = request.client.host if request.client else "-"
+    path = request.url.path
+    query = request.url.query
+    target = f"{path}?{query}" if query else path
+
+    try:
+        response = await call_next(request)
+    except Exception:
+        duration_ms = (time.perf_counter() - started_at) * 1000
+        api_access_logger.exception(
+            "api request failed method=%s path=%s client=%s duration_ms=%.2f",
+            request.method,
+            target,
+            client_host,
+            duration_ms,
+        )
+        raise
+
+    duration_ms = (time.perf_counter() - started_at) * 1000
+    print(
+        "api request "
+        f"method={request.method} path={target} status={response.status_code} "
+        f"client={client_host} duration_ms={duration_ms:.2f}",
+        flush=True,
+    )
+    api_access_logger.info(
+        "api request method=%s path=%s status=%s client=%s duration_ms=%.2f",
+        request.method,
+        target,
+        response.status_code,
+        client_host,
+        duration_ms,
+    )
+    return response
 
 app.include_router(brokers_router)
 app.include_router(brokers_connection_router)

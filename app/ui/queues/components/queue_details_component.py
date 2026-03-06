@@ -81,9 +81,9 @@ def _parse_json_array(body_text: str) -> tuple[list[object] | None, str | None]:
     try:
         parsed = json.loads(body_text)
     except json.JSONDecodeError as exc:
-        return None, f"JSON non valido: {str(exc)}"
+        return None, f"Invalid JSON: {str(exc)}"
     if not isinstance(parsed, list):
-        return None, "Il body deve contenere un array JSON."
+        return None, "Body must contain a JSON array."
     return parsed, None
 
 
@@ -91,19 +91,35 @@ def _pretty_json(value: object) -> str:
     return json.dumps(value, indent=2)
 
 
+def _as_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return False
+
+
+def _is_fifo_content_dedup_enabled(queue_cfg: dict) -> bool:
+    return _as_bool(queue_cfg.get("fifoQueue")) and _as_bool(
+        queue_cfg.get("contentBasedDeduplication")
+    )
+
+
 def _extract_json_array_from_messages(messages: list[object]) -> tuple[list[object] | None, str | None]:
     extracted: list[object] = []
     for index, message in enumerate(messages):
         if not isinstance(message, dict):
-            return None, f"Messaggio {index + 1} non valido."
+            return None, f"Invalid message at index {index + 1}."
         body_value = message.get("Body")
         if body_value is None:
-            return None, f"Messaggio {index + 1} senza campo Body."
+            return None, f"Message {index + 1} is missing the Body field."
         if isinstance(body_value, str):
             try:
                 body_value = json.loads(body_value)
             except json.JSONDecodeError as exc:
-                return None, f"Body non valido nel messaggio {index + 1}: {str(exc)}"
+                return None, f"Invalid Body in message {index + 1}: {str(exc)}"
         extracted.append(body_value)
     return extracted, None
 
@@ -119,10 +135,10 @@ def queue_test_connection_dialog(broker_id: str, queue_id: str):
         with st.spinner("Testing connection..."):
             result = test_queue_connection(broker_id, queue_id)
     except Exception as exc:
-        st.error(f"Errore test connessione: {str(exc)}")
+        st.error(f"Connection test error: {str(exc)}")
         return
 
-    message = str(result.get("message", "Test completato."))
+    message = str(result.get("message", "Test completed."))
     if "not valid" in message.lower():
         st.error(message)
     else:
@@ -135,11 +151,11 @@ def open_select_json_array_dialog(queue_id: str):
     try:
         json_arrays = load_json_arrays()
     except Exception as exc:
-        st.error(f"Errore caricamento json-array: {str(exc)}")
+        st.error(f"Error loading json-array: {str(exc)}")
         return
 
     if not json_arrays:
-        st.info("Nessun json-array disponibile.")
+        st.info("No json-array available.")
         return
 
     options = list(range(len(json_arrays)))
@@ -210,16 +226,16 @@ def open_save_json_array_dialog(queue_id: str):
     if not st.button("Save", key=f"queue_save_array_submit_{queue_id}"):
         return
     if not code:
-        st.error("Il campo Code e' obbligatorio.")
+        st.error("The Code field is required.")
         return
 
     try:
         save_json_array(code=code, description=description, payload=payload or [])
     except Exception as exc:
-        st.error(f"Errore salvataggio json-array: {str(exc)}")
+        st.error(f"Error saving json-array: {str(exc)}")
         return
 
-    st.success("Json-array salvato correttamente.")
+    st.success("Json-array saved successfully.")
     st.rerun()
 
 
@@ -239,16 +255,16 @@ def queue_extract_json_array_dialog(queue_id: str):
     if not st.button("Save", key=f"queue_extract_array_submit_{queue_id}"):
         return
     if not code:
-        st.error("Il campo Code e' obbligatorio.")
+        st.error("The Code field is required.")
         return
 
     try:
         save_json_array(code=code, description=description, payload=extracted_payload or [])
     except Exception as exc:
-        st.error(f"Errore salvataggio json-array: {str(exc)}")
+        st.error(f"Error saving json-array: {str(exc)}")
         return
 
-    st.success("Json-array salvato correttamente.")
+    st.success("Json-array saved successfully.")
     st.rerun()
 
 
@@ -259,7 +275,7 @@ def queue_send_results_dialog(queue_id: str):
     if results:
         st.dataframe(results, use_container_width=True, hide_index=True)
     else:
-        st.caption("Nessun risultato disponibile.")
+        st.caption("No results available.")
 
 
 @st.dialog("Receive messages")
@@ -299,7 +315,7 @@ def render_queue_details_component(queue_data: dict, broker_id: str, queue_id: s
             [3, 3, 1, 1, 2], gap="small", vertical_alignment="center"
         )
         with col_sent:
-            st.metric("Approximante number of messages", format_count(queue_data.get("messages_sent")))
+            st.metric("Approximate number of messages", format_count(queue_data.get("messages_sent")))
         with col_received:
             st.metric("Not visible messages", format_count(queue_data.get("messages_received"))) 
         with col_refresh:
@@ -336,6 +352,12 @@ def render_queue_details_component(queue_data: dict, broker_id: str, queue_id: s
 
             if st.session_state.get(write_open_key):
                 queue_write_json_array_dialog(queue_id)
+
+            if _is_fifo_content_dedup_enabled(queue_cfg):
+                st.warning(
+                    "FIFO + content-based deduplication are enabled: if you resend the same message "
+                    "within the deduplication window, the broker can ignore it even after ACK."
+                )
 
             col_buttons, col_preview, col_send = st.columns([1, 4, 1], gap="small",vertical_alignment="top")
         
@@ -397,7 +419,7 @@ def render_queue_details_component(queue_data: dict, broker_id: str, queue_id: s
                             with st.spinner("Sending messages..."):
                                 results = send_queue_messages(broker_id, queue_id, payload or [])
                         except Exception as exc:
-                            st.error(f"Errore invio messaggi: {str(exc)}")
+                            st.error(f"Error sending messages: {str(exc)}")
                         else:
                             st.session_state[results_key] = results if isinstance(results, list) else [results]
                             st.session_state[body_key] = "[]"
@@ -445,7 +467,7 @@ def render_queue_details_component(queue_data: dict, broker_id: str, queue_id: s
                         with st.spinner("Receiving messages..."):
                             received = receive_queue_messages(broker_id, queue_id, count=10)
                     except Exception as exc:
-                        st.error(f"Errore ricezione messaggi: {str(exc)}")
+                        st.error(f"Error receiving messages: {str(exc)}")
                     else:
                         st.session_state[received_messages_key] = (
                             received if isinstance(received, list) else [received]
@@ -466,7 +488,7 @@ def render_queue_details_component(queue_data: dict, broker_id: str, queue_id: s
                             if not received_items:
                                 st.session_state[received_messages_key] = []
                                 st.session_state[received_messages_acked_key] = False
-                                st.info("Nessun messaggio disponibile.")
+                                st.info("No messages available.")
                                 return
                             ack_results = receive_queue_messages_ack(
                                 broker_id,
@@ -474,7 +496,7 @@ def render_queue_details_component(queue_data: dict, broker_id: str, queue_id: s
                                 received_items,
                             )
                     except Exception as exc:
-                        st.error(f"Errore receive+ack messaggi: {str(exc)}")
+                        st.error(f"Error while receiving and acknowledging messages: {str(exc)}")
                     else:
                         acked_items = ack_results if isinstance(ack_results, list) else []
                         received_count = len(received_items)
@@ -483,7 +505,7 @@ def render_queue_details_component(queue_data: dict, broker_id: str, queue_id: s
                             st.session_state[received_messages_key] = received_items
                             st.session_state[received_messages_acked_key] = False
                             st.error(
-                                f"Ack parziale: ricevuti {received_count}, confermati {acked_count}."
+                                f"Partial ACK: received {received_count}, acknowledged {acked_count}."
                             )
                             return
                         st.session_state[received_messages_key] = received_items
@@ -513,14 +535,14 @@ def render_queue_details_component(queue_data: dict, broker_id: str, queue_id: s
                         with st.spinner("Acknowledging messages..."):
                             ack_results = receive_queue_messages_ack(broker_id, queue_id, messages_to_ack)
                     except Exception as exc:
-                        st.error(f"Errore ack messaggi: {str(exc)}")
+                        st.error(f"Error acknowledging messages: {str(exc)}")
                     else:
                         acked_items = ack_results if isinstance(ack_results, list) else []
                         acked_count = len(acked_items)
                         requested_count = len(messages_to_ack)
                         if acked_count != requested_count:
                             st.error(
-                                f"Ack parziale: richiesti {requested_count}, confermati {acked_count}."
+                                f"Partial ACK: requested {requested_count}, acknowledged {acked_count}."
                             )
                             return
                         st.session_state[_receive_messages_key(queue_id)] = []

@@ -16,7 +16,8 @@ from brokers.services.connections.queue.queue_connection_service import QueueCon
 from exceptions.app_exception import QsmithAppException
 
 MAX_NUMBER_OF_MESSAGES = 10
-WAIT_TIME_SECONDS = 20
+MAX_WAIT_TIME_SECONDS = 20
+DEFAULT_WAIT_TIME_SECONDS = 0
 
 
 def _safe_int(value: str | None) -> int | None:
@@ -52,12 +53,24 @@ class AmazonSQSConnectionService(QueueConnectionService):
             raise Exception(f"Queue {queue_cfg_dto} not found")
         return queue_cfg_dto.url
 
-    def test_connection(self, config:BrokerAmazonConnectionConfig, queue_id:str) -> tuple[BaseClient, str]:
-
+    def _load_queue_configuration(self, queue_id: str) -> QueueConfigurationDto:
         with managed_session() as session:
-            queue: QueueEntity = QueueService().get_by_id(session,queue_id)
-            queue_url  = self._extract_url_from_queue(convert_queue_configuration_types(queue.configuration_json))
+            queue: QueueEntity | None = QueueService().get_by_id(session, queue_id)
+            if queue is None:
+                raise QsmithAppException(f"Queue with id '{queue_id}' not found")
+            return convert_queue_configuration_types(queue.configuration_json)
 
+    def _resolve_wait_time_seconds(self, queue_cfg: QueueConfigurationDto) -> int:
+        raw_wait = queue_cfg.receiveMessageWait
+        try:
+            wait_seconds = int(raw_wait)
+        except (TypeError, ValueError):
+            return DEFAULT_WAIT_TIME_SECONDS
+        return max(0, min(wait_seconds, MAX_WAIT_TIME_SECONDS))
+
+    def test_connection(self, config:BrokerAmazonConnectionConfig, queue_id:str) -> tuple[BaseClient, str]:
+        queue_cfg = self._load_queue_configuration(queue_id)
+        queue_url = self._extract_url_from_queue(queue_cfg)
         sqs = self.test_url_connection(config, queue_url)
 
         return sqs, queue_url
@@ -101,15 +114,18 @@ class AmazonSQSConnectionService(QueueConnectionService):
         return results
 
     def receive_messages(self, config:BrokerAmazonConnectionConfig, queue_id:str, max_messages: int = 10) -> list[Any]:
-        sqs,queue_url = self.test_connection(config,queue_id)
+        queue_cfg = self._load_queue_configuration(queue_id)
+        queue_url = self._extract_url_from_queue(queue_cfg)
+        sqs = self.test_url_connection(config, queue_url)
 
         all_msgs = []
 
         to_receive = min(MAX_NUMBER_OF_MESSAGES, max_messages)
+        wait_time_seconds = self._resolve_wait_time_seconds(queue_cfg)
         resp = sqs.receive_message(
             QueueUrl=queue_url,
             MaxNumberOfMessages=to_receive,
-            WaitTimeSeconds=WAIT_TIME_SECONDS
+            WaitTimeSeconds=wait_time_seconds,
         )
 
         msgs = resp.get("Messages", []) or []

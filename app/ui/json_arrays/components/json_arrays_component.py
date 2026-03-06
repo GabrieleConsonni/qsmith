@@ -15,6 +15,7 @@ SELECTED_JSON_ARRAY_ID_KEY = "selected_json_array_id"
 INLINE_EDIT_MODE_KEY = "inline_edit_json_array_mode"
 INLINE_EDIT_JSON_ARRAY_ID_KEY = "inline_edit_json_array_id"
 INLINE_EDIT_JSON_ARRAY_BODY_KEY = "inline_edit_json_array_body"
+INLINE_EDIT_JSON_ARRAY_BODY_PENDING_KEY = "inline_edit_json_array_body_pending"
 INLINE_EDIT_JSON_ARRAY_CODE_KEY = "inline_edit_json_array_code"
 INLINE_EDIT_JSON_ARRAY_DESCRIPTION_KEY = "inline_edit_json_array_description"
 
@@ -95,7 +96,7 @@ def import_csv_dialog():
         st.error(f"Errore parsing CSV: {str(exc)}")
         return
 
-    st.session_state[INLINE_EDIT_JSON_ARRAY_BODY_KEY] = _pretty_json(parsed_rows)
+    _queue_inline_body_update(_pretty_json(parsed_rows))
     st.rerun()
 
 
@@ -103,8 +104,19 @@ def _stop_inline_edit():
     st.session_state.pop(INLINE_EDIT_MODE_KEY, None)
     st.session_state.pop(INLINE_EDIT_JSON_ARRAY_ID_KEY, None)
     st.session_state.pop(INLINE_EDIT_JSON_ARRAY_BODY_KEY, None)
+    st.session_state.pop(INLINE_EDIT_JSON_ARRAY_BODY_PENDING_KEY, None)
     st.session_state.pop(INLINE_EDIT_JSON_ARRAY_CODE_KEY, None)
     st.session_state.pop(INLINE_EDIT_JSON_ARRAY_DESCRIPTION_KEY, None)
+
+
+def _queue_inline_body_update(next_body: str):
+    st.session_state[INLINE_EDIT_JSON_ARRAY_BODY_PENDING_KEY] = next_body
+
+
+def _apply_pending_inline_body_update():
+    next_body = st.session_state.pop(INLINE_EDIT_JSON_ARRAY_BODY_PENDING_KEY, None)
+    if next_body is not None:
+        st.session_state[INLINE_EDIT_JSON_ARRAY_BODY_KEY] = str(next_body)
 
 
 def _start_inline_edit(selected_item: dict):
@@ -223,6 +235,7 @@ def _find_selected_json_array(json_arrays: list[dict], selected_id: str | None) 
 
 
 def render_json_arrays_component(json_arrays: list[dict]):
+    _apply_pending_inline_body_update()
     selected_id = _resolve_selected_json_array_id(json_arrays)
     selected_item = _find_selected_json_array(json_arrays, selected_id)
     if not selected_item:
@@ -346,7 +359,8 @@ def render_json_arrays_component(json_arrays: list[dict]):
                 if error:
                     st.error(error)
                 else:
-                    st.session_state[INLINE_EDIT_JSON_ARRAY_BODY_KEY] = _pretty_json(payload)
+                    _queue_inline_body_update(_pretty_json(payload))
+                    st.rerun()
         with tool_cols[3]:
             edit_btn_label = "Save" if editing_or_creating else ""
             edit_btn_icon = (

@@ -20,6 +20,7 @@ class DataFromDbStepExecutor(StepExecutor):
         scenario_step: ScenarioStepEntity,
         cfg: DataFromDbConfigurationStepDto,
     ) -> list[dict[str, str]]:
+        step_code = str(scenario_step.code or scenario_step.id)
         connection_id = ""
         table_name = ""
         data_source_id = str(cfg.dataset_id or "").strip()
@@ -38,7 +39,7 @@ class DataFromDbStepExecutor(StepExecutor):
         database_connection_cfg: DatabaseConnectionConfigTypes = load_database_connection(connection_id)
         engine = create_sqlalchemy_engine(database_connection_cfg)
 
-        self.log(str(scenario_step.code or scenario_step.id), f"Start reading table '{table_name}'")
+        self.log(step_code, f"Start reading table '{table_name}'")
 
         rows = DatabaseTableReader.read_full_table(engine, ReadTableConfig(
                 table_name=table_name,
@@ -46,9 +47,14 @@ class DataFromDbStepExecutor(StepExecutor):
         
         total_rows = len(rows) if isinstance(rows, list) else 0
 
-        results = self.execute_operations(session, scenario_step.id, rows)
+        results = self.execute_operations(
+            session,
+            scenario_step.id,
+            step_code,
+            rows,
+        )
 
-        self.log(str(scenario_step.code or scenario_step.id),
+        self.log(step_code,
                  f"Finished reading table '{table_name}'. Total rows processed: {total_rows}")
 
         return results

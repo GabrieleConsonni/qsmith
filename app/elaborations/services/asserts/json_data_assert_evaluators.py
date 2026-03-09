@@ -141,3 +141,9 @@ class JsonArrayEqualsDataAssertEvaluator(AssertEvaluator):
             raise ValueError(
                 "Assert failed: actual data is not equal to expected json-array."
             )
+
+
+class EqualsDataAssertEvaluator(AssertEvaluator):
+    def evaluate(self, context: AssertEvaluationContext) -> None:
+        if context.actual != context.expected:
+            raise ValueError("Assert failed: actual value is not equal to expected value.")

@@ -1,5 +1,4 @@
 import json
-from pyexpat.errors import messages
 import time
 
 from sqlalchemy.orm import Session
@@ -22,6 +21,7 @@ class DataFromQueueStepExecutor(StepExecutor):
         scenario_step: ScenarioStepEntity,
         cfg: DataFromQueueConfigurationStepDto,
     ) -> list[dict[str, str]]:
+        step_code = str(scenario_step.code or scenario_step.id)
         queue = QueueService().get_by_id(session, cfg.queue_id)
         if not queue:
             raise ValueError(f"Queue '{cfg.queue_id}' not found")
@@ -54,28 +54,37 @@ class DataFromQueueStepExecutor(StepExecutor):
             all_msgs.extend(msgs)
 
         self.log(
-            str(scenario_step.code or scenario_step.id),
+            step_code,
             f"Try to export {len(all_msgs)} messages read from queue '{queue.code}'",
         )
 
         extracted_payload, error = self._extract_json_array_from_messages(all_msgs)
 
-        return self.execute_operations(session, scenario_step.id, extracted_payload) if not error else self._handle_error(scenario_step, error)
+        return (
+            self.execute_operations(
+                session,
+                scenario_step.id,
+                step_code,
+                extracted_payload,
+            )
+            if not error
+            else self._handle_error(scenario_step, error)
+        )
     
     def _extract_json_array_from_messages(self, messages: list[object]) -> tuple[list[object] | None, str | None]:
         extracted: list[object] = []
         for index, message in enumerate(messages):
             if not isinstance(message, dict):
                 return None, f"Messaggio {index + 1} non valido."
-            body_value = message.get("Body")
-            if body_value is None:
-                return None, f"Messaggio {index + 1} senza campo Body."
+
+            # Accept both SQS-shaped messages (with Body) and already-decoded payloads.
+            body_value = message.get("Body") if "Body" in message else message
             if isinstance(body_value, str):
                 try:
                     body_value = json.loads(body_value)
                 except json.JSONDecodeError as exc:
                     return None, f"Body non valido nel messaggio {index + 1}: {str(exc)}"
-        extracted.append(body_value)
+            extracted.append(body_value)
         return extracted, None
     
     def _handle_error(self, scenario_step: ScenarioStepEntity, error_message: str) -> list[dict[str, str]]:

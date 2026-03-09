@@ -8,6 +8,11 @@ from elaborations.services.operations.operation_executor import (
     ExecutionResultDto,
     OperationExecutor,
 )
+from elaborations.services.scenarios.run_context import (
+    append_assert_artifact,
+    build_run_context_scope,
+)
+from elaborations.services.scenarios.run_context_resolver import resolve_dynamic_value
 from logs.models.enums.log_level import LogLevel
 
 
@@ -19,12 +24,52 @@ class AssertOperationExecutor(OperationExecutor):
         cfg: AssertConfigurationOperationDto,
         data: list[dict],
     ) -> ExecutionResultDto:
+        scope = build_run_context_scope()
+        resolved_actual = (
+            resolve_dynamic_value(cfg.actual, scope)
+            if cfg.actual is not None
+            else data
+        )
+        resolved_expected = (
+            resolve_dynamic_value(cfg.expected, scope)
+            if cfg.expected is not None
+            else None
+        )
+        data_to_evaluate = (
+            resolved_actual if isinstance(resolved_actual, list) else data
+        )
+
         try:
-            evaluate_assert(session, cfg, data)
+            evaluate_assert(
+                session,
+                cfg,
+                data_to_evaluate,
+                actual=resolved_actual,
+                expected=resolved_expected,
+            )
+            append_assert_artifact(
+                {
+                    "operation_id": operation_id,
+                    "assert_type": cfg.assert_type,
+                    "status": "passed",
+                    "actual": resolved_actual,
+                    "expected": resolved_expected,
+                }
+            )
         except Exception as exc:
             technical_message = str(exc)
             configured_message = str(cfg.error_message or "").strip()
             error_message = configured_message or technical_message
+            append_assert_artifact(
+                {
+                    "operation_id": operation_id,
+                    "assert_type": cfg.assert_type,
+                    "status": "failed",
+                    "actual": resolved_actual,
+                    "expected": resolved_expected,
+                    "error": technical_message,
+                }
+            )
             self.log(
                 operation_id,
                 message=error_message,

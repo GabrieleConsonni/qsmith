@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Text, func
+from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Text, func
 
 from _alembic.constants import SCHEMA
 from _alembic.models import Base
@@ -11,6 +11,13 @@ class ScenarioExecutionEntity(Base, BaseIdEntity):
     scenario_code = Column(Text, nullable=False)
     scenario_description = Column(Text, nullable=True)
     status = Column(Text, nullable=False, default="running")
+    invocation_id = Column(
+        Text,
+        ForeignKey(f"{SCHEMA}.mock_server_invocations.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    vars_init_json = Column(JSON, nullable=False, default=dict)
+    result_json = Column(JSON, nullable=True)
     include_previous = Column(Boolean, nullable=False, default=False)
     requested_step_id = Column(Text, nullable=True)
     requested_step_code = Column(Text, nullable=True)

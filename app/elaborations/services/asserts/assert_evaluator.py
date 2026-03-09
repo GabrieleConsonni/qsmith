@@ -13,6 +13,8 @@ class AssertEvaluationContext:
     session: Session
     cfg: AssertConfigurationOperationDto
     data: list[dict]
+    actual: object | None = None
+    expected: object | None = None
 
 
 class AssertEvaluator(ABC):

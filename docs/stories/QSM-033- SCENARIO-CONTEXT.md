@@ -1,11 +1,24 @@
-# QSM-0XX - Trigger → Scenario input tramite Run Context + Resolver
+﻿## Stato (2026-03-08)
+- Stato: In corso
+- Backend core: Completato
+- UI configurazione avanzata (`pre/post/response` editor): Da fare
 
-Obiettivo: gestire i dati provenienti da **API** o **Queue** (mock server) e passarli a **uno o più scenari** in modo deterministico, tracciabile e riusabile, introducendo:
+Implementato in questo avanzamento:
+- RunContext runtime (`event`, `vars`, `last`, `artifacts`) + resolver `$ref/`$const/`$default/`$required
+- Operazione `set-var`
+- `run-scenario` estesa con `scenario_code`, `init_vars`, `invocation_id`
+- Pipeline API runtime: `pre_response_operations` (sync), response dinamica, `post_response_operations` (async)
+- Event envelope API/Queue + persistenza `mock_server_invocations`
+- Persistenza scenario run estesa: `invocation_id`, `vars_init_json`, `result_json`
+- Assert estesi con `equals`, `actual/expected` risolti da contesto e artifacts persistiti
+# QSM-0XX - Trigger â†’ Scenario input tramite Run Context + Resolver
+
+Obiettivo: gestire i dati provenienti da **API** o **Queue** (mock server) e passarli a **uno o piÃ¹ scenari** in modo deterministico, tracciabile e riusabile, introducendo:
 
 * un **RunContext globale per ogni run**
 * un **resolver di riferimenti dinamici (`$ref`)**
 * una pipeline di operazioni **pre-response (sync)** e **post-response (async)** per le API
-* possibilità di costruire **response dinamiche** basate sull'evento ricevuto.
+* possibilitÃ  di costruire **response dinamiche** basate sull'evento ricevuto.
 
 ---
 
@@ -30,10 +43,10 @@ Struttura:
 
 Descrizione campi:
 
-* **event** → envelope dell’evento che ha generato l’esecuzione
-* **vars** → variabili condivise tra operazioni
-* **last** → ultimo output prodotto da uno step
-* **artifacts** → risultati assert / metadata run
+* **event** â†’ envelope dellâ€™evento che ha generato lâ€™esecuzione
+* **vars** â†’ variabili condivise tra operazioni
+* **last** â†’ ultimo output prodotto da uno step
+* **artifacts** â†’ risultati assert / metadata run
 
 Checklist implementazione:
 
@@ -92,7 +105,7 @@ Checklist:
 
 * [ ] Normalizzare tutte le API request in `event`
 * [ ] Normalizzare tutti i messaggi queue in `event`
-* [ ] Salvare `event_json` a DB per tracciabilità
+* [ ] Salvare `event_json` a DB per tracciabilitÃ 
 
 ---
 
@@ -198,7 +211,7 @@ Comportamento:
 Checklist:
 
 * [ ] Implementare operazione `run_scenario`
-* [ ] Supportare più `run_scenario` per lo stesso trigger
+* [ ] Supportare piÃ¹ `run_scenario` per lo stesso trigger
 * [ ] Risolvere `init_vars` al momento del trigger
 * [ ] Salvare `vars_init_json` nella run
 * [ ] Schedulare run asincrona
@@ -246,7 +259,7 @@ Checklist:
 
 ## Response Builder
 
-La risposta API può essere costruita usando il resolver.
+La risposta API puÃ² essere costruita usando il resolver.
 
 Esempio:
 
@@ -388,7 +401,7 @@ Checklist:
 
 ---
 
-# Compatibilità
+# CompatibilitÃ 
 
 * [ ] Operazioni esistenti continuano a usare `last.data`
 * [ ] Introduzione `RunContext` non rompe scenari esistenti
@@ -401,7 +414,7 @@ Checklist:
 * [ ] Test resolver `$ref`
 * [ ] Test `set_var`
 * [ ] Test `run_scenario`
-* [ ] Test pipeline API (pre → response → post)
+* [ ] Test pipeline API (pre â†’ response â†’ post)
 * [ ] Test trigger queue
 * [ ] Test assert con `vars/event`
 
@@ -417,4 +430,5 @@ Checklist:
 * [ ] Tutto tracciato tramite `invocation_id` e `run_id`
 
 ---
+
 

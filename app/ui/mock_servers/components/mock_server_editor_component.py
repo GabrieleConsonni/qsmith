@@ -1,6 +1,7 @@
 import json
 from copy import deepcopy
 from uuid import uuid4
+from xml.dom import minidom
 
 import streamlit as st
 
@@ -12,6 +13,7 @@ from mock_servers.services.mock_server_api_service import (
     update_mock_server,
 )
 from mock_servers.services.state_keys import (
+    MOCK_SERVER_EDITOR_ADD_OPERATION_SCOPE_KEY,
     MOCK_SERVER_EDITOR_DRAFT_KEY,
     MOCK_SERVER_EDITOR_FEEDBACK_KEY,
     MOCK_SERVER_EDITOR_NONCE_KEY,
@@ -36,6 +38,13 @@ from scenarios.services.state_keys import (
 
 MOCK_SERVERS_PAGE_PATH = "pages/MockServers.py"
 HTTP_METHOD_OPTIONS = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+API_PRE_RESPONSE_OPERATIONS_KEY = "pre_response_operations"
+API_POST_RESPONSE_OPERATIONS_KEY = "post_response_operations"
+BODY_TYPE_ANY = "any"
+BODY_TYPE_STRING = "string"
+BODY_TYPE_JSON = "json"
+BODY_TYPE_XML = "xml"
+BODY_TYPE_OPTIONS = [BODY_TYPE_ANY, BODY_TYPE_STRING, BODY_TYPE_JSON, BODY_TYPE_XML]
 
 
 def _new_ui_key() -> str:
@@ -253,14 +262,153 @@ def _parse_json_dict(
     return parsed, None
 
 
-def _parse_json_body(raw_value: str) -> object:
-    raw_text = str(raw_value or "").strip()
-    if not raw_text:
-        return None
-    try:
-        return json.loads(raw_text)
-    except json.JSONDecodeError:
-        return raw_text
+def _body_type_label(body_type: str) -> str:
+    if body_type == BODY_TYPE_ANY:
+        return "Any"
+    if body_type == BODY_TYPE_STRING:
+        return "String"
+    if body_type == BODY_TYPE_JSON:
+        return "JSON"
+    if body_type == BODY_TYPE_XML:
+        return "XML"
+    return str(body_type or "")
+
+
+def _infer_body_type(body_value: object) -> str:
+    if body_value is None:
+        return BODY_TYPE_ANY
+    if isinstance(body_value, str):
+        stripped = body_value.strip()
+        if stripped.upper() == "ANY":
+            return BODY_TYPE_ANY
+        if stripped.startswith("<") and stripped.endswith(">"):
+            return BODY_TYPE_XML
+        try:
+            parsed = json.loads(stripped)
+            if isinstance(parsed, (dict, list)):
+                return BODY_TYPE_JSON
+        except json.JSONDecodeError:
+            pass
+        return BODY_TYPE_STRING
+    if isinstance(body_value, (dict, list)):
+        return BODY_TYPE_JSON
+    return BODY_TYPE_JSON
+
+
+def _normalize_body_text_for_type(body_value: object, body_type: str) -> str:
+    if body_type == BODY_TYPE_ANY:
+        return ""
+    if body_type == BODY_TYPE_JSON:
+        if body_value is None:
+            return "{}"
+        if isinstance(body_value, str):
+            raw = body_value.strip()
+            if not raw:
+                return "{}"
+            try:
+                return _pretty_json(json.loads(raw))
+            except json.JSONDecodeError:
+                return raw
+        return _pretty_json(body_value)
+    if body_type == BODY_TYPE_XML:
+        return str(body_value or "")
+    return str(body_value or "")
+
+
+def _body_editor_keys(api_ui_key: str, nonce: int, scope: str) -> tuple[str, str]:
+    key_prefix = f"mock_server_api_{scope}_body_{api_ui_key}_{nonce}"
+    return f"{key_prefix}_type", f"{key_prefix}_value"
+
+
+def _body_editor_source_key(api_ui_key: str, nonce: int, scope: str) -> str:
+    return f"mock_server_api_{scope}_body_source_{api_ui_key}_{nonce}"
+
+
+def _ensure_body_editor_state(api_entry: dict, api_ui_key: str, nonce: int, scope: str):
+    cfg = (
+        api_entry.get("configuration_json")
+        if isinstance(api_entry.get("configuration_json"), dict)
+        else {}
+    )
+    value_key_name = "body" if scope == "expected" else "response_body"
+    type_key_name = "body_type" if scope == "expected" else "response_body_type"
+    raw_value = cfg.get(value_key_name)
+    configured_type = str(cfg.get(type_key_name) or "").strip().lower()
+    inferred_type = configured_type if configured_type in BODY_TYPE_OPTIONS else _infer_body_type(raw_value)
+    state_type_key, state_value_key = _body_editor_keys(api_ui_key, nonce, scope)
+    source_state_key = _body_editor_source_key(api_ui_key, nonce, scope)
+    source_signature = json.dumps(
+        {
+            "body_type": inferred_type,
+            "body_value": raw_value,
+        },
+        default=str,
+        sort_keys=True,
+        ensure_ascii=True,
+    )
+    if (
+        state_type_key not in st.session_state
+        or state_value_key not in st.session_state
+        or st.session_state.get(source_state_key) != source_signature
+    ):
+        st.session_state[state_type_key] = inferred_type
+        st.session_state[state_value_key] = _normalize_body_text_for_type(raw_value, inferred_type)
+        st.session_state[source_state_key] = source_signature
+
+
+def _beautify_body_text(body_type: str, raw_value: str) -> tuple[str | None, str | None]:
+    if body_type == BODY_TYPE_JSON:
+        raw_text = str(raw_value or "").strip()
+        if not raw_text:
+            return "{}", None
+        try:
+            return _pretty_json(json.loads(raw_text)), None
+        except json.JSONDecodeError as exc:
+            return None, f"Body JSON non valido: {str(exc)}"
+    if body_type == BODY_TYPE_XML:
+        raw_text = str(raw_value or "").strip()
+        if not raw_text:
+            return "", None
+        try:
+            parsed = minidom.parseString(raw_text)
+            pretty = parsed.toprettyxml(indent="  ")
+            lines = [line for line in pretty.splitlines() if line.strip()]
+            return "\n".join(lines), None
+        except Exception as exc:
+            return None, f"Body XML non valido: {str(exc)}"
+    return str(raw_value or ""), None
+
+
+def _resolve_body_from_state(
+    api_ui_key: str,
+    nonce: int,
+    scope: str,
+) -> tuple[object | None, str, str | None]:
+    state_type_key, state_value_key = _body_editor_keys(api_ui_key, nonce, scope)
+    body_type = str(st.session_state.get(state_type_key) or BODY_TYPE_ANY).strip().lower()
+    if body_type not in BODY_TYPE_OPTIONS:
+        body_type = BODY_TYPE_ANY
+    raw_value = str(st.session_state.get(state_value_key) or "")
+    if body_type == BODY_TYPE_ANY:
+        # For request matching ANY is explicit. For response body, None means no body.
+        return ("ANY" if scope == "expected" else None), body_type, None
+    if body_type == BODY_TYPE_JSON:
+        stripped = raw_value.strip()
+        if not stripped:
+            return None, body_type, "Body JSON obbligatorio."
+        try:
+            return json.loads(stripped), body_type, None
+        except json.JSONDecodeError as exc:
+            return None, body_type, f"Body JSON non valido: {str(exc)}"
+    if body_type == BODY_TYPE_XML:
+        value = raw_value
+        if not value.strip():
+            return None, body_type, "Body XML obbligatorio."
+        return value, body_type, None
+    value = raw_value
+    if not value.strip():
+        return None, body_type, "Body string obbligatorio."
+    return value, body_type, None
 
 
 def _operation_payload(operation: dict) -> dict:
@@ -273,22 +421,47 @@ def _operation_payload(operation: dict) -> dict:
     }
 
 
+def _api_operations_list(api_entry: dict, scope_key: str) -> list[dict]:
+    if not isinstance(api_entry, dict):
+        return []
+    operations = api_entry.get(scope_key)
+    if isinstance(operations, list):
+        return operations
+    if scope_key == API_POST_RESPONSE_OPERATIONS_KEY:
+        legacy_operations = api_entry.get("operations")
+        if isinstance(legacy_operations, list):
+            return legacy_operations
+    return []
+
+
 def _api_payload(api_entry: dict) -> dict:
     cfg = api_entry.get("configuration_json") if isinstance(api_entry.get("configuration_json"), dict) else {}
     method = str(cfg.get("method") or api_entry.get("method") or "GET").strip().upper()
     if method not in HTTP_METHOD_OPTIONS:
         method = "GET"
-    cfg = {**cfg, "method": method, "path": _normalize_path(cfg.get("path") or api_entry.get("path"))}
+    pre_response_operations_payload = [
+        _operation_payload(item)
+        for item in _api_operations_list(api_entry, API_PRE_RESPONSE_OPERATIONS_KEY)
+        if isinstance(item, dict)
+    ]
+    post_response_operations_payload = [
+        _operation_payload(item)
+        for item in _api_operations_list(api_entry, API_POST_RESPONSE_OPERATIONS_KEY)
+        if isinstance(item, dict)
+    ]
+    cfg = {
+        **cfg,
+        "method": method,
+        "path": _normalize_path(cfg.get("path") or api_entry.get("path")),
+        API_PRE_RESPONSE_OPERATIONS_KEY: pre_response_operations_payload,
+        API_POST_RESPONSE_OPERATIONS_KEY: post_response_operations_payload,
+    }
     return {
         "order": _safe_int(api_entry.get("order"), 0),
         "code": str(api_entry.get("code") or "").strip(),
         "description": str(api_entry.get("description") or ""),
         "cfg": cfg,
-        "operations": [
-            _operation_payload(item)
-            for item in (api_entry.get("operations") or [])
-            if isinstance(item, dict)
-        ],
+        "operations": post_response_operations_payload,
     }
 
 
@@ -325,16 +498,29 @@ def _validate_draft(draft: dict) -> str | None:
             return f"API #{idx + 1}: method non valido."
         if not _normalize_path(cfg.get("path")):
             return f"API #{idx + 1}: path obbligatorio."
-        for op_idx, operation in enumerate(api_entry.get("operations") or []):
+        pre_operations = _api_operations_list(api_entry, API_PRE_RESPONSE_OPERATIONS_KEY)
+        post_operations = _api_operations_list(api_entry, API_POST_RESPONSE_OPERATIONS_KEY)
+        for op_idx, operation in enumerate(pre_operations):
             if not str(operation.get("code") or "").strip():
-                return f"API #{idx + 1}, operation #{op_idx + 1}: code obbligatorio."
+                return f"API #{idx + 1}, pre-operation #{op_idx + 1}: code obbligatorio."
             operation_cfg = (
                 operation.get("configuration_json")
                 if isinstance(operation.get("configuration_json"), dict)
                 else {}
             )
             if not str(operation_cfg.get("operationType") or "").strip():
-                return f"API #{idx + 1}, operation #{op_idx + 1}: operationType obbligatorio."
+                return f"API #{idx + 1}, pre-operation #{op_idx + 1}: operationType obbligatorio."
+
+        for op_idx, operation in enumerate(post_operations):
+            if not str(operation.get("code") or "").strip():
+                return f"API #{idx + 1}, post-operation #{op_idx + 1}: code obbligatorio."
+            operation_cfg = (
+                operation.get("configuration_json")
+                if isinstance(operation.get("configuration_json"), dict)
+                else {}
+            )
+            if not str(operation_cfg.get("operationType") or "").strip():
+                return f"API #{idx + 1}, post-operation #{op_idx + 1}: operationType obbligatorio."
 
     for idx, queue_entry in enumerate(draft.get("queues") or []):
         if not str(queue_entry.get("code") or "").strip():
@@ -375,7 +561,15 @@ def _server_payload(draft: dict) -> dict:
 
 
 def _operation_from_api_payload(operation: dict, op_idx: int) -> dict:
-    cfg = operation.get("configuration_json") if isinstance(operation.get("configuration_json"), dict) else {}
+    cfg = (
+        operation.get("configuration_json")
+        if isinstance(operation.get("configuration_json"), dict)
+        else (
+            operation.get("cfg")
+            if isinstance(operation.get("cfg"), dict)
+            else {}
+        )
+    )
     return {
         "id": operation.get("id"),
         "order": _safe_int(operation.get("order"), op_idx + 1),
@@ -397,6 +591,18 @@ def _api_from_server_payload(api_entry: dict, api_idx: int) -> dict:
         for op_idx, operation in enumerate(api_entry.get("operations") or [])
         if isinstance(operation, dict)
     ]
+    pre_response_operations = [
+        _operation_from_api_payload(operation, op_idx)
+        for op_idx, operation in enumerate(cfg.get(API_PRE_RESPONSE_OPERATIONS_KEY) or [])
+        if isinstance(operation, dict)
+    ]
+    post_response_operations = [
+        _operation_from_api_payload(operation, op_idx)
+        for op_idx, operation in enumerate(cfg.get(API_POST_RESPONSE_OPERATIONS_KEY) or [])
+        if isinstance(operation, dict)
+    ]
+    if not post_response_operations and operations:
+        post_response_operations = deepcopy(operations)
     return {
         "id": api_entry.get("id"),
         "order": _safe_int(api_entry.get("order"), api_idx + 1),
@@ -405,7 +611,9 @@ def _api_from_server_payload(api_entry: dict, api_idx: int) -> dict:
         "method": method,
         "path": path,
         "configuration_json": cfg,
-        "operations": operations,
+        "operations": deepcopy(post_response_operations),
+        API_PRE_RESPONSE_OPERATIONS_KEY: pre_response_operations,
+        API_POST_RESPONSE_OPERATIONS_KEY: post_response_operations,
         "_ui_key": _new_ui_key(),
     }
 
@@ -578,11 +786,12 @@ def _load_queue_options() -> tuple[list[dict], dict[str, dict]]:
     return queue_options, queue_by_id
 
 
-def _open_add_operation_dialog(target_ui_key: str):
+def _open_add_operation_dialog(target_ui_key: str, scope_key: str = "operations"):
     if not target_ui_key:
         return
     st.session_state[ADD_STEP_OPERATION_DIALOG_OPEN_KEY] = True
     st.session_state[ADD_STEP_OPERATION_DIALOG_TARGET_STEP_UI_KEY] = target_ui_key
+    st.session_state[MOCK_SERVER_EDITOR_ADD_OPERATION_SCOPE_KEY] = str(scope_key or "operations")
     st.session_state[ADD_STEP_OPERATION_DIALOG_NONCE_KEY] = int(
         st.session_state.get(ADD_STEP_OPERATION_DIALOG_NONCE_KEY, 0)
     ) + 1
@@ -591,6 +800,21 @@ def _open_add_operation_dialog(target_ui_key: str):
 def _close_add_operation_dialog():
     st.session_state[ADD_STEP_OPERATION_DIALOG_OPEN_KEY] = False
     st.session_state.pop(ADD_STEP_OPERATION_DIALOG_TARGET_STEP_UI_KEY, None)
+    st.session_state.pop(MOCK_SERVER_EDITOR_ADD_OPERATION_SCOPE_KEY, None)
+
+
+def _find_draft_item_by_ui_key(draft: dict, target_ui_key: str) -> dict | None:
+    if not isinstance(draft, dict):
+        return None
+    target_key = str(target_ui_key or "").strip()
+    if not target_key:
+        return None
+    for item in (draft.get("apis") or []) + (draft.get("queues") or []):
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("_ui_key") or "").strip() == target_key:
+            return item
+    return None
 
 
 @st.dialog("Add operation", width="large")
@@ -599,13 +823,32 @@ def _add_operation_dialog(
     operation_catalog: list[dict],
     operation_labels_by_id: dict[str, str],
 ):
-    pseudo_draft = {
-        "steps": [
-            item
-            for item in (draft.get("apis") or []) + (draft.get("queues") or [])
-            if isinstance(item, dict)
-        ]
-    }
+    target_ui_key = str(st.session_state.get(ADD_STEP_OPERATION_DIALOG_TARGET_STEP_UI_KEY) or "").strip()
+    target_scope = str(st.session_state.get(MOCK_SERVER_EDITOR_ADD_OPERATION_SCOPE_KEY) or "operations").strip()
+    target_item = _find_draft_item_by_ui_key(draft, target_ui_key)
+    if not isinstance(target_item, dict):
+        st.error("Target non trovato per l'aggiunta operazione.")
+        return
+
+    if target_scope not in {
+        "operations",
+        API_PRE_RESPONSE_OPERATIONS_KEY,
+        API_POST_RESPONSE_OPERATIONS_KEY,
+    }:
+        target_scope = "operations"
+
+    if target_scope not in target_item or not isinstance(target_item.get(target_scope), list):
+        target_item[target_scope] = []
+
+    pseudo_target = (
+        target_item
+        if target_scope == "operations"
+        else {
+            "_ui_key": target_ui_key,
+            "operations": target_item[target_scope],
+        }
+    )
+    pseudo_draft = {"steps": [pseudo_target]}
     render_add_step_operation_dialog(
         pseudo_draft,
         operation_catalog,
@@ -613,6 +856,144 @@ def _add_operation_dialog(
         _close_add_operation_dialog,
         persist_scenario_changes_fn=_persist_draft_after_change,
     )
+
+
+@st.dialog("Body editor", width="large")
+def _body_editor_dialog(api_entry: dict, api_ui_key: str, nonce: int, scope: str):
+    if not isinstance(api_entry, dict):
+        st.error("API non disponibile.")
+        return
+
+    normalized_scope = "expected" if scope == "expected" else "response"
+    _ensure_body_editor_state(api_entry, api_ui_key, nonce, normalized_scope)
+    state_type_key, state_value_key = _body_editor_keys(api_ui_key, nonce, normalized_scope)
+
+    body_type = st.selectbox(
+        "Body type",
+        options=BODY_TYPE_OPTIONS,
+        format_func=_body_type_label,
+        key=state_type_key,
+    )
+    if body_type != BODY_TYPE_ANY:
+        st.text_area(
+            "Body",
+            key=state_value_key,
+            height=280,
+        )
+
+    action_cols = st.columns([2, 2], gap="small", vertical_alignment="center")
+    with action_cols[0]:
+        if st.button(
+            "Beautify",
+            key=f"mock_server_api_{normalized_scope}_body_beautify_{api_ui_key}_{nonce}",
+            icon=":material/auto_fix_high:",
+            type="secondary",
+            use_container_width=True,
+            disabled=(body_type == BODY_TYPE_ANY),
+        ):
+            beautified, beautify_error = _beautify_body_text(
+                body_type,
+                str(st.session_state.get(state_value_key) or ""),
+            )
+            if beautify_error:
+                st.error(beautify_error)
+            else:
+                st.session_state[state_value_key] = beautified or ""
+                st.rerun()
+    with action_cols[1]:
+        if st.button(
+            "Add",
+            key=f"mock_server_api_{normalized_scope}_body_add_{api_ui_key}_{nonce}",
+            icon=":material/add:",
+            use_container_width=True,
+        ):
+            body_value, resolved_type, resolve_error = _resolve_body_from_state(
+                api_ui_key,
+                nonce,
+                normalized_scope,
+            )
+            if resolve_error:
+                st.error(resolve_error)
+                return
+
+            current_cfg = (
+                api_entry.get("configuration_json")
+                if isinstance(api_entry.get("configuration_json"), dict)
+                else {}
+            )
+            if normalized_scope == "expected":
+                api_entry["configuration_json"] = {
+                    **current_cfg,
+                    "body": body_value,
+                    "body_type": resolved_type,
+                }
+            else:
+                api_entry["configuration_json"] = {
+                    **current_cfg,
+                    "response_body": body_value,
+                    "response_body_type": resolved_type,
+                }
+            _persist_draft(should_rerun=True)
+
+
+@st.dialog("Context creation & resolver guide", width="large")
+def _response_resolver_help_dialog():
+    
+    st.markdown("## Context creation & resolver guide")
+    with st.expander("What is the context and how to use resolver?..."):
+        st.markdown("When a request is received, the mock server creates a context")
+        st.markdown("That context can be used to generate dynamic responses based on the incoming data and the operations defined in the scenario.")
+        
+        st.markdown("**Resolver overview**")
+        st.markdown("The resolver is a powerful tool that allows you to ")
+        st.markdown("- extract and manipulate data from the incoming request to create dynamic responses.")
+        st.markdown("- share data between different steps\operations within the same scenario.")
+
+        st.markdown("**Resolver sintax**")
+        st.markdown("The resolver syntax is based on JSON and supports two main patterns:")
+        st.markdown("- **Field resolver**: used to extract a specific value from the context. Example: `{ \"field\": \"$.event.payload.orderId\" }`")
+        st.markdown("- **Template resolver**: used to create a string by combining static text with dynamic values from the context.")
+        st.markdown("Example: `{ \"template\": \"Order {{ $.event.payload.orderId }} processed\" }`")
+        
+        st.markdown("**Run context roots**")
+        st.markdown("- `$.event` : envelope of the incoming request, with all its properties (`method`, `path`, `headers`, `body`, etc).")
+        st.markdown("- `$.vars` : variables defined in the current context.")
+        st.markdown("- `$.last` : data from the last executed operation.")
+        st.markdown("- `$.artifacts` : artifacts generated during the scenario execution.")
+        
+        st.divider()
+        
+        st.markdown("**Envelope API Metadata**")
+        st.markdown("- `$.event.meta.method` : HTTP method of the incoming request.")
+        st.markdown("- `$.event.meta.path` : path of the incoming request.")
+        st.markdown("- `$.event.meta.headers` : headers of the incoming request.")  
+        
+        st.markdown("**Envelope Queue Metadata**")  
+        st.markdown("- `$.event.meta.message_attributes` : attributes of the message received from the queue.")
+        st.markdown("- `$.event.meta.message_id` : ID of the message received from the queue.")
+
+        st.divider()
+        st.markdown("**Create dynamic API responses**")
+        st.markdown("You can use the resolver in  the `status`, `headers` and `body` response")
+        st.markdown("For example, to return a dynamic status code based on the incoming request, you can define an operation with a response like this:")
+        st.code('{ "status": { "field": "$.event.payload.statusCode" }, "body": { "template": "Order {{ $.event.payload.orderId }} processed with status {{ $.event.payload.statusCode }}" } } }',language="json")
+        st.markdown("You can also configure pre-response operations to fetch additional data, store it in the context, and use it later to build a more complex response body.")
+    
+    st.markdown("**Context schema**")
+    st.json('{"run_id": "uuid","event": {},"vars": {},"last": {"step_code": "","data": {}},"artifacts": {}}',   expanded=True)
+    
+    st.markdown("**Event Envelope (API / Queue)**")
+    st.json('{ "source": "api|queue","mock_server_code": "","trigger": {"code": "","method": "","queue_code": ""},"timestamp": "","payload": {},"meta": {}}',   expanded=True)
+
+    with st.expander("**Resolver examples**"):
+        st.code(
+            '{ "field": "$.event.payload.orderId" }',
+        language="json",
+        )
+        st.code(
+            '{ "field": "$.vars.customer_type", "$default": "standard" }',
+            language="json",
+        )
 
 
 @st.dialog("Add API", width="medium")
@@ -659,13 +1040,19 @@ def _add_api_dialog():
                 "authorization": {},
                 "headers": {},
                 "body": None,
+                "body_type": BODY_TYPE_ANY,
                 "body_match": "contains",
                 "response_status": 200,
                 "response_headers": {"Content-Type": "application/json"},
                 "response_body": {"status": "ok"},
+                "response_body_type": BODY_TYPE_JSON,
                 "priority": 0,
+                API_PRE_RESPONSE_OPERATIONS_KEY: [],
+                API_POST_RESPONSE_OPERATIONS_KEY: [],
             },
             "operations": [],
+            API_PRE_RESPONSE_OPERATIONS_KEY: [],
+            API_POST_RESPONSE_OPERATIONS_KEY: [],
             "_ui_key": _new_ui_key(),
         }
         draft.setdefault("apis", []).append(new_api)
@@ -773,26 +1160,46 @@ def _copy_api_dialog(
             st.error("Il campo Code e' obbligatorio.")
             return
 
-        source_operations = source_api.get("operations") or []
-        copied_operations: list[dict] = []
-        for op_idx, operation in enumerate(source_operations):
-            if not isinstance(operation, dict):
-                continue
-            copied_operations.append(
-                {
-                    "id": None,
-                    "order": _safe_int(operation.get("order"), op_idx + 1),
-                    "code": str(operation.get("code") or ""),
-                    "description": str(operation.get("description") or ""),
-                    "operation_type": str(operation.get("operation_type") or ""),
-                    "configuration_json": deepcopy(
-                        operation.get("configuration_json")
-                        if isinstance(operation.get("configuration_json"), dict)
-                        else {}
-                    ),
-                    "_ui_key": _new_ui_key(),
-                }
-            )
+        def _copy_operations(source_operations: list[dict]) -> list[dict]:
+            copied: list[dict] = []
+            for op_idx, operation in enumerate(source_operations):
+                if not isinstance(operation, dict):
+                    continue
+                copied.append(
+                    {
+                        "id": None,
+                        "order": _safe_int(operation.get("order"), op_idx + 1),
+                        "code": str(operation.get("code") or ""),
+                        "description": str(operation.get("description") or ""),
+                        "operation_type": str(operation.get("operation_type") or ""),
+                        "configuration_json": deepcopy(
+                            operation.get("configuration_json")
+                            if isinstance(operation.get("configuration_json"), dict)
+                            else {}
+                        ),
+                        "_ui_key": _new_ui_key(),
+                    }
+                )
+            return copied
+
+        source_pre_operations = _api_operations_list(source_api, API_PRE_RESPONSE_OPERATIONS_KEY)
+        source_post_operations = _api_operations_list(source_api, API_POST_RESPONSE_OPERATIONS_KEY)
+        copied_pre_operations = _copy_operations(source_pre_operations)
+        copied_post_operations = _copy_operations(source_post_operations)
+        if not copied_post_operations:
+            copied_post_operations = _copy_operations(source_api.get("operations") or [])
+
+        copied_cfg = deepcopy(copied_cfg if isinstance(copied_cfg, dict) else {})
+        copied_cfg[API_PRE_RESPONSE_OPERATIONS_KEY] = [
+            _operation_payload(item)
+            for item in copied_pre_operations
+            if isinstance(item, dict)
+        ]
+        copied_cfg[API_POST_RESPONSE_OPERATIONS_KEY] = [
+            _operation_payload(item)
+            for item in copied_post_operations
+            if isinstance(item, dict)
+        ]
 
         apis = draft.setdefault("apis", [])
         apis.append(
@@ -803,8 +1210,10 @@ def _copy_api_dialog(
                 "description": new_description,
                 "method": str(copied_cfg.get("method") or "GET"),
                 "path": _normalize_path(copied_cfg.get("path")),
-                "configuration_json": deepcopy(copied_cfg),
-                "operations": copied_operations,
+                "configuration_json": copied_cfg,
+                "operations": deepcopy(copied_post_operations),
+                API_PRE_RESPONSE_OPERATIONS_KEY: copied_pre_operations,
+                API_POST_RESPONSE_OPERATIONS_KEY: copied_post_operations,
                 "_ui_key": _new_ui_key(),
             }
         )
@@ -964,12 +1373,12 @@ def _render_api_editor(api_entry: dict, api_idx: int, nonce: int):
             params_state_key = f"mock_server_api_params_rows_{api_ui_key}_{nonce}"
             auth_state_key = f"mock_server_api_auth_rows_{api_ui_key}_{nonce}"
             headers_state_key = f"mock_server_api_headers_rows_{api_ui_key}_{nonce}"
-            body_key = f"mock_server_api_body_{api_ui_key}_{nonce}"
             status_key = f"mock_server_api_status_{api_ui_key}_{nonce}"
             response_headers_state_key = (
                 f"mock_server_api_response_headers_rows_{api_ui_key}_{nonce}"
             )
-            response_body_key = f"mock_server_api_response_body_{api_ui_key}_{nonce}"
+            _ensure_body_editor_state(api_entry, api_ui_key, nonce, "expected")
+            _ensure_body_editor_state(api_entry, api_ui_key, nonce, "response")
 
             if method_key not in st.session_state:
                 st.session_state[method_key] = str(cfg.get("method") or api_entry.get("method") or "GET")
@@ -982,12 +1391,8 @@ def _render_api_editor(api_entry: dict, api_idx: int, nonce: int):
                 response_headers_state_key,
                 cfg.get("response_headers") or {},
             )
-            if body_key not in st.session_state:
-                st.session_state[body_key] = _pretty_json(cfg.get("body"))
             if status_key not in st.session_state:
-                st.session_state[status_key] = int(cfg.get("response_status") or 200)
-            if response_body_key not in st.session_state:
-                st.session_state[response_body_key] = _pretty_json(cfg.get("response_body"))
+                st.session_state[status_key] = max(_safe_int(cfg.get("response_status"), 200), 100)
 
             conf_cols = st.columns([2, 5], gap="small", vertical_alignment="center")
             with conf_cols[0]:
@@ -1003,8 +1408,8 @@ def _render_api_editor(api_entry: dict, api_idx: int, nonce: int):
                     placeholder="/orders",
                 )
 
-            tab_params, tab_auth, tab_headers, tab_body = st.tabs(
-                ["Params", "Authorization", "Headers", "Body"]
+            tab_params, tab_auth, tab_headers, tab_body, tab_response = st.tabs(
+                ["Params", "Authorization", "Headers", "Body", "Response"]
             )
             with tab_params:
                 params_rows = _render_kv_rows_container(
@@ -1022,26 +1427,96 @@ def _render_api_editor(api_entry: dict, api_idx: int, nonce: int):
                     key_prefix=f"{headers_state_key}_row",
                 )
             with tab_body:
-                st.text_area(
-                    "Body (JSON or string)",
-                    key=body_key,
-                    height=160,
+                expected_type_key, expected_value_key = _body_editor_keys(
+                    api_ui_key,
+                    nonce,
+                    "expected",
                 )
+                current_expected_type = str(
+                    st.session_state.get(expected_type_key) or BODY_TYPE_ANY
+                ).strip().lower()
+                body_header_cols = st.columns([10, 1], gap="small", vertical_alignment="center")
+                with body_header_cols[0]:
+                    st.markdown("**Expected Body ( JSON or string)**")
+                with body_header_cols[1]:
+                    if st.button(
+                        "",
+                        key=f"mock_server_api_expected_body_edit_{api_ui_key}_{nonce}",
+                        icon=":material/edit:",
+                        help="Edit expected body",
+                        type="tertiary",
+                        use_container_width=True,
+                    ):
+                        _body_editor_dialog(api_entry, api_ui_key, nonce, "expected")
+                if current_expected_type == BODY_TYPE_ANY:
+                    st.caption("Body type: Any")
+                else:
+                    st.caption(f"Body type: {_body_type_label(current_expected_type)}")
+                    st.text_area(
+                        "Expected body preview",
+                        value=str(st.session_state.get(expected_value_key) or ""),
+                        key=f"mock_server_api_expected_body_preview_{api_ui_key}_{nonce}",
+                        disabled=True,
+                        height=180,
+                    )
+            with tab_response:
+                response_header_cols = st.columns([1, 1], gap="small", vertical_alignment="center")
+                with response_header_cols[0]:
+                    st.markdown("**Response configuration**")
+                with response_header_cols[1]:
+                    if st.button(
+                        "How to create dynamic responses with run context and resolver...",
+                        key=f"mock_server_api_response_info_{api_ui_key}_{nonce}",
+                        icon=":material/info:",
+                        help="Resolver guide",
+                        type="tertiary",
+                        use_container_width=True,
+                    ):
+                        _response_resolver_help_dialog()
+                    
                 st.number_input(
                     "Response status",
                     min_value=100,
                     max_value=599,
                     key=status_key,
                 )
+                st.markdown("**headers**")
                 response_headers_rows = _render_kv_rows_container(
                     editor_state_key=response_headers_state_key,
                     key_prefix=f"{response_headers_state_key}_row",
                 )
-                st.text_area(
-                    "Response body (JSON or string)",
-                    key=response_body_key,
-                    height=120,
+                response_type_key, response_value_key = _body_editor_keys(
+                    api_ui_key,
+                    nonce,
+                    "response",
                 )
+                current_response_type = str(
+                    st.session_state.get(response_type_key) or BODY_TYPE_ANY
+                ).strip().lower()
+                response_body_cols = st.columns([10, 1], gap="small", vertical_alignment="center")
+                with response_body_cols[0]:
+                    st.markdown("**Response Body ( JSON or string)**")
+                with response_body_cols[1]:
+                    if st.button(
+                        "",
+                        key=f"mock_server_api_response_body_edit_{api_ui_key}_{nonce}",
+                        icon=":material/edit:",
+                        help="Edit response body",
+                        type="tertiary",
+                        use_container_width=True,
+                    ):
+                        _body_editor_dialog(api_entry, api_ui_key, nonce, "response")
+                if current_response_type == BODY_TYPE_ANY:
+                    st.caption("Body type: Any")
+                else:
+                    st.caption(f"Body type: {_body_type_label(current_response_type)}")
+                    st.text_area(
+                        "Response body preview",
+                        value=str(st.session_state.get(response_value_key) or ""),
+                        key=f"mock_server_api_response_body_preview_{api_ui_key}_{nonce}",
+                        disabled=True,
+                        height=180,
+                    )
 
             save_cols = st.columns([4, 2, 2], gap="small", vertical_alignment="center")
             with save_cols[1]:
@@ -1070,6 +1545,22 @@ def _render_api_editor(api_entry: dict, api_idx: int, nonce: int):
                     if response_headers_error:
                         st.error(response_headers_error)
                         return
+                    expected_body_value, expected_body_type, expected_body_error = _resolve_body_from_state(
+                        api_ui_key,
+                        nonce,
+                        "expected",
+                    )
+                    if expected_body_error:
+                        st.error(expected_body_error)
+                        return
+                    response_body_value, response_body_type, response_body_error = _resolve_body_from_state(
+                        api_ui_key,
+                        nonce,
+                        "response",
+                    )
+                    if response_body_error:
+                        st.error(response_body_error)
+                        return
 
                     api_entry["method"] = str(selected_method or "GET").upper()
                     api_entry["path"] = _normalize_path(selected_path)
@@ -1085,12 +1576,12 @@ def _render_api_editor(api_entry: dict, api_idx: int, nonce: int):
                         "params": params_value or {},
                         "authorization": auth_value or {},
                         "headers": headers_value or {},
-                        "body": _parse_json_body(st.session_state.get(body_key) or ""),
+                        "body": expected_body_value,
+                        "body_type": expected_body_type,
                         "response_status": int(st.session_state.get(status_key) or 200),
                         "response_headers": response_headers_value or {},
-                        "response_body": _parse_json_body(
-                            st.session_state.get(response_body_key) or ""
-                        ),
+                        "response_body": response_body_value,
+                        "response_body_type": response_body_type,
                     }
                     _persist_draft(should_rerun=True)
             with save_cols[2]:
@@ -1119,6 +1610,22 @@ def _render_api_editor(api_entry: dict, api_idx: int, nonce: int):
                     if response_headers_error:
                         st.error(response_headers_error)
                         return
+                    expected_body_value, expected_body_type, expected_body_error = _resolve_body_from_state(
+                        api_ui_key,
+                        nonce,
+                        "expected",
+                    )
+                    if expected_body_error:
+                        st.error(expected_body_error)
+                        return
+                    response_body_value, response_body_type, response_body_error = _resolve_body_from_state(
+                        api_ui_key,
+                        nonce,
+                        "response",
+                    )
+                    if response_body_error:
+                        st.error(response_body_error)
+                        return
 
                     current_cfg = (
                         api_entry.get("configuration_json")
@@ -1132,38 +1639,68 @@ def _render_api_editor(api_entry: dict, api_idx: int, nonce: int):
                         "params": params_value or {},
                         "authorization": auth_value or {},
                         "headers": headers_value or {},
-                        "body": _parse_json_body(st.session_state.get(body_key) or ""),
+                        "body": expected_body_value,
+                        "body_type": expected_body_type,
                         "response_status": int(st.session_state.get(status_key) or 200),
                         "response_headers": response_headers_value or {},
-                        "response_body": _parse_json_body(
-                            st.session_state.get(response_body_key) or ""
-                        ),
+                        "response_body": response_body_value,
+                        "response_body_type": response_body_type,
                     }
                     _copy_api_dialog(api_entry, copied_cfg)
 
             st.divider()
             st.markdown("**Operations**")
-            operations = api_entry.get("operations") or []
-            for op_idx, operation in enumerate(operations):
-                render_operation_component(
-                    api_entry,
-                    operation,
-                    op_idx,
-                    api_ui_key,
-                    nonce,
-                    persist_scenario_changes_fn=_persist_draft_after_change,
-                )
+            pre_operations = _api_operations_list(api_entry, API_PRE_RESPONSE_OPERATIONS_KEY)
+            post_operations = _api_operations_list(api_entry, API_POST_RESPONSE_OPERATIONS_KEY)
+            api_entry[API_PRE_RESPONSE_OPERATIONS_KEY] = pre_operations
+            api_entry[API_POST_RESPONSE_OPERATIONS_KEY] = post_operations
+            # Keep legacy field aligned with post-response operations.
+            api_entry["operations"] = post_operations
 
-            add_op_cols = st.columns([8, 2], gap="small", vertical_alignment="center")
-            with add_op_cols[1]:
-                if st.button(
-                    "Add operation",
-                    key=f"mock_server_add_api_operation_{api_ui_key}_{nonce}",
-                    icon=":material/add:",
-                    use_container_width=True,
-                ):
-                    _open_add_operation_dialog(api_ui_key)
-                    st.rerun()
+            pre_tab, post_tab = st.tabs(["Pre-response", "Post-response"])
+            with pre_tab:
+                pre_scope_step = {"operations": pre_operations}
+                for op_idx, operation in enumerate(pre_operations):
+                    render_operation_component(
+                        pre_scope_step,
+                        operation,
+                        op_idx,
+                        f"{api_ui_key}_pre",
+                        nonce,
+                        persist_scenario_changes_fn=_persist_draft_after_change,
+                    )
+                pre_add_cols = st.columns([8, 2], gap="small", vertical_alignment="center")
+                with pre_add_cols[1]:
+                    if st.button(
+                        "Add operation",
+                        key=f"mock_server_add_api_pre_operation_{api_ui_key}_{nonce}",
+                        icon=":material/add:",
+                        use_container_width=True,
+                    ):
+                        _open_add_operation_dialog(api_ui_key, API_PRE_RESPONSE_OPERATIONS_KEY)
+                        st.rerun()
+
+            with post_tab:
+                post_scope_step = {"operations": post_operations}
+                for op_idx, operation in enumerate(post_operations):
+                    render_operation_component(
+                        post_scope_step,
+                        operation,
+                        op_idx,
+                        f"{api_ui_key}_post",
+                        nonce,
+                        persist_scenario_changes_fn=_persist_draft_after_change,
+                    )
+                post_add_cols = st.columns([8, 2], gap="small", vertical_alignment="center")
+                with post_add_cols[1]:
+                    if st.button(
+                        "Add operation",
+                        key=f"mock_server_add_api_post_operation_{api_ui_key}_{nonce}",
+                        icon=":material/add:",
+                        use_container_width=True,
+                    ):
+                        _open_add_operation_dialog(api_ui_key, API_POST_RESPONSE_OPERATIONS_KEY)
+                        st.rerun()
     with wrapper_cols[1]:
         if st.button(
             "",

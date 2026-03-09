@@ -25,10 +25,12 @@ class MockApiRoute:
     body: Any
     body_match: str
     priority: int
-    response_status: int
+    response_status: Any
     response_headers: dict[str, Any]
     response_body: Any
     operations: list[MockOperationSnapshot] = field(default_factory=list)
+    pre_response_operations: list[MockOperationSnapshot] = field(default_factory=list)
+    post_response_operations: list[MockOperationSnapshot] = field(default_factory=list)
 
 
 @dataclass

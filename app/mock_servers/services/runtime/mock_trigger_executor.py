@@ -1,8 +1,14 @@
+from contextlib import nullcontext
 from typing import Any
 
 from _alembic.models.step_operation_entity import StepOperationEntity
 from _alembic.services.session_context_manager import managed_session
 from elaborations.services.operations.operation_executor_composite import execute_operations
+from elaborations.services.scenarios.run_context import (
+    RunContext,
+    bind_run_context,
+    deserialize_run_context,
+)
 from logs.models.enums.log_level import LogLevel
 from mock_servers.models.runtime_models import MockOperationSnapshot
 from mock_servers.services.runtime.mock_runtime_logger import log_mock_server_event
@@ -39,6 +45,9 @@ def execute_mock_operations(
     source_ref: str,
     operations: list[MockOperationSnapshot],
     data: Any,
+    run_context: RunContext | None = None,
+    run_context_payload: dict | None = None,
+    raise_errors: bool = False,
 ):
     normalized_data = _normalize_input_data(data)
     snapshots = [
@@ -52,9 +61,12 @@ def execute_mock_operations(
         )
         return
 
+    context = run_context or deserialize_run_context(run_context_payload)
     try:
         with managed_session() as session:
-            execute_operations(session, snapshots, normalized_data)
+            context_manager = bind_run_context(context) if context else nullcontext()
+            with context_manager:
+                execute_operations(session, snapshots, normalized_data)
         log_mock_server_event(
             mock_server_id,
             f"[{trigger_id}] Executed {len(snapshots)} operation(s) for {source_type} trigger.",
@@ -77,3 +89,5 @@ def execute_mock_operations(
                 "error": str(exc),
             },
         )
+        if raise_errors:
+            raise

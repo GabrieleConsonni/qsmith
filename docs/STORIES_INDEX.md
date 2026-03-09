@@ -23,4 +23,4 @@
 | [QSM-030](stories/QSM-030-JSONARRAY-ASSERT-OPERATIONS.md) | JsonArray Assert operations | Completato | 10/10 |
 | [QSM-031](stories/QSM-031-MOCK-SERVERS-CONFIGURAZIONE.md) | Mock servers - configurazione | Completato | 3/3 |
 | [QSM-032](stories/QSM-032-MOCK-SERVER-MODIFICHE-ALLA-UI-DELLA-CONFIGURAZIONE.md) | Mock server modifiche alla ui della configurazione | Da fare | 0/7 |
-- [QSM-033](stories/QSM-033-SCENARIO-CONTEXT.md) | Contesto mock server
+| [QSM-033](stories/QSM-033-%20SCENARIO-CONTEXT.md) | Contesto mock server | In corso | Backend core completato, UI pending |

@@ -57,7 +57,11 @@ class MockServerRuntimeRegistry:
             cls._server_ids_by_endpoint[runtime_server.endpoint] = mock_server_id
             threads: list[MockQueueListenerThread] = []
             for queue_binding in runtime_server.queues:
-                queue_thread = MockQueueListenerThread(mock_server_id, queue_binding)
+                queue_thread = MockQueueListenerThread(
+                    mock_server_id,
+                    runtime_server.code,
+                    queue_binding,
+                )
                 queue_thread.start()
                 threads.append(queue_thread)
             cls._queue_threads_by_server_id[mock_server_id] = threads

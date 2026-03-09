@@ -1,4 +1,5 @@
 from typing import Any
+from uuid import uuid4
 
 from _alembic.models.mock_server_entity import MockServerEntity
 from mock_servers.models.runtime_models import (
@@ -43,6 +44,55 @@ def _build_operation_snapshot(entity) -> MockOperationSnapshot:
     )
 
 
+def _normalize_operation_type(value: object) -> str:
+    return str(value or "").strip().replace("_", "-").lower()
+
+
+def _extract_operation_cfg(raw_operation: dict[str, Any]) -> dict[str, Any]:
+    cfg = raw_operation.get("cfg")
+    if isinstance(cfg, dict):
+        return cfg
+
+    configuration_json = raw_operation.get("configuration_json")
+    if isinstance(configuration_json, dict):
+        return configuration_json
+
+    inferred_cfg = dict(raw_operation)
+    raw_type = inferred_cfg.get("type") or inferred_cfg.get("operationType")
+    if raw_type and "operationType" not in inferred_cfg:
+        inferred_cfg["operationType"] = raw_type
+    return inferred_cfg
+
+
+def _build_inline_operation_snapshot(
+    raw_operation: dict[str, Any],
+    *,
+    order: int,
+) -> MockOperationSnapshot:
+    cfg = _extract_operation_cfg(raw_operation)
+    operation_type = _normalize_operation_type(cfg.get("operationType"))
+    return MockOperationSnapshot(
+        id=str(raw_operation.get("id") or uuid4()),
+        code=str(raw_operation.get("code") or operation_type or f"operation_{order}"),
+        description=str(raw_operation.get("description") or ""),
+        operation_type=operation_type,
+        configuration_json=cfg,
+        order=int(raw_operation.get("order") or order),
+    )
+
+
+def _parse_inline_operations(value: object) -> list[MockOperationSnapshot]:
+    if not isinstance(value, list):
+        return []
+    result: list[MockOperationSnapshot] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            continue
+        result.append(_build_inline_operation_snapshot(item, order=index))
+    result.sort(key=lambda operation: (operation.order, operation.id))
+    return result
+
+
 def load_runtime_server(session, entity: MockServerEntity) -> MockRuntimeServer:
     endpoint = _normalize_endpoint(entity.endpoint)
     apis_entities = MockServerApiService().get_all_by_server_id(session, entity.id)
@@ -52,6 +102,40 @@ def load_runtime_server(session, entity: MockServerEntity) -> MockRuntimeServer:
     for api_entity in apis_entities:
         api_cfg = _safe_cfg(api_entity.configuration_json)
         operations = MsApiOperationService().get_all_by_api_id(session, api_entity.id)
+        legacy_operations = [
+            _build_operation_snapshot(operation_entity)
+            for operation_entity in operations
+        ]
+
+        raw_pre_operations = api_cfg.get("pre_response_operations")
+        pre_response_operations = _parse_inline_operations(raw_pre_operations)
+
+        raw_post_operations = api_cfg.get("post_response_operations")
+        has_explicit_post_operations = isinstance(raw_post_operations, list)
+        explicit_post_operations = _parse_inline_operations(
+            raw_post_operations
+        )
+
+        response_cfg = (
+            api_cfg.get("response")
+            if isinstance(api_cfg.get("response"), dict)
+            else {}
+        )
+        response_status = response_cfg.get(
+            "status",
+            api_cfg.get("response_status") or 200,
+        )
+        response_headers = (
+            response_cfg.get("headers")
+            if isinstance(response_cfg.get("headers"), dict)
+            else (
+                api_cfg.get("response_headers")
+                if isinstance(api_cfg.get("response_headers"), dict)
+                else {}
+            )
+        )
+        response_body = response_cfg.get("body", api_cfg.get("response_body"))
+
         api_routes.append(
             MockApiRoute(
                 id=str(api_entity.id or ""),
@@ -65,17 +149,14 @@ def load_runtime_server(session, entity: MockServerEntity) -> MockRuntimeServer:
                 body=api_cfg.get("body"),
                 body_match=str(api_cfg.get("body_match") or "contains").strip().lower(),
                 priority=int(api_cfg.get("priority") or 0),
-                response_status=max(int(api_cfg.get("response_status") or 200), 100),
-                response_headers=(
-                    api_cfg.get("response_headers")
-                    if isinstance(api_cfg.get("response_headers"), dict)
-                    else {}
+                response_status=response_status,
+                response_headers=response_headers,
+                response_body=response_body,
+                operations=legacy_operations if not has_explicit_post_operations else [],
+                pre_response_operations=pre_response_operations,
+                post_response_operations=(
+                    explicit_post_operations if has_explicit_post_operations else []
                 ),
-                response_body=api_cfg.get("response_body"),
-                operations=[
-                    _build_operation_snapshot(operation_entity)
-                    for operation_entity in operations
-                ],
             )
         )
 

@@ -3,6 +3,7 @@ import threading
 import time
 from uuid import uuid4
 
+from _alembic.models.mock_server_invocation_entity import MockServerInvocationEntity
 from _alembic.services.session_context_manager import managed_session
 from brokers.models.connections.broker_connection_config_types import (
     BrokerConnectionConfigTypes,
@@ -12,8 +13,13 @@ from brokers.services.alembic.queue_service import QueueService
 from brokers.services.connections.queue.queue_connection_service_factory import (
     QueueConnectionServiceFactory,
 )
+from elaborations.services.scenarios.run_context import create_run_context
 from logs.models.enums.log_level import LogLevel
 from mock_servers.models.runtime_models import MockQueueBinding
+from mock_servers.services.alembic.mock_server_invocation_service import (
+    MockServerInvocationService,
+)
+from mock_servers.services.runtime.mock_event_envelope import build_queue_event_envelope
 from mock_servers.services.runtime.mock_runtime_logger import log_mock_server_event
 from mock_servers.services.runtime.mock_trigger_executor import execute_mock_operations
 
@@ -41,13 +47,19 @@ def _extract_payload_from_messages(messages: list[dict]) -> list[dict]:
 
 
 class MockQueueListenerThread(threading.Thread):
-    def __init__(self, mock_server_id: str, queue_binding: MockQueueBinding):
+    def __init__(
+        self,
+        mock_server_id: str,
+        mock_server_code: str,
+        queue_binding: MockQueueBinding,
+    ):
         super().__init__(
             name=f"mock-queue-{mock_server_id}-{queue_binding.queue_id}",
             daemon=True,
         )
         self._stop_event = threading.Event()
         self.mock_server_id = mock_server_id
+        self.mock_server_code = mock_server_code
         self.queue_binding = queue_binding
 
         with managed_session() as session:
@@ -89,13 +101,36 @@ class MockQueueListenerThread(threading.Thread):
 
             trigger_id = str(uuid4())
             payload = _extract_payload_from_messages(messages)
+            event = build_queue_event_envelope(
+                mock_server_code=self.mock_server_code,
+                queue_code=self.queue_binding.code,
+                payload=payload,
+                messages=messages,
+            )
+            with managed_session() as session:
+                invocation_id = MockServerInvocationService().insert(
+                    session,
+                    MockServerInvocationEntity(
+                        mock_server_id=self.mock_server_id,
+                        mock_server_code=self.mock_server_code,
+                        trigger_type="queue",
+                        trigger_code=self.queue_binding.code,
+                        event_json=event,
+                    ),
+                )
             execute_mock_operations(
                 mock_server_id=self.mock_server_id,
                 trigger_id=trigger_id,
                 source_type="queue",
-                source_ref=queue_id,
+                source_ref=self.queue_binding.code,
                 operations=self.queue_binding.operations,
                 data=payload,
+                run_context=create_run_context(
+                    run_id=invocation_id,
+                    event=event,
+                    initial_vars={},
+                    invocation_id=invocation_id,
+                ),
             )
 
             try:
@@ -110,5 +145,5 @@ class MockQueueListenerThread(threading.Thread):
                     self.mock_server_id,
                     f"Queue ACK error for queue '{queue_id}': {str(exc)}",
                     level=LogLevel.ERROR,
-                    payload={"trigger_id": trigger_id},
+                    payload={"trigger_id": trigger_id, "invocation_id": invocation_id},
                 )

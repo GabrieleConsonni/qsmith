@@ -20,6 +20,7 @@ from app.elaborations.models.dtos.configuration_operation_dto import (
     RunScenarioConfigurationOperationDto,
     SaveInternalDBConfigurationOperationDto,
     SaveToExternalDBConfigurationOperationDto,
+    SetVarConfigurationOperationDto,
 )
 from app.elaborations.models.dtos.create_operation_dto import CreateOperationDto
 from app.elaborations.services.alembic.operation_service import OperationService
@@ -38,8 +39,16 @@ from app.elaborations.services.operations.save_to_external_db_operation_executor
 from app.elaborations.services.operations.save_to_internal_db_operation_executor import (
     SaveInternalDbOperationExecutor,
 )
+from app.elaborations.services.operations.set_var_operation_executor import (
+    SetVarOperationExecutor,
+)
 from app.elaborations.services.operations.run_scenario_operation_executor import (
     RunScenarioOperationExecutor,
+)
+from elaborations.services.scenarios.run_context import (
+    bind_run_context,
+    create_run_context,
+    get_run_context,
 )
 from app.data_sources.models.database_connection_config_types import (
     convert_database_connection_config,
@@ -296,8 +305,9 @@ def test_run_scenario_operation_executor_starts_execution(monkeypatch, alembic_c
 
     captured: dict[str, str] = {}
 
-    def _fake_execute_scenario_by_id(scenario_id: str):
+    def _fake_execute_scenario_by_id(scenario_id: str, **kwargs):
         captured["scenario_id"] = scenario_id
+        captured["kwargs"] = kwargs
         return "exec-run-scenario-1"
 
     monkeypatch.setattr(
@@ -306,19 +316,62 @@ def test_run_scenario_operation_executor_starts_execution(monkeypatch, alembic_c
         _fake_execute_scenario_by_id,
     )
 
-    cfg = RunScenarioConfigurationOperationDto(scenario_id="scenario-123")
+    cfg = RunScenarioConfigurationOperationDto(
+        scenario_id="scenario-123",
+        init_vars={"order_id": {"$ref": "$.event.payload.orderId"}},
+    )
+    run_context = create_run_context(
+        run_id="run-1",
+        event={"payload": {"orderId": "ORD-100"}},
+        initial_vars={},
+        invocation_id="inv-1",
+    )
 
     with managed_session() as session:
-        result = RunScenarioOperationExecutor().execute(
-            session,
-            "op-run-scenario",
-            cfg,
-            [{"id": 1}],
-        )
+        with bind_run_context(run_context):
+            result = RunScenarioOperationExecutor().execute(
+                session,
+                "op-run-scenario",
+                cfg,
+                [{"id": 1}],
+            )
 
     assert captured["scenario_id"] == "scenario-123"
+    assert captured["kwargs"]["run_event"] == {"payload": {"orderId": "ORD-100"}}
+    assert captured["kwargs"]["invocation_id"] == "inv-1"
+    assert captured["kwargs"]["vars_init"] == {"order_id": "ORD-100"}
     assert result.result[0]["scenario_id"] == "scenario-123"
     assert result.result[0]["execution_id"] == "exec-run-scenario-1"
+    assert result.result[0]["init_vars"] == {"order_id": "ORD-100"}
+
+
+def test_set_var_operation_executor_resolves_ref(monkeypatch, alembic_container):
+    del monkeypatch
+    cfg = SetVarConfigurationOperationDto(
+        key="customer_id",
+        value={"$ref": "$.event.payload.customer.id"},
+    )
+    run_context = create_run_context(
+        run_id="run-set-var",
+        event={"payload": {"customer": {"id": "C-001"}}},
+        initial_vars={},
+        invocation_id=None,
+    )
+
+    with managed_session() as session:
+        with bind_run_context(run_context):
+            result = SetVarOperationExecutor().execute(
+                session,
+                "op-set-var",
+                cfg,
+                [{"id": 1}],
+            )
+
+    current_context = get_run_context()
+    assert current_context is None
+    assert run_context.vars["customer_id"] == "C-001"
+    assert result.result[0]["key"] == "customer_id"
+    assert result.result[0]["value"] == "C-001"
 
 
 def test_save_external_db_operation_executor_oracle(alembic_container, external_oracle_container):
@@ -497,6 +550,34 @@ def test_assert_json_array_equals_operation_executor_is_order_insensitive(alembi
                 cfg,
                 [{"id": 1, "code": "A"}],
             )
+
+
+def test_assert_equals_operation_executor_resolves_context_refs(alembic_container):
+    cfg = AssertConfigurationOperationDto(
+        evaluated_object_type="json-data",
+        assert_type="equals",
+        actual={"$ref": "$.event.payload.actual"},
+        expected={"$ref": "$.event.payload.expected"},
+    )
+    run_context = create_run_context(
+        run_id="run-assert-equals",
+        event={"payload": {"actual": {"value": 10}, "expected": {"value": 10}}},
+        initial_vars={},
+        invocation_id=None,
+    )
+
+    with managed_session() as session:
+        with bind_run_context(run_context):
+            result = AssertOperationExecutor().execute(
+                session,
+                "op-assert-equals",
+                cfg,
+                [{"ignored": True}],
+            )
+
+    assert result.result == [{"message": "Assert 'equals' passed for 'json-data' data."}]
+    assert isinstance(run_context.artifacts.get("asserts"), list)
+    assert run_context.artifacts["asserts"][-1]["status"] == "passed"
 
 
 def test_execute_operations_raises_when_operation_not_found(alembic_container):

@@ -2,7 +2,20 @@ from uuid import uuid4
 
 from fastapi import BackgroundTasks
 
+from _alembic.models.mock_server_invocation_entity import MockServerInvocationEntity
+from _alembic.services.session_context_manager import managed_session
+from elaborations.services.scenarios.run_context import (
+    create_run_context,
+    serialize_run_context,
+)
 from mock_servers.models.runtime_models import MockApiRoute, MockRuntimeServer
+from mock_servers.services.alembic.mock_server_invocation_service import (
+    MockServerInvocationService,
+)
+from mock_servers.services.runtime.mock_event_envelope import build_api_event_envelope
+from mock_servers.services.runtime.mock_response_builder import (
+    build_runtime_response_payload,
+)
 from mock_servers.services.runtime.mock_server_runtime_registry import (
     MockServerRuntimeRegistry,
 )
@@ -103,15 +116,25 @@ def _find_matching_api_route(
     return None
 
 
-def _build_response_body(route: MockApiRoute, trigger_id: str):
-    body = route.response_body
-    if body is None:
-        body = {"status": "ok"}
-    if isinstance(body, dict) and "trigger_id" not in body:
-        response = dict(body)
-        response["trigger_id"] = trigger_id
-        return response
-    return body
+def _persist_mock_invocation(
+    *,
+    mock_server_id: str,
+    mock_server_code: str,
+    trigger_type: str,
+    trigger_code: str,
+    event: dict,
+) -> str:
+    with managed_session() as session:
+        return MockServerInvocationService().insert(
+            session,
+            MockServerInvocationEntity(
+                mock_server_id=mock_server_id,
+                mock_server_code=mock_server_code,
+                trigger_type=trigger_type,
+                trigger_code=trigger_code,
+                event_json=event if isinstance(event, dict) else {},
+            ),
+        )
 
 
 def dispatch_mock_runtime_request(
@@ -141,29 +164,79 @@ def dispatch_mock_runtime_request(
         return None
 
     trigger_id = str(uuid4())
-    background_tasks.add_task(
-        execute_mock_operations,
-        mock_server_id=runtime_server.id,
-        trigger_id=trigger_id,
-        source_type="api",
-        source_ref=route.id,
-        operations=route.operations,
-        data=body_json if body_json is not None else [],
+    event_payload = body_json if body_json is not None else (body_raw or None)
+    event = build_api_event_envelope(
+        mock_server_code=runtime_server.code,
+        trigger_code=route.code,
+        method=method,
+        payload=event_payload,
+        headers=headers,
+        query_params=query_params,
+        path_params={},
     )
+    invocation_id = _persist_mock_invocation(
+        mock_server_id=runtime_server.id,
+        mock_server_code=runtime_server.code,
+        trigger_type="api",
+        trigger_code=route.code,
+        event=event,
+    )
+    run_context = create_run_context(
+        run_id=invocation_id,
+        event=event,
+        initial_vars={},
+        invocation_id=invocation_id,
+    )
+
+    pre_response_operations = route.pre_response_operations or []
+    if pre_response_operations:
+        execute_mock_operations(
+            mock_server_id=runtime_server.id,
+            trigger_id=trigger_id,
+            source_type="api-pre-response",
+            source_ref=route.id,
+            operations=pre_response_operations,
+            data=event_payload,
+            run_context=run_context,
+            raise_errors=True,
+        )
+
+    response_status, response_headers, response_body = build_runtime_response_payload(
+        route,
+        run_context=run_context,
+        trigger_id=trigger_id,
+    )
+
+    post_response_operations = route.post_response_operations or route.operations
+    if post_response_operations:
+        background_tasks.add_task(
+            execute_mock_operations,
+            mock_server_id=runtime_server.id,
+            trigger_id=trigger_id,
+            source_type="api",
+            source_ref=route.id,
+            operations=post_response_operations,
+            data=event_payload,
+            run_context_payload=serialize_run_context(run_context),
+        )
+
     log_mock_server_event(
         runtime_server.id,
         f"[{trigger_id}] API trigger matched for {method.upper()} {path}",
         payload={
             "trigger_id": trigger_id,
+            "invocation_id": invocation_id,
             "method": method.upper(),
             "path": path,
             "api_route_id": route.id,
+            "api_route_code": route.code,
         },
     )
-    response_headers = dict(route.response_headers or {})
+    response_headers = dict(response_headers or {})
     response_headers["X-Qsmith-Trigger-Id"] = trigger_id
+    response_headers["X-Qsmith-Invocation-Id"] = invocation_id
     return (
-        int(route.response_status or 200),
+        int(response_status or 200),
         response_headers,
-        _build_response_body(route, trigger_id),
+        response_body,
     )

@@ -29,14 +29,35 @@ class SaveToExternalDBConfigurationOperationDto(ConfigurationOperationDto):
 
 class RunScenarioConfigurationOperationDto(ConfigurationOperationDto):
     operationType: str = OperationType.RUN_SCENARIO.value
-    scenario_id: str
+    scenario_id: str | None = None
+    scenario_code: str | None = None
+    init_vars: dict | None = None
 
     @model_validator(mode="after")
     def validate_run_scenario_configuration(self):
         scenario_id = str(self.scenario_id or "").strip()
-        if not scenario_id:
-            raise ValueError("scenario_id is required for run-scenario operation.")
-        self.scenario_id = scenario_id
+        scenario_code = str(self.scenario_code or "").strip()
+        if not scenario_id and not scenario_code:
+            raise ValueError(
+                "scenario_id or scenario_code is required for run-scenario operation."
+            )
+        self.scenario_id = scenario_id or None
+        self.scenario_code = scenario_code or None
+        self.init_vars = self.init_vars if isinstance(self.init_vars, dict) else None
+        return self
+
+
+class SetVarConfigurationOperationDto(ConfigurationOperationDto):
+    operationType: str = OperationType.SET_VAR.value
+    key: str
+    value: object = None
+
+    @model_validator(mode="after")
+    def validate_set_var_configuration(self):
+        normalized_key = str(self.key or "").strip()
+        if not normalized_key:
+            raise ValueError("key is required for set-var operation.")
+        self.key = normalized_key
         return self
 
 
@@ -50,6 +71,7 @@ class AssertType(str, Enum):
     SCHEMA_VALIDATION = "schema-validation"
     CONTAINS = "contains"
     JSON_ARRAY_EQUALS = "json-array-equals"
+    EQUALS = "equals"
 
 
 def _normalize_token(value: object) -> str:
@@ -86,6 +108,8 @@ class AssertConfigurationOperationDto(ConfigurationOperationDto):
     error_message: str | None = None
     evaluated_object_type: str = AssertEvaluatedObjectType.JSON_DATA.value
     assert_type: str
+    actual: object | None = None
+    expected: object | None = None
     expected_json_array_id: str | None = None
     compare_keys: list[str] | None = None
     json_schema: dict | None = None
@@ -132,6 +156,9 @@ class AssertConfigurationOperationDto(ConfigurationOperationDto):
             if not isinstance(self.json_schema, dict):
                 raise ValueError("json_schema is required for schema-validation assert.")
 
+        if self.assert_type == AssertType.EQUALS.value and self.expected is None:
+            raise ValueError("expected is required for equals assert.")
+
         return self
 
 
@@ -140,12 +167,15 @@ ConfigurationOperationTypes = (
     | SaveInternalDBConfigurationOperationDto
     | SaveToExternalDBConfigurationOperationDto
     | RunScenarioConfigurationOperationDto
+    | SetVarConfigurationOperationDto
     | AssertConfigurationOperationDto
 )
 
 
 def convert_to_config_operation_type(data: dict):
-    operation_type = _normalize_token(_first_non_empty(data, "operationType", "operation_type"))
+    operation_type = _normalize_token(
+        _first_non_empty(data, "operationType", "operation_type", "type")
+    )
     if operation_type == OperationType.PUBLISH.value:
         return PublishConfigurationOperationDto(
             queue_id=_first_non_empty(data, "queue_id", "queueId"),
@@ -170,6 +200,13 @@ def convert_to_config_operation_type(data: dict):
     if operation_type == OperationType.RUN_SCENARIO.value:
         return RunScenarioConfigurationOperationDto(
             scenario_id=_first_non_empty(data, "scenario_id", "scenarioId"),
+            scenario_code=_first_non_empty(data, "scenario_code", "scenarioCode"),
+            init_vars=_first_non_empty(data, "init_vars", "initVars"),
+        )
+    if operation_type == OperationType.SET_VAR.value:
+        return SetVarConfigurationOperationDto(
+            key=_first_non_empty(data, "key", "var_key", "varKey"),
+            value=_first_non_empty(data, "value"),
         )
     if operation_type == OperationType.ASSERT.value:
         return AssertConfigurationOperationDto(
@@ -186,6 +223,8 @@ def convert_to_config_operation_type(data: dict):
                 or AssertEvaluatedObjectType.JSON_DATA.value
             ),
             assert_type=_normalize_token(_first_non_empty(data, "assert_type", "assertType")),
+            actual=_first_non_empty(data, "actual"),
+            expected=_first_non_empty(data, "expected"),
             expected_json_array_id=_first_non_empty(
                 data,
                 "expected_json_array_id",

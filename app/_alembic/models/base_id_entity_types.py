@@ -2,6 +2,7 @@ from _alembic.models.json_payload_entity import JsonPayloadEntity
 from _alembic.models.log_entity import LogEntity
 from _alembic.models.mock_server_api_entity import MockServerApiEntity
 from _alembic.models.mock_server_entity import MockServerEntity
+from _alembic.models.mock_server_invocation_entity import MockServerInvocationEntity
 from _alembic.models.mock_server_queue_entity import MockServerQueueEntity
 from _alembic.models.ms_api_operation_entity import MsApiOperationEntity
 from _alembic.models.ms_queue_operation_entity import MsQueueOperationEntity
@@ -20,6 +21,7 @@ BaseIdEntityTypes = (
     | LogEntity
     | MockServerEntity
     | MockServerApiEntity
+    | MockServerInvocationEntity
     | MockServerQueueEntity
     | MsApiOperationEntity
     | MsQueueOperationEntity

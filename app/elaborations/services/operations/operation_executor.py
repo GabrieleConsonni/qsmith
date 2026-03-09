@@ -16,7 +16,7 @@ from logs.services.alembic.log_service import LogService
 @dataclass
 class ExecutionResultDto:
     data: list[dict]
-    result: list[dict[str, str]]
+    result: list[dict[str, object]]
 
     def extend(self, new_result):
         self.data = new_result.data

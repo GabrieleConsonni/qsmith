@@ -14,14 +14,20 @@ class DataFromJsonArrayStepExecutor(StepExecutor):
         scenario_step: ScenarioStepEntity,
         cfg: DataFromJsonArrayConfigurationStepDto,
     ) -> list[dict[str, str]]:
+        step_code = str(scenario_step.code or scenario_step.id)
         json_array = self.load_json_array(session, cfg.json_array_id)
 
         self.log(
-            str(scenario_step.code or scenario_step.id),
+            step_code,
             f"Try to elaborate {len(json_array)} objects from JSON array",
         )
 
-        return self.execute_operations(session, scenario_step.id, json_array)
+        return self.execute_operations(
+            session,
+            scenario_step.id,
+            step_code,
+            json_array,
+        )
 
     def load_json_array(self,session:Session, json_array_id:str):
         json_payload_entity: JsonPayloadEntity = JsonFilesService().get_by_id(session, json_array_id)

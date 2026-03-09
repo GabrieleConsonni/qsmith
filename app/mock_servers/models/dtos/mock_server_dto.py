@@ -45,9 +45,12 @@ class MockServerApiConfigurationDto(BaseModel):
     headers: dict | None = None
     body: dict | list | str | int | float | bool | None = None
     body_match: str | None = "contains"
+    response: dict | None = None
     response_status: int = 200
     response_headers: dict | None = None
     response_body: dict | list | str | int | float | bool | None = None
+    pre_response_operations: list[dict] | None = None
+    post_response_operations: list[dict] | None = None
     priority: int = 0
 
     @model_validator(mode="after")
@@ -61,7 +64,14 @@ class MockServerApiConfigurationDto(BaseModel):
         if body_match not in {"contains", "equals"}:
             raise ValueError("body_match must be 'contains' or 'equals'.")
         self.body_match = body_match
-        self.response_status = max(int(self.response_status or 200), 100)
+
+        response_cfg = self.response if isinstance(self.response, dict) else {}
+        status_value = response_cfg.get("status", self.response_status)
+        if isinstance(status_value, dict):
+            self.response_status = 200
+        else:
+            self.response_status = max(int(status_value or 200), 100)
+
         return self
 
 

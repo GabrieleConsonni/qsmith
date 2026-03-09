@@ -1,7 +1,19 @@
 from elaborations.services.scenarios.scenario_executor_thread import ScenarioExecutorThread
 
-def execute_scenario_by_id(scenario_id: str):
-    executor_thread = ScenarioExecutorThread(scenario_id)
+
+def execute_scenario_by_id(
+    scenario_id: str,
+    *,
+    run_event: dict | None = None,
+    vars_init: dict | None = None,
+    invocation_id: str | None = None,
+):
+    executor_thread = ScenarioExecutorThread(
+        scenario_id,
+        run_event=run_event,
+        vars_init=vars_init,
+        invocation_id=invocation_id,
+    )
     executor_thread.start()
     return executor_thread.execution_id
 

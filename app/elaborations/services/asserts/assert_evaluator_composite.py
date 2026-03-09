@@ -12,6 +12,7 @@ from elaborations.services.asserts.assert_evaluator import (
 from elaborations.services.asserts.json_data_assert_evaluators import (
     ContainsDataAssertEvaluator,
     EmptyDataAssertEvaluator,
+    EqualsDataAssertEvaluator,
     JsonArrayEqualsDataAssertEvaluator,
     NotEmptyDataAssertEvaluator,
     SchemaValidationDataAssertEvaluator,
@@ -38,6 +39,10 @@ _EVALUATOR_MAPPING: dict[tuple[str, str], type[AssertEvaluator]] = {
         AssertEvaluatedObjectType.JSON_DATA.value,
         AssertType.JSON_ARRAY_EQUALS.value,
     ): JsonArrayEqualsDataAssertEvaluator,
+    (
+        AssertEvaluatedObjectType.JSON_DATA.value,
+        AssertType.EQUALS.value,
+    ): EqualsDataAssertEvaluator,
 }
 
 
@@ -45,6 +50,8 @@ def evaluate_assert(
     session: Session,
     cfg: AssertConfigurationOperationDto,
     data: list[dict],
+    actual: object | None = None,
+    expected: object | None = None,
 ) -> None:
     object_type = str(cfg.evaluated_object_type or "").strip().replace("_", "-").lower()
     assert_type = str(cfg.assert_type or "").strip().replace("_", "-").lower()
@@ -60,5 +67,7 @@ def evaluate_assert(
             session=session,
             cfg=cfg,
             data=data if isinstance(data, list) else [],
+            actual=actual,
+            expected=expected,
         )
     )

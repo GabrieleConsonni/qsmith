@@ -1,6 +1,7 @@
 import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 from _alembic.models.scenario_execution_entity import ScenarioExecutionEntity
@@ -19,6 +20,11 @@ from elaborations.services.scenarios.execution_event_bus import (
     publish_runtime_log_event,
 )
 from elaborations.services.scenarios.execution_runtime_context import bind_execution_context
+from elaborations.services.scenarios.run_context import (
+    bind_run_context,
+    create_run_context,
+    serialize_run_context,
+)
 from elaborations.services.steps.step_executor_composite import execute_step
 from exceptions.app_exception import QsmithAppException
 from logs.models.dtos.log_dto import LogDto
@@ -33,6 +39,9 @@ class ScenarioExecutionInput:
     scenario_id: str
     scenario_code: str
     scenario_description: str = ""
+    event: dict[str, Any] | None = None
+    vars_init: dict[str, Any] | None = None
+    invocation_id: str | None = None
     target_scenario_step_id: str | None = None
     include_previous: bool = False
 
@@ -117,16 +126,35 @@ def _execute(scenario_input: ScenarioExecutionInput):
                 scenario_code=scenario_input.scenario_code,
                 scenario_description=scenario_input.scenario_description,
                 status="running",
+                invocation_id=str(scenario_input.invocation_id or "").strip() or None,
+                vars_init_json=(
+                    scenario_input.vars_init
+                    if isinstance(scenario_input.vars_init, dict)
+                    else {}
+                ),
                 include_previous=bool(scenario_input.include_previous),
                 requested_step_id=target_step_id or None,
                 requested_step_code=target_step_code or None,
             ),
         )
+        run_context = create_run_context(
+            run_id=scenario_execution_id,
+            event=scenario_input.event if isinstance(scenario_input.event, dict) else {},
+            initial_vars=(
+                scenario_input.vars_init
+                if isinstance(scenario_input.vars_init, dict)
+                else {}
+            ),
+            invocation_id=str(scenario_input.invocation_id or "").strip() or None,
+        )
 
-        with bind_execution_context(
-            execution_id=scenario_input.execution_id,
-            scenario_id=scenario_input.scenario_id,
-            scenario_execution_id=scenario_execution_id,
+        with (
+            bind_run_context(run_context),
+            bind_execution_context(
+                execution_id=scenario_input.execution_id,
+                scenario_id=scenario_input.scenario_id,
+                scenario_execution_id=scenario_execution_id,
+            ),
         ):
             results = []
             total_steps = 0
@@ -296,6 +324,10 @@ def _execute(scenario_input: ScenarioExecutionInput):
                     scenario_execution_id,
                     status=execution_status,
                     error_message=(first_error_message or None) if error_count > 0 else None,
+                    result_json={
+                        "results": results,
+                        "artifacts": serialize_run_context(run_context).get("artifacts", {}),
+                    },
                     finished_at=_utc_now(),
                 )
 
@@ -323,11 +355,17 @@ class ScenarioExecutorThread(threading.Thread):
     def __init__(
         self,
         scenario_id: str,
+        run_event: dict | None = None,
+        vars_init: dict | None = None,
+        invocation_id: str | None = None,
         target_scenario_step_id: str | None = None,
         include_previous: bool = False,
     ):
         super().__init__(name=f"scenario-{scenario_id}", daemon=True)
         self.execution_id = str(uuid4())
+        self.run_event = run_event if isinstance(run_event, dict) else {}
+        self.vars_init = vars_init if isinstance(vars_init, dict) else {}
+        self.invocation_id = str(invocation_id or "").strip() or None
         self.target_scenario_step_id = target_scenario_step_id
         self.include_previous = include_previous
         with managed_session() as session:
@@ -347,6 +385,9 @@ class ScenarioExecutorThread(threading.Thread):
                 scenario_id=self.scenario_id,
                 scenario_code=self.scenario_code,
                 scenario_description=self.scenario_description,
+                event=self.run_event,
+                vars_init=self.vars_init,
+                invocation_id=self.invocation_id,
                 target_scenario_step_id=self.target_scenario_step_id,
                 include_previous=self.include_previous,
             )

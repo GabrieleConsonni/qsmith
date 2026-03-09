@@ -12,6 +12,7 @@ from elaborations.models.dtos.configuration_operation_dto import (
     RunScenarioConfigurationOperationDto,
     SaveInternalDBConfigurationOperationDto,
     SaveToExternalDBConfigurationOperationDto,
+    SetVarConfigurationOperationDto,
     convert_to_config_operation_type,
 )
 from elaborations.services.alembic.operation_service import OperationService
@@ -26,6 +27,7 @@ from elaborations.services.operations.run_scenario_operation_executor import (
 )
 from elaborations.services.operations.save_to_external_db_operation_executor import SaveToExternalDbOperationExecutor
 from elaborations.services.operations.save_to_internal_db_operation_executor import SaveInternalDbOperationExecutor
+from elaborations.services.operations.set_var_operation_executor import SetVarOperationExecutor
 from elaborations.services.scenarios.execution_event_bus import (
     publish_execution_event,
     publish_runtime_log_event,
@@ -36,6 +38,10 @@ from elaborations.services.scenarios.execution_runtime_context import (
     get_scenario_step_id,
     get_scenario_step_execution_id,
 )
+from elaborations.services.scenarios.run_context import (
+    build_run_context_scope,
+)
+from elaborations.services.scenarios.run_context_resolver import resolve_dynamic_value
 from logs.models.dtos.log_dto import LogDto
 from logs.models.enums.log_level import LogLevel
 from logs.models.enums.log_subject_type import LogSubjectType
@@ -46,6 +52,7 @@ _EXECUTOR_MAPPING: dict[type[ConfigurationOperationDto], type[OperationExecutor]
     SaveInternalDBConfigurationOperationDto: SaveInternalDbOperationExecutor,
     SaveToExternalDBConfigurationOperationDto: SaveToExternalDbOperationExecutor,
     RunScenarioConfigurationOperationDto: RunScenarioOperationExecutor,
+    SetVarConfigurationOperationDto: SetVarOperationExecutor,
     AssertConfigurationOperationDto: AssertOperationExecutor,
 }
 
@@ -140,7 +147,8 @@ def execute_operations(
                 ),
             )
 
-        cfg = convert_to_config_operation_type(op_cfg_json)
+        resolved_cfg_json = resolve_dynamic_value(op_cfg_json, build_run_context_scope())
+        cfg = convert_to_config_operation_type(resolved_cfg_json)
         try:
             new_execution_result = execute_operation(session, op_id, cfg, execution_result.data)
             execution_result.extend(new_execution_result)

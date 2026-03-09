@@ -12,5 +12,11 @@ class DataStepExecutor(StepExecutor):
         scenario_step: ScenarioStepEntity,
         cfg: DataConfigurationStepDTO,
     ) -> list[dict[str, str]]:
-        self.log(str(scenario_step.code or scenario_step.id), f"Try to export {len(cfg.data)} objects")
-        return self.execute_operations(session, scenario_step.id, cfg.data)
+        step_code = str(scenario_step.code or scenario_step.id)
+        self.log(step_code, f"Try to export {len(cfg.data)} objects")
+        return self.execute_operations(
+            session,
+            scenario_step.id,
+            step_code,
+            cfg.data,
+        )

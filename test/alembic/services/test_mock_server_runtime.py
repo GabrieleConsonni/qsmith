@@ -152,6 +152,11 @@ def test_dispatch_mock_runtime_request_matches_and_schedules_task(monkeypatch):
         "execute_mock_operations",
         _fake_execute_mock_operations,
     )
+    monkeypatch.setattr(
+        dispatcher_module,
+        "_persist_mock_invocation",
+        lambda **_kwargs: "inv-1",
+    )
 
     background_tasks = BackgroundTasks()
     dispatch_result = dispatch_mock_runtime_request(
@@ -169,6 +174,7 @@ def test_dispatch_mock_runtime_request_matches_and_schedules_task(monkeypatch):
     status_code, headers, body = dispatch_result
     assert status_code == 200
     assert headers.get("X-Qsmith-Trigger-Id")
+    assert headers.get("X-Qsmith-Invocation-Id") == "inv-1"
     assert isinstance(body, dict)
     assert body.get("ok") is True
     assert body.get("trigger_id")

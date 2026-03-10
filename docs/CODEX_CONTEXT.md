@@ -1,7 +1,7 @@
 ﻿# Qsmith - Contesto Progetto per Codex
 
 ## Panoramica
-Qsmith e un'applicazione per test e orchestrazione di flussi su broker SQS, datasource e scenari.
+Qsmith e un'applicazione per test e orchestrazione di flussi su broker SQS, datasource e test suite.
 Il progetto e composto da:
 - backend FastAPI
 - UI Streamlit multipage
@@ -9,7 +9,7 @@ Il progetto e composto da:
 Domini principali:
 - broker/queue (send, receive, ack, metriche)
 - datasource JSON array e datasource tabellari database
-- scenari di test (step + operation) con esecuzioni persistite
+- test suite (hook + test + operation) con esecuzioni persistite
 - mock server API/queue con attivazione runtime
 - logs applicativi
 
@@ -58,8 +58,8 @@ Pagine principali:
 - `app/ui/pages/Queues.py`
 - `app/ui/pages/QueueDetails.py`
 - `app/ui/pages/JsonArray.py`
-- `app/ui/pages/Scenarios.py`
-- `app/ui/pages/ScenarioEditor.py`
+- `app/ui/pages/TestSuites.py`
+- `app/ui/pages/SuiteEditor.py`
 - `app/ui/pages/Logs.py`
 - `app/ui/pages/Tools.py`
 
@@ -69,7 +69,8 @@ Organizzazione UI modulare gia presente in package dedicati:
 - `app/ui/database_datasources`
 - `app/ui/json_arrays`
 - `app/ui/mock_servers`
-- `app/ui/scenarios`
+- `app/ui/scenarios` (componenti operation legacy/shared)
+- `app/ui/test_suites`
 - `app/ui/queues`
 
 ## Router API principali
@@ -83,9 +84,9 @@ Organizzazione UI modulare gia presente in package dedicati:
 - `/database`
   - database connections + test + metadata oggetti + preview
 - `/elaborations`
-  - steps, operations, scenarios
-  - scenario_steps / step_operations (snapshot)
-  - scenario executions
+  - operations, test suites
+  - suite_items / suite_item_operations (snapshot)
+  - test suite executions
   - SSE runtime: `/elaborations/execution/{execution_id}/events`
 - `/mock-server`
   - CRUD mock server + activate/deactivate
@@ -97,16 +98,16 @@ Organizzazione UI modulare gia presente in package dedicati:
 ## Modello dati (alto livello)
 - `json_payloads` configurazioni JSON tipizzate
 - `queues` configurazioni queue per broker
-- `steps`, `operations` anagrafiche riusabili
-- `scenarios` anagrafica scenari
-- `scenario_steps` snapshot funzionale step nello scenario
-- `step_operations` snapshot funzionale operation nello scenario step
-- `scenario_executions`, `scenario_step_executions`, `step_operation_executions`
+- `operations` anagrafica riusabile
+- `test_suites` anagrafica suite
+- `suite_items` snapshot funzionale di test e hook
+- `suite_item_operations` snapshot funzionale operation sull'item
+- `test_suite_executions`, `suite_item_executions`, `suite_item_operation_executions`
 - `mock_servers`, `mock_server_apis`, `ms_api_operations`
 - `mock_server_queues`, `ms_queue_operations`
 - `logs`
 
-Nota: runtime scenario usa gli snapshot (`scenario_steps`/`step_operations`), non lookup diretto da anagrafica step/operation.
+Nota: il runtime suite usa gli snapshot (`suite_items`/`suite_item_operations`), non esiste piu il catalogo `steps`.
 
 ## Configurazione ambiente
 Valori esempio `.env`:

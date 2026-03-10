@@ -1,8 +1,8 @@
 from sqlalchemy.orm import Session
 
-from elaborations.services.alembic.scenario_service import ScenarioService
+from elaborations.services.alembic.test_suite_service import TestSuiteService
 from elaborations.models.dtos.configuration_operation_dto import (
-    RunScenarioConfigurationOperationDto,
+    RunSuiteConfigurationOperationDto,
 )
 from elaborations.services.operations.operation_executor import (
     ExecutionResultDto,
@@ -15,52 +15,52 @@ from elaborations.services.scenarios.run_context import (
 from elaborations.services.scenarios.run_context_resolver import resolve_dynamic_value
 
 
-class RunScenarioOperationExecutor(OperationExecutor):
+class RunSuiteOperationExecutor(OperationExecutor):
     @staticmethod
-    def _resolve_scenario_id(session: Session, cfg: RunScenarioConfigurationOperationDto) -> str:
-        scenario_id = str(cfg.scenario_id or "").strip()
-        if scenario_id:
-            return scenario_id
-        scenario_code = str(cfg.scenario_code or "").strip()
-        scenario_entity = ScenarioService().get_by_code(session, scenario_code)
-        if scenario_entity is None:
-            raise ValueError(f"Scenario with code '{scenario_code}' not found.")
-        return str(scenario_entity.id)
+    def _resolve_suite_id(session: Session, cfg: RunSuiteConfigurationOperationDto) -> str:
+        suite_id = str(cfg.suite_id or "").strip()
+        if suite_id:
+            return suite_id
+        suite_code = str(cfg.suite_code or "").strip()
+        suite_entity = TestSuiteService().get_by_code(session, suite_code)
+        if suite_entity is None:
+            raise ValueError(f"Test suite with code '{suite_code}' not found.")
+        return str(suite_entity.id)
 
     def execute(
         self,
         session: Session,
         operation_id: str,
-        cfg: RunScenarioConfigurationOperationDto,
+        cfg: RunSuiteConfigurationOperationDto,
         data: list[dict],
     ) -> ExecutionResultDto:
         # Local import avoids circular dependency with step executor modules.
-        from elaborations.services.scenarios.scenario_executor_service import (
-            execute_scenario_by_id,
+        from elaborations.services.test_suites.test_suite_executor_service import (
+            execute_test_suite_by_id,
         )
 
-        scenario_id = self._resolve_scenario_id(session, cfg)
+        suite_id = self._resolve_suite_id(session, cfg)
         run_context = get_run_context()
         scope = build_run_context_scope(run_context)
         init_vars = resolve_dynamic_value(cfg.init_vars or {}, scope)
         if not isinstance(init_vars, dict):
             raise ValueError("init_vars must resolve to a JSON object.")
 
-        execution_id = execute_scenario_by_id(
-            scenario_id,
+        execution_id = execute_test_suite_by_id(
+            suite_id,
             run_event=run_context.event if run_context else {},
             vars_init=init_vars,
             invocation_id=run_context.invocation_id if run_context else None,
         )
         message = (
-            f"Scenario '{scenario_id}' started with execution_id '{execution_id}'"
+            f"Test suite '{suite_id}' started with execution_id '{execution_id}'"
         )
         self.log(
             operation_id,
             message=message,
             payload={
-                "scenario_id": scenario_id,
-                "scenario_code": str(cfg.scenario_code or "").strip() or None,
+                "suite_id": suite_id,
+                "suite_code": str(cfg.suite_code or "").strip() or None,
                 "execution_id": execution_id,
                 "init_vars": init_vars,
                 "invocation_id": run_context.invocation_id if run_context else None,
@@ -71,9 +71,12 @@ class RunScenarioOperationExecutor(OperationExecutor):
             result=[
                 {
                     "message": message,
-                    "scenario_id": scenario_id,
+                    "suite_id": suite_id,
                     "execution_id": execution_id,
                     "init_vars": init_vars,
                 }
             ],
         )
+
+
+RunScenarioOperationExecutor = RunSuiteOperationExecutor

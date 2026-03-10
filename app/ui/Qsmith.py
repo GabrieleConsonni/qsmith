@@ -21,8 +21,8 @@ database_datasources = st.Page(
     "pages/DatabaseDataSources.py",
     title="Database Datasources",
 )
-scenarios = st.Page("pages/Scenarios.py", title="Scenarios")
-scenario_editor = st.Page("pages/ScenarioEditor.py", title="Scenario editor")
+test_suites = st.Page("pages/TestSuites.py", title="Test Suites")
+suite_editor = st.Page("pages/SuiteEditor.py", title="Suite editor")
 tools = st.Page("pages/Tools.py", title="Tools")
 logs = st.Page("pages/Logs.py", title="Logs")
 
@@ -97,9 +97,9 @@ _sidebar_nav_button(
 )
 st.sidebar.subheader("Test")
 _sidebar_nav_button(
-    label="Test scenarios",
-    page_path="pages/Scenarios.py",
-    key="nav_scenarios_page",
+    label="Test suites",
+    page_path="pages/TestSuites.py",
+    key="nav_test_suites_page",
     icon=":material/experiment:",
 )
 st.sidebar.subheader("Mock Servers")
@@ -136,7 +136,7 @@ pg = st.navigation(
         "Configurations": [brokers_page, database_connections_page, mock_servers_page],
         "Brokers & Queues": [queues_page, queue_details],
         "Data Sources": [json_array, database_datasources],
-        "Scenarios": [scenarios, scenario_editor],
+        "Test Suites": [test_suites, suite_editor],
         "Mock Servers": [mock_server_editor_page],
         "Logs & Tools": [logs, tools]
     },

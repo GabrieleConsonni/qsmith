@@ -1,8 +1,25 @@
-from scenarios.components.scenarios_component import render_home_page
+import streamlit as st
+
+from test_suites.services.api_service import get_test_suite_executions
 
 
-def render_page():
-    render_home_page()
+st.title("Home")
+st.caption("Recent test suite executions.")
 
-
-render_page()
+executions = get_test_suite_executions(limit=20)
+if not executions:
+    st.info("No test suite executions available.")
+else:
+    for execution in executions:
+        label = (
+            f"{execution.get('status') or '-'} | "
+            f"{execution.get('started_at') or '-'} | "
+            f"{execution.get('requested_test_code') or execution.get('test_suite_code') or execution.get('id')}"
+        )
+        with st.expander(label, expanded=False):
+            st.write(f"Suite: {execution.get('test_suite_code') or '-'}")
+            st.write(f"Error: {execution.get('error_message') or '-'}")
+            for item in execution.get("items") or []:
+                st.markdown(
+                    f"- {item.get('item_kind')} | {item.get('hook_phase') or item.get('item_code')} | {item.get('status')}"
+                )

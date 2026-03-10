@@ -15,6 +15,14 @@ from _alembic.models.scenario_step_execution_entity import ScenarioStepExecution
 from _alembic.models.step_entity import StepEntity
 from _alembic.models.step_operation_execution_entity import StepOperationExecutionEntity
 from _alembic.models.step_operation_entity import StepOperationEntity
+from _alembic.models.suite_item_entity import SuiteItemEntity
+from _alembic.models.suite_item_execution_entity import SuiteItemExecutionEntity
+from _alembic.models.suite_item_operation_entity import SuiteItemOperationEntity
+from _alembic.models.suite_item_operation_execution_entity import (
+    SuiteItemOperationExecutionEntity,
+)
+from _alembic.models.test_suite_entity import TestSuiteEntity
+from _alembic.models.test_suite_execution_entity import TestSuiteExecutionEntity
 
 BaseIdEntityTypes = (
     JsonPayloadEntity
@@ -34,4 +42,10 @@ BaseIdEntityTypes = (
     | StepEntity
     | StepOperationEntity
     | StepOperationExecutionEntity
+    | SuiteItemEntity
+    | SuiteItemExecutionEntity
+    | SuiteItemOperationEntity
+    | SuiteItemOperationExecutionEntity
+    | TestSuiteEntity
+    | TestSuiteExecutionEntity
 )

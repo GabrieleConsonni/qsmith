@@ -24,20 +24,33 @@ from scenarios.services.state_keys import (
     OPERATIONS_CATALOG_KEY,
     SCENARIO_FEEDBACK_KEY,
     STEP_EDITOR_BROKERS_KEY,
+    STEP_EDITOR_DATABASE_DATASOURCES_KEY,
     STEP_EDITOR_JSON_ARRAYS_KEY,
 )
 
+OPERATION_TYPE_DATA = "data"
+OPERATION_TYPE_DATA_FROM_JSON_ARRAY = "data-from-json-array"
+OPERATION_TYPE_DATA_FROM_DB = "data-from-db"
+OPERATION_TYPE_DATA_FROM_QUEUE = "data-from-queue"
+OPERATION_TYPE_SLEEP = "sleep"
 OPERATION_TYPE_PUBLISH = "publish"
 OPERATION_TYPE_SAVE_INTERNAL_DB = "save-internal-db"
 OPERATION_TYPE_SAVE_EXTERNAL_DB = "save-external-db"
 OPERATION_TYPE_ASSERT = "assert"
-OPERATION_TYPE_RUN_SCENARIO = "run-scenario"
+OPERATION_TYPE_RUN_SUITE = "run-suite"
+OPERATION_TYPE_SET_VAR = "set-var"
 OPERATION_TYPE_OPTIONS = [
+    OPERATION_TYPE_DATA,
+    OPERATION_TYPE_DATA_FROM_JSON_ARRAY,
+    OPERATION_TYPE_DATA_FROM_DB,
+    OPERATION_TYPE_DATA_FROM_QUEUE,
+    OPERATION_TYPE_SLEEP,
     OPERATION_TYPE_PUBLISH,
     OPERATION_TYPE_SAVE_INTERNAL_DB,
     OPERATION_TYPE_SAVE_EXTERNAL_DB,
     OPERATION_TYPE_ASSERT,
-    OPERATION_TYPE_RUN_SCENARIO,
+    OPERATION_TYPE_RUN_SUITE,
+    OPERATION_TYPE_SET_VAR,
 ]
 ASSERT_OBJECT_TYPE_JSON_DATA = "json-data"
 ASSERT_OBJECT_TYPE_OPTIONS = [ASSERT_OBJECT_TYPE_JSON_DATA]
@@ -46,12 +59,14 @@ ASSERT_TYPE_EMPTY = "empty"
 ASSERT_TYPE_SCHEMA_VALIDATION = "schema-validation"
 ASSERT_TYPE_CONTAINS = "contains"
 ASSERT_TYPE_JSON_ARRAY_EQUALS = "json-array-equals"
+ASSERT_TYPE_EQUALS = "equals"
 ASSERT_TYPE_OPTIONS = [
     ASSERT_TYPE_NOT_EMPTY,
     ASSERT_TYPE_EMPTY,
     ASSERT_TYPE_SCHEMA_VALIDATION,
     ASSERT_TYPE_CONTAINS,
     ASSERT_TYPE_JSON_ARRAY_EQUALS,
+    ASSERT_TYPE_EQUALS,
 ]
 OPERATION_STATUS_SUCCESS = "success"
 OPERATION_STATUS_ERROR = "error"
@@ -86,11 +101,17 @@ def _new_ui_key() -> str:
 
 def _operation_type_label(operation_type: str) -> str:
     labels = {
+        OPERATION_TYPE_DATA: "input / data",
+        OPERATION_TYPE_DATA_FROM_JSON_ARRAY: "input / data-from-json-array",
+        OPERATION_TYPE_DATA_FROM_DB: "input / data-from-db",
+        OPERATION_TYPE_DATA_FROM_QUEUE: "input / data-from-queue",
+        OPERATION_TYPE_SLEEP: "utility / sleep",
         OPERATION_TYPE_PUBLISH: "publish",
         OPERATION_TYPE_SAVE_INTERNAL_DB: "save-internal-db",
         OPERATION_TYPE_SAVE_EXTERNAL_DB: "save-external-db",
         OPERATION_TYPE_ASSERT: "assert",
-        OPERATION_TYPE_RUN_SCENARIO: "run-scenario",
+        OPERATION_TYPE_RUN_SUITE: "run-suite",
+        OPERATION_TYPE_SET_VAR: "set-var",
     }
     return labels.get(operation_type, operation_type or "-")
 
@@ -117,6 +138,7 @@ def _assert_type_label(assert_type: str) -> str:
         ASSERT_TYPE_SCHEMA_VALIDATION: "schema-validation",
         ASSERT_TYPE_CONTAINS: "contains",
         ASSERT_TYPE_JSON_ARRAY_EQUALS: "json-array-equals",
+        ASSERT_TYPE_EQUALS: "equals",
     }
     return labels.get(assert_type, assert_type or "-")
 
@@ -200,6 +222,20 @@ def _parse_json_dict(value: object) -> tuple[dict | None, str | None]:
     return parsed, None
 
 
+def _parse_json_value(value: object) -> tuple[object | None, str | None]:
+    if value is None:
+        return None, None
+    if isinstance(value, (dict, list, int, float, bool)):
+        return value, None
+    raw_value = str(value or "").strip()
+    if not raw_value:
+        return None, None
+    try:
+        return json.loads(raw_value), None
+    except json.JSONDecodeError:
+        return raw_value, None
+
+
 def _connection_label(connection_item: dict) -> str:
     return str(connection_item.get("description") or connection_item.get("code") or "-")
 
@@ -256,6 +292,61 @@ def _render_operation_details(operation_item: dict):
 
     operation_type = str(operation_item.get("operation_type") or "").strip()
     configuration_json = _safe_dict(operation_item.get("configuration_json") or {})
+
+    if operation_type == OPERATION_TYPE_DATA:
+        data_payload = configuration_json.get("data") or []
+        st.markdown("**Inline data**")
+        st.json(data_payload, expanded=False)
+        return
+
+    if operation_type == OPERATION_TYPE_DATA_FROM_JSON_ARRAY:
+        load_step_editor_context(force=False)
+        json_arrays = _safe_list(st.session_state.get(STEP_EDITOR_JSON_ARRAYS_KEY, []))
+        json_arrays_by_id = _map_by_id(json_arrays)
+        json_array_id = str(
+            _resolve_configuration_value(configuration_json, "json_array_id", "jsonArrayId") or ""
+        ).strip()
+        json_array_item = json_arrays_by_id.get(json_array_id, {})
+        label = _json_array_label(json_array_item)
+        if label == "-" and json_array_id:
+            label = json_array_id
+        st.write(f"Json array: {label}")
+        return
+
+    if operation_type == OPERATION_TYPE_DATA_FROM_DB:
+        load_step_editor_context(force=False)
+        datasources = _safe_list(st.session_state.get(STEP_EDITOR_DATABASE_DATASOURCES_KEY, []))
+        datasources_by_id = _map_by_id(datasources)
+        datasource_id = str(
+            _resolve_configuration_value(configuration_json, "dataset_id", "datasetId", "data_source_id")
+            or ""
+        ).strip()
+        datasource_item = datasources_by_id.get(datasource_id, {})
+        label = str(datasource_item.get("description") or datasource_item.get("code") or datasource_id or "-")
+        st.write(f"Dataset: {label}")
+        return
+
+    if operation_type == OPERATION_TYPE_DATA_FROM_QUEUE:
+        load_step_editor_context(force=False)
+        brokers = _safe_list(st.session_state.get(STEP_EDITOR_BROKERS_KEY, []))
+        brokers_by_id = _map_by_id(brokers)
+        queue_id = str(
+            _resolve_configuration_value(configuration_json, "queue_id", "queueId") or ""
+        ).strip()
+        queue_item, broker_item = _find_queue_and_broker_by_queue_id(queue_id, brokers_by_id)
+        st.write(f"Queue: {_queue_label(queue_item) if queue_item else queue_id or '-'}")
+        st.write(f"Broker: {_broker_label(broker_item) if broker_item else '-'}")
+        st.write(
+            "Retry / wait / max: "
+            f"{configuration_json.get('retry', 3)} / "
+            f"{configuration_json.get('wait_time_seconds', 20)} / "
+            f"{configuration_json.get('max_messages', 1000)}"
+        )
+        return
+
+    if operation_type == OPERATION_TYPE_SLEEP:
+        st.write(f"Duration: {configuration_json.get('duration', '-')}")
+        return
 
     if operation_type == OPERATION_TYPE_PUBLISH:
         load_step_editor_context(force=False)
@@ -358,12 +449,19 @@ def _render_operation_details(operation_item: dict):
             st.code(_pretty_json(schema), language="json")
         return
 
-    if operation_type == OPERATION_TYPE_RUN_SCENARIO:
-        scenario_id = str(
-            _resolve_configuration_value(configuration_json, "scenario_id", "scenarioId")
+    if operation_type == OPERATION_TYPE_RUN_SUITE:
+        suite_id = str(
+            _resolve_configuration_value(configuration_json, "suite_id", "suiteId", "scenario_id", "scenarioId")
             or "-"
         ).strip()
-        st.write(f"Scenario id: {scenario_id or '-'}")
+        st.write(f"Suite id: {suite_id or '-'}")
+        return
+
+    if operation_type == OPERATION_TYPE_SET_VAR:
+        st.write(f"Key: {configuration_json.get('key') or '-'}")
+        st.write(f"Scope: {configuration_json.get('scope') or 'auto'}")
+        st.markdown("**Value**")
+        st.code(_pretty_json(configuration_json.get("value")), language="json")
         return
 
     st.code(_pretty_json(configuration_json), language="json")
@@ -527,6 +625,14 @@ def find_draft_step_by_ui_key(draft: dict, step_ui_key: str) -> dict | None:
     for scenario_step in draft.get("steps") or []:
         if str(scenario_step.get("_ui_key") or "") == str(step_ui_key):
             return scenario_step
+    for suite_test in draft.get("tests") or []:
+        if str(suite_test.get("_ui_key") or "") == str(step_ui_key):
+            return suite_test
+    hooks = draft.get("hooks") or {}
+    if isinstance(hooks, dict):
+        for hook_item in hooks.values():
+            if isinstance(hook_item, dict) and str(hook_item.get("_ui_key") or "") == str(step_ui_key):
+                return hook_item
     return None
 
 
@@ -560,7 +666,54 @@ def build_operation_creation_payload(dialog_nonce: int) -> tuple[dict | None, st
         return None, "Il campo Code dell'operazione e' obbligatorio."
 
     cfg: dict
-    if operation_type == OPERATION_TYPE_PUBLISH:
+    if operation_type == OPERATION_TYPE_DATA:
+        data_payload, parse_error = _parse_json_value(
+            st.session_state.get(f"scenario_add_operation_data_payload_{dialog_nonce}")
+        )
+        if parse_error:
+            return None, parse_error
+        if not isinstance(data_payload, list):
+            return None, "Il payload Data deve essere un array JSON."
+        cfg = {"operationType": OPERATION_TYPE_DATA, "data": data_payload}
+    elif operation_type == OPERATION_TYPE_DATA_FROM_JSON_ARRAY:
+        json_array_id = str(
+            st.session_state.get(f"scenario_add_operation_json_array_id_{dialog_nonce}") or ""
+        ).strip()
+        if not json_array_id:
+            return None, "Il campo Json array e' obbligatorio."
+        cfg = {"operationType": OPERATION_TYPE_DATA_FROM_JSON_ARRAY, "json_array_id": json_array_id}
+    elif operation_type == OPERATION_TYPE_DATA_FROM_DB:
+        dataset_id = str(
+            st.session_state.get(f"scenario_add_operation_dataset_id_{dialog_nonce}") or ""
+        ).strip()
+        if not dataset_id:
+            return None, "Il campo Dataset e' obbligatorio."
+        cfg = {"operationType": OPERATION_TYPE_DATA_FROM_DB, "dataset_id": dataset_id}
+    elif operation_type == OPERATION_TYPE_DATA_FROM_QUEUE:
+        queue_id = str(
+            st.session_state.get(f"scenario_add_operation_queue_id_{dialog_nonce}") or ""
+        ).strip()
+        if not queue_id:
+            return None, "Il campo Queue id e' obbligatorio."
+        cfg = {
+            "operationType": OPERATION_TYPE_DATA_FROM_QUEUE,
+            "queue_id": queue_id,
+            "retry": _safe_int(st.session_state.get(f"scenario_add_operation_retry_{dialog_nonce}"), 3),
+            "wait_time_seconds": _safe_int(
+                st.session_state.get(f"scenario_add_operation_wait_time_seconds_{dialog_nonce}"),
+                20,
+            ),
+            "max_messages": _safe_int(
+                st.session_state.get(f"scenario_add_operation_max_messages_{dialog_nonce}"),
+                1000,
+            ),
+        }
+    elif operation_type == OPERATION_TYPE_SLEEP:
+        duration = _safe_int(st.session_state.get(f"scenario_add_operation_sleep_duration_{dialog_nonce}"), 0)
+        if duration < 0:
+            return None, "Il campo Duration deve essere >= 0."
+        cfg = {"operationType": OPERATION_TYPE_SLEEP, "duration": duration}
+    elif operation_type == OPERATION_TYPE_PUBLISH:
         queue_id = str(
             st.session_state.get(f"scenario_add_operation_queue_id_{dialog_nonce}") or ""
         ).strip()
@@ -647,18 +800,45 @@ def build_operation_creation_payload(dialog_nonce: int) -> tuple[dict | None, st
                 return None, "Il campo Compare keys e' obbligatorio."
             cfg["expected_json_array_id"] = expected_json_array_id
             cfg["compare_keys"] = compare_keys
-    elif operation_type == OPERATION_TYPE_RUN_SCENARIO:
-        scenario_id = str(
+        elif assert_type == ASSERT_TYPE_EQUALS:
+            actual_value, _ = _parse_json_value(
+                st.session_state.get(f"scenario_add_operation_assert_actual_{dialog_nonce}")
+            )
+            expected_value, _ = _parse_json_value(
+                st.session_state.get(f"scenario_add_operation_assert_expected_{dialog_nonce}")
+            )
+            cfg["actual"] = actual_value
+            cfg["expected"] = expected_value
+    elif operation_type == OPERATION_TYPE_RUN_SUITE:
+        suite_id = str(
             st.session_state.get(
-                f"scenario_add_operation_run_scenario_id_{dialog_nonce}"
+                f"scenario_add_operation_run_suite_id_{dialog_nonce}"
             )
             or ""
         ).strip()
-        if not scenario_id:
-            return None, "Il campo Scenario id e' obbligatorio."
+        if not suite_id:
+            return None, "Il campo Suite id e' obbligatorio."
         cfg = {
-            "operationType": OPERATION_TYPE_RUN_SCENARIO,
-            "scenario_id": scenario_id,
+            "operationType": OPERATION_TYPE_RUN_SUITE,
+            "suite_id": suite_id,
+        }
+    elif operation_type == OPERATION_TYPE_SET_VAR:
+        key = str(
+            st.session_state.get(f"scenario_add_operation_set_var_key_{dialog_nonce}") or ""
+        ).strip()
+        scope = str(
+            st.session_state.get(f"scenario_add_operation_set_var_scope_{dialog_nonce}") or "auto"
+        ).strip()
+        if not key:
+            return None, "Il campo Key e' obbligatorio."
+        value_payload, _ = _parse_json_value(
+            st.session_state.get(f"scenario_add_operation_set_var_value_{dialog_nonce}")
+        )
+        cfg = {
+            "operationType": OPERATION_TYPE_SET_VAR,
+            "key": key,
+            "scope": scope or "auto",
+            "value": value_payload,
         }
     else:
         return None, f"Operation type non supportato: {operation_type}"
@@ -728,7 +908,7 @@ def _resolve_target_step_for_operation_dialog(
     if isinstance(scenario_step, dict):
         return scenario_step
 
-    st.error("Step di destinazione non trovato.")
+    st.error("Elemento di destinazione non trovato.")
     if st.button(
         "Cancel",
         key=f"scenario_add_operation_missing_step_cancel_{dialog_nonce}",
@@ -876,6 +1056,11 @@ def _render_new_operation_form_panel(
     broker_by_id = {str(item.get("id")): item for item in brokers if item.get("id")}
     json_array_ids = [str(item.get("id")) for item in json_arrays if item.get("id")]
     json_array_by_id = {str(item.get("id")): item for item in json_arrays if item.get("id")}
+    datasource_items = st.session_state.get(STEP_EDITOR_DATABASE_DATASOURCES_KEY, [])
+    if not isinstance(datasource_items, list):
+        datasource_items = []
+    datasource_ids = [str(item.get("id")) for item in datasource_items if item.get("id")]
+    datasource_by_id = {str(item.get("id")): item for item in datasource_items if item.get("id")}
     database_connection_ids = [
         str(item.get("id")) for item in database_connections if item.get("id")
     ]
@@ -899,7 +1084,101 @@ def _render_new_operation_form_panel(
         key=f"scenario_add_operation_type_{dialog_nonce}",
     )
 
-    if operation_type == OPERATION_TYPE_PUBLISH:
+    if operation_type == OPERATION_TYPE_DATA:
+        if f"scenario_add_operation_data_payload_{dialog_nonce}" not in st.session_state:
+            st.session_state[f"scenario_add_operation_data_payload_{dialog_nonce}"] = "[]"
+        st.text_area(
+            "Data payload",
+            key=f"scenario_add_operation_data_payload_{dialog_nonce}",
+            height=180,
+            help="JSON array used as input rows for the test/hook.",
+        )
+    elif operation_type == OPERATION_TYPE_DATA_FROM_JSON_ARRAY:
+        select_key = f"scenario_add_operation_json_array_id_{dialog_nonce}"
+        _normalize_select_key(select_key, json_array_ids or [""])
+        st.selectbox(
+            "Json array",
+            options=json_array_ids or [""],
+            format_func=lambda _id: (
+                _json_array_label(json_array_by_id.get(_id, {}))
+                if _id
+                else "Nessun json-array disponibile"
+            ),
+            key=select_key,
+            disabled=not bool(json_array_ids),
+        )
+    elif operation_type == OPERATION_TYPE_DATA_FROM_DB:
+        select_key = f"scenario_add_operation_dataset_id_{dialog_nonce}"
+        _normalize_select_key(select_key, datasource_ids or [""])
+        st.selectbox(
+            "Dataset",
+            options=datasource_ids or [""],
+            format_func=lambda _id: (
+                str(
+                    datasource_by_id.get(_id, {}).get("description")
+                    or datasource_by_id.get(_id, {}).get("code")
+                    or _id
+                    or "Nessun dataset disponibile"
+                )
+            ),
+            key=select_key,
+            disabled=not bool(datasource_ids),
+        )
+    elif operation_type == OPERATION_TYPE_DATA_FROM_QUEUE:
+        broker_select_key = f"scenario_add_operation_broker_id_{dialog_nonce}"
+        _normalize_select_key(broker_select_key, broker_ids or [""])
+        selected_broker_id = st.selectbox(
+            "Broker",
+            options=broker_ids or [""],
+            format_func=lambda _id: (
+                _broker_label(broker_by_id.get(_id, {}))
+                if _id
+                else "Nessun broker disponibile"
+            ),
+            key=broker_select_key,
+            disabled=not bool(broker_ids),
+        )
+        queues = (
+            load_step_editor_queues_for_broker(selected_broker_id, force=False)
+            if selected_broker_id
+            else []
+        )
+        queue_ids = [str(item.get("id")) for item in queues if item.get("id")]
+        queue_by_id = {str(item.get("id")): item for item in queues if item.get("id")}
+        queue_select_key = f"scenario_add_operation_queue_id_{dialog_nonce}"
+        _normalize_select_key(queue_select_key, queue_ids or [""])
+        st.selectbox(
+            "Queue",
+            options=queue_ids or [""],
+            format_func=lambda _id: (
+                _queue_label(queue_by_id.get(_id, {}))
+                if _id
+                else "Nessuna queue disponibile"
+            ),
+            key=queue_select_key,
+            disabled=not bool(queue_ids),
+        )
+        st.number_input("Retry", min_value=1, value=3, key=f"scenario_add_operation_retry_{dialog_nonce}")
+        st.number_input(
+            "Wait time seconds",
+            min_value=0,
+            value=20,
+            key=f"scenario_add_operation_wait_time_seconds_{dialog_nonce}",
+        )
+        st.number_input(
+            "Max messages",
+            min_value=1,
+            value=1000,
+            key=f"scenario_add_operation_max_messages_{dialog_nonce}",
+        )
+    elif operation_type == OPERATION_TYPE_SLEEP:
+        st.number_input(
+            "Duration seconds",
+            min_value=0,
+            value=0,
+            key=f"scenario_add_operation_sleep_duration_{dialog_nonce}",
+        )
+    elif operation_type == OPERATION_TYPE_PUBLISH:
         broker_select_key = f"scenario_add_operation_broker_id_{dialog_nonce}"
         _normalize_select_key(broker_select_key, broker_ids or [""])
         selected_broker_id = st.selectbox(
@@ -1038,11 +1317,41 @@ def _render_new_operation_form_panel(
                 selected_expected = json_array_by_id.get(selected_expected_id, {})
                 st.markdown("**Expected json-array preview**")
                 st.json(selected_expected.get("payload") or [], expanded=False)
-    elif operation_type == OPERATION_TYPE_RUN_SCENARIO:
+        elif selected_assert_type == ASSERT_TYPE_EQUALS:
+            st.text_area(
+                "Actual",
+                key=f"scenario_add_operation_assert_actual_{dialog_nonce}",
+                height=120,
+                help="JSON or plain text value.",
+            )
+            st.text_area(
+                "Expected",
+                key=f"scenario_add_operation_assert_expected_{dialog_nonce}",
+                height=120,
+                help="JSON or plain text value.",
+            )
+    elif operation_type == OPERATION_TYPE_RUN_SUITE:
         st.text_input(
-            "Scenario id",
-            key=f"scenario_add_operation_run_scenario_id_{dialog_nonce}",
-            placeholder="scenario uuid",
+            "Suite id",
+            key=f"scenario_add_operation_run_suite_id_{dialog_nonce}",
+            placeholder="test suite uuid",
+        )
+    elif operation_type == OPERATION_TYPE_SET_VAR:
+        st.text_input(
+            "Key",
+            key=f"scenario_add_operation_set_var_key_{dialog_nonce}",
+            placeholder="context variable name",
+        )
+        st.selectbox(
+            "Scope",
+            options=["auto", "local", "global"],
+            key=f"scenario_add_operation_set_var_scope_{dialog_nonce}",
+        )
+        st.text_area(
+            "Value",
+            key=f"scenario_add_operation_set_var_value_{dialog_nonce}",
+            height=140,
+            help="JSON or plain text value to store in context.",
         )
 
     create_cols = st.columns([1, 1], gap="small")

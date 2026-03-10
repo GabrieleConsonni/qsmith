@@ -25,11 +25,11 @@ class SetVarOperationExecutor(OperationExecutor):
         del session
         scope = build_run_context_scope()
         resolved_value = resolve_dynamic_value(cfg.value, scope)
-        set_context_var(cfg.key, resolved_value)
+        set_context_var(cfg.key, resolved_value, scope=cfg.scope)
         self.log(
             operation_id,
             message=f"Set context var '{cfg.key}'",
-            payload={"key": cfg.key, "value": resolved_value},
+            payload={"key": cfg.key, "value": resolved_value, "scope": cfg.scope},
         )
         return ExecutionResultDto(
             data=data,
@@ -38,6 +38,7 @@ class SetVarOperationExecutor(OperationExecutor):
                     "message": f"Context var '{cfg.key}' updated",
                     "key": cfg.key,
                     "value": resolved_value,
+                    "scope": cfg.scope,
                 }
             ],
         )

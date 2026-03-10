@@ -947,7 +947,7 @@ def _response_resolver_help_dialog():
         st.markdown("**Resolver overview**")
         st.markdown("The resolver is a powerful tool that allows you to ")
         st.markdown("- extract and manipulate data from the incoming request to create dynamic responses.")
-        st.markdown("- share data between different steps\operations within the same scenario.")
+        st.markdown("- share data between different steps/operations within the same scenario.")
 
         st.markdown("**Resolver sintax**")
         st.markdown("The resolver syntax is based on JSON and supports two main patterns:")
@@ -957,9 +957,10 @@ def _response_resolver_help_dialog():
         
         st.markdown("**Run context roots**")
         st.markdown("- `$.event` : envelope of the incoming request, with all its properties (`method`, `path`, `headers`, `body`, etc).")
-        st.markdown("- `$.vars` : variables defined in the current context.")
+        st.markdown("- `$.global` : variables shared at suite level.")
+        st.markdown("- `$.local` : variables local to the current test.")
         st.markdown("- `$.last` : data from the last executed operation.")
-        st.markdown("- `$.artifacts` : artifacts generated during the scenario execution.")
+        st.markdown("- `$.artifacts` : artifacts generated during the suite execution.")
         
         st.divider()
         
@@ -980,7 +981,7 @@ def _response_resolver_help_dialog():
         st.markdown("You can also configure pre-response operations to fetch additional data, store it in the context, and use it later to build a more complex response body.")
     
     st.markdown("**Context schema**")
-    st.json('{"run_id": "uuid","event": {},"vars": {},"last": {"step_code": "","data": {}},"artifacts": {}}',   expanded=True)
+    st.json('{"run_id": "uuid","event": {},"global": {},"local": {},"last": {"item_code": "","data": []},"artifacts": {}}', expanded=True)
     
     st.markdown("**Event Envelope (API / Queue)**")
     st.json('{ "source": "api|queue","mock_server_code": "","trigger": {"code": "","method": "","queue_code": ""},"timestamp": "","payload": {},"meta": {}}',   expanded=True)

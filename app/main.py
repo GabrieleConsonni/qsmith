@@ -15,13 +15,10 @@ from data_sources.api.database_data_source_api import router as database_router
 from data_sources.api.database_table_data_source_api import (
     router as database_table_data_source_router,
 )
-from elaborations.api.steps_api import router as steps_router
 from elaborations.api.operations_api import router as operations_router
-from elaborations.api.scenarios_api import router as scenarios_router
 from elaborations.api.execution_events_api import router as execution_events_router
-from elaborations.api.scenario_executions_api import router as scenario_executions_router
-from elaborations.api.scenarios_step_api import router as scenario_steps_router
-from elaborations.api.step_operations_api import router as step_operations_router
+from elaborations.api.test_suite_executions_api import router as test_suite_executions_router
+from elaborations.api.test_suites_api import router as test_suites_router
 from json_utils.api.json_utils_api import router as json_utils_router
 from logs.api.logs_api import router as logs_router
 from mock_servers.api.mock_runtime_api import router as mock_runtime_router
@@ -109,12 +106,9 @@ app.include_router(json_array_router)
 app.include_router(database_router)
 app.include_router(database_table_data_source_router)
 app.include_router(operations_router)
-app.include_router(steps_router)
-app.include_router(scenarios_router)
+app.include_router(test_suites_router)
 app.include_router(execution_events_router)
-app.include_router(scenario_executions_router)
-app.include_router(scenario_steps_router)
-app.include_router(step_operations_router)
+app.include_router(test_suite_executions_router)
 app.include_router(json_utils_router)
 app.include_router(logs_router)
 app.include_router(mock_servers_router)

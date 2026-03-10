@@ -1,0 +1,176 @@
+import asyncio
+from uuid import uuid4
+
+from app._alembic.services.session_context_manager import managed_session
+from app.elaborations.api.test_suites_api import (
+    find_test_suite_api,
+    insert_test_suite_api,
+)
+from app.elaborations.models.dtos.configuration_operation_dto import (
+    AssertConfigurationOperationDto,
+    DataConfigurationOperationDto,
+    SetVarConfigurationOperationDto,
+)
+from app.elaborations.models.dtos.test_suite_dto import (
+    CreateSuiteItemDto,
+    CreateSuiteItemOperationDto,
+    CreateTestSuiteDto,
+)
+from app.elaborations.services.alembic.suite_item_execution_service import (
+    SuiteItemExecutionService,
+)
+from app.elaborations.services.alembic.test_suite_execution_service import (
+    TestSuiteExecutionService,
+)
+from app.elaborations.services.test_suites.test_suite_executor_thread import (
+    TestSuiteExecutionInput,
+    _execute,
+)
+
+
+def test_test_suite_api_and_runtime_happy_path(alembic_container):
+    del alembic_container
+    dto = CreateTestSuiteDto(
+        code="suite_orders",
+        description="orders suite",
+        hooks=[
+            CreateSuiteItemDto(
+                kind="hook",
+                hook_phase="before-all",
+                code="before-all",
+                operations=[
+                    CreateSuiteItemOperationDto(
+                        order=1,
+                        code="set-tenant",
+                        cfg=SetVarConfigurationOperationDto(
+                            key="tenant",
+                            value="ACME",
+                            scope="global",
+                        ),
+                    )
+                ],
+            ),
+            CreateSuiteItemDto(
+                kind="hook",
+                hook_phase="before-each",
+                code="before-each",
+                operations=[
+                    CreateSuiteItemOperationDto(
+                        order=1,
+                        code="set-local",
+                        cfg=SetVarConfigurationOperationDto(
+                            key="local_customer",
+                            value="C-001",
+                            scope="local",
+                        ),
+                    )
+                ],
+            ),
+        ],
+        tests=[
+            CreateSuiteItemDto(
+                code="test-customer",
+                description="verifies global and local values",
+                operations=[
+                    CreateSuiteItemOperationDto(
+                        order=1,
+                        code="load-inline-data",
+                        cfg=DataConfigurationOperationDto(
+                            data=[{"id": 1, "customer": "C-001"}],
+                        ),
+                    ),
+                    CreateSuiteItemOperationDto(
+                        order=2,
+                        code="assert-tenant",
+                        cfg=AssertConfigurationOperationDto(
+                            assert_type="equals",
+                            actual="$.global.tenant",
+                            expected="ACME",
+                        ),
+                    ),
+                    CreateSuiteItemOperationDto(
+                        order=3,
+                        code="assert-local",
+                        cfg=AssertConfigurationOperationDto(
+                            assert_type="equals",
+                            actual="$.local.local_customer",
+                            expected="C-001",
+                        ),
+                    ),
+                ],
+            )
+        ],
+    )
+
+    response = asyncio.run(insert_test_suite_api(dto))
+    test_suite_id = str(response.get("id") or "").strip()
+    assert test_suite_id
+
+    payload = asyncio.run(find_test_suite_api(test_suite_id))
+    assert payload["code"] == "suite_orders"
+    assert len(payload["hooks"]) == 2
+    assert len(payload["tests"]) == 1
+
+    _execute(
+        TestSuiteExecutionInput(
+            execution_id=str(uuid4()),
+            test_suite_id=test_suite_id,
+            test_suite_code="suite_orders",
+            test_suite_description="orders suite",
+        )
+    )
+
+    with managed_session() as session:
+        executions = TestSuiteExecutionService().get_all_by_suite_id(session, test_suite_id, limit=10)
+        assert len(executions) == 1
+        execution = executions[0]
+        assert str(execution.status or "").strip().lower() == "success"
+        items = SuiteItemExecutionService().get_all_by_execution_id(session, execution.id)
+        assert len(items) == 3
+        assert {str(item.item_kind) for item in items} == {"hook", "test"}
+
+
+def test_test_execution_cannot_write_global_context(alembic_container):
+    del alembic_container
+    dto = CreateTestSuiteDto(
+        code="suite_global_guard",
+        description="suite global guard",
+        tests=[
+            CreateSuiteItemDto(
+                code="test-invalid-global-write",
+                operations=[
+                    CreateSuiteItemOperationDto(
+                        order=1,
+                        code="set-global-in-test",
+                        cfg=SetVarConfigurationOperationDto(
+                            key="forbidden",
+                            value="boom",
+                            scope="global",
+                        ),
+                    )
+                ],
+            )
+        ],
+    )
+
+    response = asyncio.run(insert_test_suite_api(dto))
+    test_suite_id = str(response.get("id") or "").strip()
+    assert test_suite_id
+
+    _execute(
+        TestSuiteExecutionInput(
+            execution_id=str(uuid4()),
+            test_suite_id=test_suite_id,
+            test_suite_code="suite_global_guard",
+            test_suite_description="suite global guard",
+        )
+    )
+
+    with managed_session() as session:
+        executions = TestSuiteExecutionService().get_all_by_suite_id(session, test_suite_id, limit=10)
+        assert len(executions) == 1
+        execution = executions[0]
+        assert str(execution.status or "").strip().lower() == "error"
+        assert "Global context is immutable during test execution." in str(
+            execution.error_message or ""
+        )

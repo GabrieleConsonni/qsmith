@@ -9,6 +9,34 @@ class ConfigurationOperationDto(BaseModel):
     operationType: str
 
 
+class DataConfigurationOperationDto(ConfigurationOperationDto):
+    operationType: str = OperationType.DATA.value
+    data: list[dict]
+
+
+class DataFromJsonArrayConfigurationOperationDto(ConfigurationOperationDto):
+    operationType: str = OperationType.DATA_FROM_JSON_ARRAY.value
+    json_array_id: str
+
+
+class DataFromDbConfigurationOperationDto(ConfigurationOperationDto):
+    operationType: str = OperationType.DATA_FROM_DB.value
+    dataset_id: str | None = None
+
+
+class DataFromQueueConfigurationOperationDto(ConfigurationOperationDto):
+    operationType: str = OperationType.DATA_FROM_QUEUE.value
+    queue_id: str
+    retry: int = 3
+    wait_time_seconds: int = 20
+    max_messages: int = 1000
+
+
+class SleepConfigurationOperationDto(ConfigurationOperationDto):
+    operationType: str = OperationType.SLEEP.value
+    duration: int
+
+
 class PublishConfigurationOperationDto(ConfigurationOperationDto):
     operationType: str = OperationType.PUBLISH.value
     queue_id: str
@@ -27,22 +55,22 @@ class SaveToExternalDBConfigurationOperationDto(ConfigurationOperationDto):
     table_name: str | None = None
 
 
-class RunScenarioConfigurationOperationDto(ConfigurationOperationDto):
-    operationType: str = OperationType.RUN_SCENARIO.value
-    scenario_id: str | None = None
-    scenario_code: str | None = None
+class RunSuiteConfigurationOperationDto(ConfigurationOperationDto):
+    operationType: str = OperationType.RUN_SUITE.value
+    suite_id: str | None = None
+    suite_code: str | None = None
     init_vars: dict | None = None
 
     @model_validator(mode="after")
-    def validate_run_scenario_configuration(self):
-        scenario_id = str(self.scenario_id or "").strip()
-        scenario_code = str(self.scenario_code or "").strip()
-        if not scenario_id and not scenario_code:
+    def validate_run_suite_configuration(self):
+        suite_id = str(self.suite_id or "").strip()
+        suite_code = str(self.suite_code or "").strip()
+        if not suite_id and not suite_code:
             raise ValueError(
-                "scenario_id or scenario_code is required for run-scenario operation."
+                "suite_id or suite_code is required for run-suite operation."
             )
-        self.scenario_id = scenario_id or None
-        self.scenario_code = scenario_code or None
+        self.suite_id = suite_id or None
+        self.suite_code = suite_code or None
         self.init_vars = self.init_vars if isinstance(self.init_vars, dict) else None
         return self
 
@@ -51,6 +79,7 @@ class SetVarConfigurationOperationDto(ConfigurationOperationDto):
     operationType: str = OperationType.SET_VAR.value
     key: str
     value: object = None
+    scope: str = "auto"
 
     @model_validator(mode="after")
     def validate_set_var_configuration(self):
@@ -58,6 +87,10 @@ class SetVarConfigurationOperationDto(ConfigurationOperationDto):
         if not normalized_key:
             raise ValueError("key is required for set-var operation.")
         self.key = normalized_key
+        normalized_scope = str(self.scope or "auto").strip().lower()
+        if normalized_scope not in {"auto", "local", "global"}:
+            raise ValueError("scope must be one of: auto, local, global.")
+        self.scope = normalized_scope
         return self
 
 
@@ -163,10 +196,15 @@ class AssertConfigurationOperationDto(ConfigurationOperationDto):
 
 
 ConfigurationOperationTypes = (
-    PublishConfigurationOperationDto
+    DataConfigurationOperationDto
+    | DataFromJsonArrayConfigurationOperationDto
+    | DataFromDbConfigurationOperationDto
+    | DataFromQueueConfigurationOperationDto
+    | SleepConfigurationOperationDto
+    | PublishConfigurationOperationDto
     | SaveInternalDBConfigurationOperationDto
     | SaveToExternalDBConfigurationOperationDto
-    | RunScenarioConfigurationOperationDto
+    | RunSuiteConfigurationOperationDto
     | SetVarConfigurationOperationDto
     | AssertConfigurationOperationDto
 )
@@ -176,6 +214,29 @@ def convert_to_config_operation_type(data: dict):
     operation_type = _normalize_token(
         _first_non_empty(data, "operationType", "operation_type", "type")
     )
+    if operation_type == OperationType.DATA.value:
+        return DataConfigurationOperationDto(data=_first_non_empty(data, "data") or [])
+    if operation_type == OperationType.DATA_FROM_JSON_ARRAY.value:
+        return DataFromJsonArrayConfigurationOperationDto(
+            json_array_id=_first_non_empty(data, "json_array_id", "jsonArrayId")
+        )
+    if operation_type == OperationType.DATA_FROM_DB.value:
+        return DataFromDbConfigurationOperationDto(
+            dataset_id=_first_non_empty(data, "dataset_id", "datasetId", "data_source_id")
+        )
+    if operation_type == OperationType.DATA_FROM_QUEUE.value:
+        return DataFromQueueConfigurationOperationDto(
+            queue_id=_first_non_empty(data, "queue_id", "queueId"),
+            retry=int(_first_non_empty(data, "retry") or 3),
+            wait_time_seconds=int(
+                _first_non_empty(data, "wait_time_seconds", "waitTimeSeconds") or 20
+            ),
+            max_messages=int(_first_non_empty(data, "max_messages", "maxMessages") or 1000),
+        )
+    if operation_type == OperationType.SLEEP.value:
+        return SleepConfigurationOperationDto(
+            duration=int(_first_non_empty(data, "duration") or 0)
+        )
     if operation_type == OperationType.PUBLISH.value:
         return PublishConfigurationOperationDto(
             queue_id=_first_non_empty(data, "queue_id", "queueId"),
@@ -197,16 +258,23 @@ def convert_to_config_operation_type(data: dict):
             ),
             table_name=_first_non_empty(data, "table_name", "tableName")
         )
-    if operation_type == OperationType.RUN_SCENARIO.value:
-        return RunScenarioConfigurationOperationDto(
-            scenario_id=_first_non_empty(data, "scenario_id", "scenarioId"),
-            scenario_code=_first_non_empty(data, "scenario_code", "scenarioCode"),
+    if operation_type == OperationType.RUN_SUITE.value:
+        return RunSuiteConfigurationOperationDto(
+            suite_id=_first_non_empty(data, "suite_id", "suiteId", "scenario_id", "scenarioId"),
+            suite_code=_first_non_empty(
+                data,
+                "suite_code",
+                "suiteCode",
+                "scenario_code",
+                "scenarioCode",
+            ),
             init_vars=_first_non_empty(data, "init_vars", "initVars"),
         )
     if operation_type == OperationType.SET_VAR.value:
         return SetVarConfigurationOperationDto(
             key=_first_non_empty(data, "key", "var_key", "varKey"),
             value=_first_non_empty(data, "value"),
+            scope=_first_non_empty(data, "scope", "target_scope", "targetScope") or "auto",
         )
     if operation_type == OperationType.ASSERT.value:
         return AssertConfigurationOperationDto(

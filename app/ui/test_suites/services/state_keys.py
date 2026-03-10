@@ -1,0 +1,7 @@
+TEST_SUITES_KEY = "test_suites"
+SELECTED_TEST_SUITE_ID_KEY = "selected_test_suite_id"
+TEST_SUITE_DRAFT_KEY = "test_suite_draft"
+TEST_SUITE_FEEDBACK_KEY = "test_suite_feedback"
+TEST_SUITE_LAST_EXECUTION_ID_KEY = "test_suite_last_execution_id"
+TEST_SUITE_EXECUTIONS_KEY = "test_suite_executions"
+TEST_SUITE_INCLUDE_PREVIOUS_KEY = "test_suite_include_previous"

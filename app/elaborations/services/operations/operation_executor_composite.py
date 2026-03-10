@@ -2,32 +2,54 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
+from _alembic.models.suite_item_operation_execution_entity import (
+    SuiteItemOperationExecutionEntity,
+)
 from _alembic.models.step_operation_execution_entity import StepOperationExecutionEntity
 from _alembic.models.step_operation_entity import StepOperationEntity
 from elaborations.models.dtos.configuration_operation_dto import (
     AssertConfigurationOperationDto,
+    DataConfigurationOperationDto,
+    DataFromDbConfigurationOperationDto,
+    DataFromJsonArrayConfigurationOperationDto,
+    DataFromQueueConfigurationOperationDto,
     ConfigurationOperationDto,
     ConfigurationOperationTypes,
     PublishConfigurationOperationDto,
-    RunScenarioConfigurationOperationDto,
+    RunSuiteConfigurationOperationDto,
     SaveInternalDBConfigurationOperationDto,
     SaveToExternalDBConfigurationOperationDto,
     SetVarConfigurationOperationDto,
+    SleepConfigurationOperationDto,
     convert_to_config_operation_type,
 )
+from elaborations.services.operations.data_from_db_operation_executor import (
+    DataFromDbOperationExecutor,
+)
+from elaborations.services.operations.data_from_json_array_operation_executor import (
+    DataFromJsonArrayOperationExecutor,
+)
+from elaborations.services.operations.data_from_queue_operation_executor import (
+    DataFromQueueOperationExecutor,
+)
+from elaborations.services.operations.data_operation_executor import DataOperationExecutor
 from elaborations.services.alembic.operation_service import OperationService
 from elaborations.services.alembic.step_operation_execution_service import (
     StepOperationExecutionService,
+)
+from elaborations.services.alembic.suite_item_operation_execution_service import (
+    SuiteItemOperationExecutionService,
 )
 from elaborations.services.operations.operation_executor import ExecutionResultDto, OperationExecutor
 from elaborations.services.operations.assert_operation_executor import AssertOperationExecutor
 from elaborations.services.operations.publish_to_queue_operation_executor import PublishToQueueOperationExecutor
 from elaborations.services.operations.run_scenario_operation_executor import (
-    RunScenarioOperationExecutor,
+    RunSuiteOperationExecutor,
 )
 from elaborations.services.operations.save_to_external_db_operation_executor import SaveToExternalDbOperationExecutor
 from elaborations.services.operations.save_to_internal_db_operation_executor import SaveInternalDbOperationExecutor
 from elaborations.services.operations.set_var_operation_executor import SetVarOperationExecutor
+from elaborations.services.operations.sleep_operation_executor import SleepOperationExecutor
 from elaborations.services.scenarios.execution_event_bus import (
     publish_execution_event,
     publish_runtime_log_event,
@@ -37,6 +59,9 @@ from elaborations.services.scenarios.execution_runtime_context import (
     get_scenario_execution_id,
     get_scenario_step_id,
     get_scenario_step_execution_id,
+    get_suite_item_execution_id,
+    get_suite_item_id,
+    get_test_suite_execution_id,
 )
 from elaborations.services.scenarios.run_context import (
     build_run_context_scope,
@@ -48,10 +73,15 @@ from logs.models.enums.log_subject_type import LogSubjectType
 from logs.services.alembic.log_service import LogService
 
 _EXECUTOR_MAPPING: dict[type[ConfigurationOperationDto], type[OperationExecutor]] = {
+    DataConfigurationOperationDto: DataOperationExecutor,
+    DataFromJsonArrayConfigurationOperationDto: DataFromJsonArrayOperationExecutor,
+    DataFromDbConfigurationOperationDto: DataFromDbOperationExecutor,
+    DataFromQueueConfigurationOperationDto: DataFromQueueOperationExecutor,
+    SleepConfigurationOperationDto: SleepOperationExecutor,
     PublishConfigurationOperationDto: PublishToQueueOperationExecutor,
     SaveInternalDBConfigurationOperationDto: SaveInternalDbOperationExecutor,
     SaveToExternalDBConfigurationOperationDto: SaveToExternalDbOperationExecutor,
-    RunScenarioConfigurationOperationDto: RunScenarioOperationExecutor,
+    RunSuiteConfigurationOperationDto: RunSuiteOperationExecutor,
     SetVarConfigurationOperationDto: SetVarOperationExecutor,
     AssertConfigurationOperationDto: AssertOperationExecutor,
 }
@@ -118,6 +148,7 @@ def execute_operations(
 ) -> ExecutionResultDto:
     execution_result = ExecutionResultDto(data=data, result=[])
     operation_execution_service = StepOperationExecutionService()
+    suite_operation_execution_service = SuiteItemOperationExecutionService()
 
     log(f"Starting execution {len(operations)} operations")
 
@@ -130,8 +161,12 @@ def execute_operations(
         scenario_execution_id = str(get_scenario_execution_id() or "").strip()
         scenario_step_execution_id = str(get_scenario_step_execution_id() or "").strip()
         scenario_step_id = str(get_scenario_step_id() or "").strip()
+        test_suite_execution_id = str(get_test_suite_execution_id() or "").strip()
+        suite_item_execution_id = str(get_suite_item_execution_id() or "").strip()
+        suite_item_id = str(get_suite_item_id() or "").strip()
 
         operation_execution_id = ""
+        suite_operation_execution_id = ""
         if scenario_execution_id and scenario_step_execution_id:
             operation_execution_id = operation_execution_service.insert(
                 session,
@@ -140,6 +175,20 @@ def execute_operations(
                     scenario_step_execution_id=scenario_step_execution_id,
                     scenario_step_id=scenario_step_id or None,
                     step_operation_id=op_id or None,
+                    operation_code=op_code,
+                    operation_description=op_description,
+                    operation_order=op_order,
+                    status="running",
+                ),
+            )
+        if test_suite_execution_id and suite_item_execution_id:
+            suite_operation_execution_id = suite_operation_execution_service.insert(
+                session,
+                SuiteItemOperationExecutionEntity(
+                    test_suite_execution_id=test_suite_execution_id,
+                    suite_item_execution_id=suite_item_execution_id,
+                    suite_item_id=suite_item_id or None,
+                    suite_item_operation_id=op_id or None,
                     operation_code=op_code,
                     operation_description=op_description,
                     operation_order=op_order,
@@ -160,6 +209,14 @@ def execute_operations(
                     error_message=None,
                     finished_at=_utc_now(),
                 )
+            if suite_operation_execution_id:
+                suite_operation_execution_service.update(
+                    session,
+                    suite_operation_execution_id,
+                    status="success",
+                    error_message=None,
+                    finished_at=_utc_now(),
+                )
             execution_id = get_execution_id()
             if execution_id:
                 publish_execution_event(
@@ -169,6 +226,9 @@ def execute_operations(
                         "scenario_step_id": scenario_step_id,
                         "scenario_step_execution_id": scenario_step_execution_id or None,
                         "step_operation_execution_id": operation_execution_id or None,
+                        "suite_item_id": suite_item_id or None,
+                        "suite_item_execution_id": suite_item_execution_id or None,
+                        "suite_item_operation_execution_id": suite_operation_execution_id or None,
                         "operation_id": op_id,
                         "operation_code": op_code,
                         "status": "success",
@@ -184,6 +244,14 @@ def execute_operations(
                     error_message=str(op_exception),
                     finished_at=_utc_now(),
                 )
+            if suite_operation_execution_id:
+                suite_operation_execution_service.update(
+                    session,
+                    suite_operation_execution_id,
+                    status="error",
+                    error_message=str(op_exception),
+                    finished_at=_utc_now(),
+                )
             execution_id = get_execution_id()
             if execution_id:
                 publish_execution_event(
@@ -193,6 +261,9 @@ def execute_operations(
                         "scenario_step_id": scenario_step_id,
                         "scenario_step_execution_id": scenario_step_execution_id or None,
                         "step_operation_execution_id": operation_execution_id or None,
+                        "suite_item_id": suite_item_id or None,
+                        "suite_item_execution_id": suite_item_execution_id or None,
+                        "suite_item_operation_execution_id": suite_operation_execution_id or None,
                         "operation_id": op_id,
                         "operation_code": op_code,
                         "status": "error",

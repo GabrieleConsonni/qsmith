@@ -35,9 +35,9 @@ Pagine disponibili:
 - `Datasources`
     - `Json Array`
     - `Dataset`
-- `Test scenarios`
-    - `Scenarios`
-        - `Scenario Editor` 
+- `Test suites`
+    - `Test Suites`
+        - `Suite Editor` 
 - `Logs`
 - `Tools`
 
@@ -105,27 +105,27 @@ Obiettivi:
 - scelta tabella/view da connessione tramite dialog con tree tables/views
 - preview dati tabella/view configurata
 
-### 4.7 Test Scenarios
+### 4.7 Test Suites
 Obiettivi:
-- selezionare scenario
+- selezionare suite
 - aggiunta/cancellazione item
-- eseguire scenario selezionato
-- navigare al `Scenario Editor` del singolo scenario
+- eseguire la suite selezionata
+- navigare al `Suite Editor` della singola suite
 
 
-### 4.8 Scenario Editor
+### 4.8 Suite Editor
 Obiettivi:
-- Aggiungere step e operazioni allo scenario
-- Eseguire step singolarmente o in gruppi
-- Visualizzare stato ultima esecuzione di step/operazioni (check/error/idle)
-- Mostrare avanzamento esecuzione scenario in tempo reale (step eseguiti / totali)
-- I dialog `Add step` e `Add operation` supportano:
-  - `Save and add`: salva in anagrafica (`steps`/`operations`) e aggiunge snapshot nello scenario
-  - `Add only`: aggiunge solo snapshot nello scenario senza salvare nell'anagrafica
-  - pannello sinistro con `Add` e `Delete` (delete dall'anagrafica)
+- aggiungere test embedded e operazioni alla suite
+- configurare i 4 hook fissi `beforeAll`, `beforeEach`, `afterEach`, `afterAll`
+- eseguire singoli test o l'intera suite
+- visualizzare stato ultima esecuzione di hook/test/operazioni (check/error/idle)
+- mostrare avanzamento esecuzione suite in tempo reale (test eseguiti / totali)
+- il dialog `Add operation` supporta:
+  - `Save and add`: salva in anagrafica `operations` e aggiunge snapshot all'item
+  - `Add only`: aggiunge solo snapshot all'item senza salvare nell'anagrafica
 
-Modello dati scenario:
-- `scenario_steps` e `step_operations` contengono i dettagli funzionali (code/type/configuration_json) usati in esecuzione.
+Modello dati suite:
+- `test_suites`, `suite_items` e `suite_item_operations` contengono i dettagli funzionali usati in esecuzione.
 - Lo scenario non dipende più da `step_id`/`operation_id` in runtime.
 
 
@@ -140,7 +140,7 @@ Obiettivi:
 - creare/modificare/cancellare mock server con endpoint dedicato
 - configurare API mock (`method`, `path`, params/headers/body, response)
 - configurare queue binding verso queue esistenti
-- associare operazioni a trigger API e queue (incluso `run-scenario`)
+- associare operazioni a trigger API e queue (incluso `run-suite`)
 - attivare/disattivare runtime mock server
 
 Comportamento runtime:
@@ -155,8 +155,8 @@ Comportamento runtime:
 - `/data-source/json-array` CRUD JSON array datasource
 - `/data-source/database` CRUD datasource database
 - `/database/connection` CRUD connessioni database + test + metadata objects/preview
-- `/elaborations/scenario` elenco/gestione scenari ed esecuzione
-- `/elaborations/scenario/{scenario_id}/step/{scenario_step_id}/execute` esecuzione asincrona del singolo scenario-step
+- `/elaborations/test-suite` elenco/gestione test suite ed esecuzione
+- `/elaborations/test-suite/{test_suite_id}/test/{suite_item_id}/execute` esecuzione asincrona del singolo test
 - `/elaborations/execution/{execution_id}/events` stream SSE eventi runtime esecuzione
 - `/mock-server` CRUD configurazione mock server + activate/deactivate
 - `/mock/{server_endpoint}/{path}` runtime mock API dispatcher

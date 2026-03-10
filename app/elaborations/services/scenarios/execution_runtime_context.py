@@ -7,6 +7,10 @@ _SCENARIO_ID: ContextVar[str | None] = ContextVar("scenario_id", default=None)
 _SCENARIO_STEP_ID: ContextVar[str | None] = ContextVar("scenario_step_id", default=None)
 _SCENARIO_EXECUTION_ID: ContextVar[str | None] = ContextVar("scenario_execution_id", default=None)
 _SCENARIO_STEP_EXECUTION_ID: ContextVar[str | None] = ContextVar("scenario_step_execution_id", default=None)
+_TEST_SUITE_ID: ContextVar[str | None] = ContextVar("test_suite_id", default=None)
+_SUITE_ITEM_ID: ContextVar[str | None] = ContextVar("suite_item_id", default=None)
+_TEST_SUITE_EXECUTION_ID: ContextVar[str | None] = ContextVar("test_suite_execution_id", default=None)
+_SUITE_ITEM_EXECUTION_ID: ContextVar[str | None] = ContextVar("suite_item_execution_id", default=None)
 
 
 def get_execution_id() -> str | None:
@@ -29,6 +33,22 @@ def get_scenario_step_execution_id() -> str | None:
     return _SCENARIO_STEP_EXECUTION_ID.get()
 
 
+def get_test_suite_id() -> str | None:
+    return _TEST_SUITE_ID.get()
+
+
+def get_suite_item_id() -> str | None:
+    return _SUITE_ITEM_ID.get()
+
+
+def get_test_suite_execution_id() -> str | None:
+    return _TEST_SUITE_EXECUTION_ID.get()
+
+
+def get_suite_item_execution_id() -> str | None:
+    return _SUITE_ITEM_EXECUTION_ID.get()
+
+
 @contextmanager
 def bind_execution_context(
     *,
@@ -37,6 +57,10 @@ def bind_execution_context(
     scenario_step_id: str | None = None,
     scenario_execution_id: str | None = None,
     scenario_step_execution_id: str | None = None,
+    test_suite_id: str | None = None,
+    suite_item_id: str | None = None,
+    test_suite_execution_id: str | None = None,
+    suite_item_execution_id: str | None = None,
 ):
     tokens: list[tuple[ContextVar, Token]] = []
     try:
@@ -52,6 +76,14 @@ def bind_execution_context(
             tokens.append(
                 (_SCENARIO_STEP_EXECUTION_ID, _SCENARIO_STEP_EXECUTION_ID.set(scenario_step_execution_id))
             )
+        if test_suite_id is not None:
+            tokens.append((_TEST_SUITE_ID, _TEST_SUITE_ID.set(test_suite_id)))
+        if suite_item_id is not None:
+            tokens.append((_SUITE_ITEM_ID, _SUITE_ITEM_ID.set(suite_item_id)))
+        if test_suite_execution_id is not None:
+            tokens.append((_TEST_SUITE_EXECUTION_ID, _TEST_SUITE_EXECUTION_ID.set(test_suite_execution_id)))
+        if suite_item_execution_id is not None:
+            tokens.append((_SUITE_ITEM_EXECUTION_ID, _SUITE_ITEM_EXECUTION_ID.set(suite_item_execution_id)))
         yield
     finally:
         for context_var, token in reversed(tokens):

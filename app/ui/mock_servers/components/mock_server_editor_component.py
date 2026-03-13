@@ -39,6 +39,7 @@ from scenarios.services.state_keys import (
 MOCK_SERVERS_PAGE_PATH = "pages/MockServers.py"
 HTTP_METHOD_OPTIONS = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
 API_PRE_RESPONSE_OPERATIONS_KEY = "pre_response_operations"
+API_RESPONSE_OPERATIONS_KEY = "response_operations"
 API_POST_RESPONSE_OPERATIONS_KEY = "post_response_operations"
 BODY_TYPE_ANY = "any"
 BODY_TYPE_STRING = "string"
@@ -444,6 +445,11 @@ def _api_payload(api_entry: dict) -> dict:
         for item in _api_operations_list(api_entry, API_PRE_RESPONSE_OPERATIONS_KEY)
         if isinstance(item, dict)
     ]
+    response_operations_payload = [
+        _operation_payload(item)
+        for item in _api_operations_list(api_entry, API_RESPONSE_OPERATIONS_KEY)
+        if isinstance(item, dict)
+    ]
     post_response_operations_payload = [
         _operation_payload(item)
         for item in _api_operations_list(api_entry, API_POST_RESPONSE_OPERATIONS_KEY)
@@ -454,6 +460,7 @@ def _api_payload(api_entry: dict) -> dict:
         "method": method,
         "path": _normalize_path(cfg.get("path") or api_entry.get("path")),
         API_PRE_RESPONSE_OPERATIONS_KEY: pre_response_operations_payload,
+        API_RESPONSE_OPERATIONS_KEY: response_operations_payload,
         API_POST_RESPONSE_OPERATIONS_KEY: post_response_operations_payload,
     }
     return {
@@ -499,6 +506,7 @@ def _validate_draft(draft: dict) -> str | None:
         if not _normalize_path(cfg.get("path")):
             return f"API #{idx + 1}: path obbligatorio."
         pre_operations = _api_operations_list(api_entry, API_PRE_RESPONSE_OPERATIONS_KEY)
+        response_operations = _api_operations_list(api_entry, API_RESPONSE_OPERATIONS_KEY)
         post_operations = _api_operations_list(api_entry, API_POST_RESPONSE_OPERATIONS_KEY)
         for op_idx, operation in enumerate(pre_operations):
             if not str(operation.get("code") or "").strip():
@@ -510,6 +518,17 @@ def _validate_draft(draft: dict) -> str | None:
             )
             if not str(operation_cfg.get("operationType") or "").strip():
                 return f"API #{idx + 1}, pre-operation #{op_idx + 1}: operationType obbligatorio."
+
+        for op_idx, operation in enumerate(response_operations):
+            if not str(operation.get("code") or "").strip():
+                return f"API #{idx + 1}, response-operation #{op_idx + 1}: code obbligatorio."
+            operation_cfg = (
+                operation.get("configuration_json")
+                if isinstance(operation.get("configuration_json"), dict)
+                else {}
+            )
+            if not str(operation_cfg.get("operationType") or "").strip():
+                return f"API #{idx + 1}, response-operation #{op_idx + 1}: operationType obbligatorio."
 
         for op_idx, operation in enumerate(post_operations):
             if not str(operation.get("code") or "").strip():
@@ -596,6 +615,11 @@ def _api_from_server_payload(api_entry: dict, api_idx: int) -> dict:
         for op_idx, operation in enumerate(cfg.get(API_PRE_RESPONSE_OPERATIONS_KEY) or [])
         if isinstance(operation, dict)
     ]
+    response_operations = [
+        _operation_from_api_payload(operation, op_idx)
+        for op_idx, operation in enumerate(cfg.get(API_RESPONSE_OPERATIONS_KEY) or [])
+        if isinstance(operation, dict)
+    ]
     post_response_operations = [
         _operation_from_api_payload(operation, op_idx)
         for op_idx, operation in enumerate(cfg.get(API_POST_RESPONSE_OPERATIONS_KEY) or [])
@@ -613,6 +637,7 @@ def _api_from_server_payload(api_entry: dict, api_idx: int) -> dict:
         "configuration_json": cfg,
         "operations": deepcopy(post_response_operations),
         API_PRE_RESPONSE_OPERATIONS_KEY: pre_response_operations,
+        API_RESPONSE_OPERATIONS_KEY: response_operations,
         API_POST_RESPONSE_OPERATIONS_KEY: post_response_operations,
         "_ui_key": _new_ui_key(),
     }
@@ -833,6 +858,7 @@ def _add_operation_dialog(
     if target_scope not in {
         "operations",
         API_PRE_RESPONSE_OPERATIONS_KEY,
+        API_RESPONSE_OPERATIONS_KEY,
         API_POST_RESPONSE_OPERATIONS_KEY,
     }:
         target_scope = "operations"
@@ -1049,10 +1075,12 @@ def _add_api_dialog():
                 "response_body_type": BODY_TYPE_JSON,
                 "priority": 0,
                 API_PRE_RESPONSE_OPERATIONS_KEY: [],
+                API_RESPONSE_OPERATIONS_KEY: [],
                 API_POST_RESPONSE_OPERATIONS_KEY: [],
             },
             "operations": [],
             API_PRE_RESPONSE_OPERATIONS_KEY: [],
+            API_RESPONSE_OPERATIONS_KEY: [],
             API_POST_RESPONSE_OPERATIONS_KEY: [],
             "_ui_key": _new_ui_key(),
         }
@@ -1184,8 +1212,10 @@ def _copy_api_dialog(
             return copied
 
         source_pre_operations = _api_operations_list(source_api, API_PRE_RESPONSE_OPERATIONS_KEY)
+        source_response_operations = _api_operations_list(source_api, API_RESPONSE_OPERATIONS_KEY)
         source_post_operations = _api_operations_list(source_api, API_POST_RESPONSE_OPERATIONS_KEY)
         copied_pre_operations = _copy_operations(source_pre_operations)
+        copied_response_operations = _copy_operations(source_response_operations)
         copied_post_operations = _copy_operations(source_post_operations)
         if not copied_post_operations:
             copied_post_operations = _copy_operations(source_api.get("operations") or [])
@@ -1194,6 +1224,11 @@ def _copy_api_dialog(
         copied_cfg[API_PRE_RESPONSE_OPERATIONS_KEY] = [
             _operation_payload(item)
             for item in copied_pre_operations
+            if isinstance(item, dict)
+        ]
+        copied_cfg[API_RESPONSE_OPERATIONS_KEY] = [
+            _operation_payload(item)
+            for item in copied_response_operations
             if isinstance(item, dict)
         ]
         copied_cfg[API_POST_RESPONSE_OPERATIONS_KEY] = [
@@ -1214,6 +1249,7 @@ def _copy_api_dialog(
                 "configuration_json": copied_cfg,
                 "operations": deepcopy(copied_post_operations),
                 API_PRE_RESPONSE_OPERATIONS_KEY: copied_pre_operations,
+                API_RESPONSE_OPERATIONS_KEY: copied_response_operations,
                 API_POST_RESPONSE_OPERATIONS_KEY: copied_post_operations,
                 "_ui_key": _new_ui_key(),
             }
@@ -1652,13 +1688,17 @@ def _render_api_editor(api_entry: dict, api_idx: int, nonce: int):
             st.divider()
             st.markdown("**Operations**")
             pre_operations = _api_operations_list(api_entry, API_PRE_RESPONSE_OPERATIONS_KEY)
+            response_operations = _api_operations_list(api_entry, API_RESPONSE_OPERATIONS_KEY)
             post_operations = _api_operations_list(api_entry, API_POST_RESPONSE_OPERATIONS_KEY)
             api_entry[API_PRE_RESPONSE_OPERATIONS_KEY] = pre_operations
+            api_entry[API_RESPONSE_OPERATIONS_KEY] = response_operations
             api_entry[API_POST_RESPONSE_OPERATIONS_KEY] = post_operations
             # Keep legacy field aligned with post-response operations.
             api_entry["operations"] = post_operations
 
-            pre_tab, post_tab = st.tabs(["Pre-response", "Post-response"])
+            pre_tab, response_tab, post_tab = st.tabs(
+                ["Pre-response", "Response", "Post-response"]
+            )
             with pre_tab:
                 pre_scope_step = {"operations": pre_operations}
                 for op_idx, operation in enumerate(pre_operations):
@@ -1679,6 +1719,28 @@ def _render_api_editor(api_entry: dict, api_idx: int, nonce: int):
                         use_container_width=True,
                     ):
                         _open_add_operation_dialog(api_ui_key, API_PRE_RESPONSE_OPERATIONS_KEY)
+                        st.rerun()
+
+            with response_tab:
+                response_scope_step = {"operations": response_operations}
+                for op_idx, operation in enumerate(response_operations):
+                    render_operation_component(
+                        response_scope_step,
+                        operation,
+                        op_idx,
+                        f"{api_ui_key}_response",
+                        nonce,
+                        persist_scenario_changes_fn=_persist_draft_after_change,
+                    )
+                response_add_cols = st.columns([8, 2], gap="small", vertical_alignment="center")
+                with response_add_cols[1]:
+                    if st.button(
+                        "Add operation",
+                        key=f"mock_server_add_api_response_operation_{api_ui_key}_{nonce}",
+                        icon=":material/add:",
+                        use_container_width=True,
+                    ):
+                        _open_add_operation_dialog(api_ui_key, API_RESPONSE_OPERATIONS_KEY)
                         st.rerun()
 
             with post_tab:

@@ -14,6 +14,7 @@ from elaborations.services.operations.operation_executor import (
     ExecutionResultDto,
     OperationExecutor,
 )
+from elaborations.services.scenarios.run_context import write_context_path
 
 
 class DataFromQueueOperationExecutor(OperationExecutor):
@@ -58,6 +59,8 @@ class DataFromQueueOperationExecutor(OperationExecutor):
                     raise ValueError(f"Invalid body in message {index + 1}: {str(exc)}") from exc
             payload_rows.append(body_value)
 
+        if cfg.target:
+            write_context_path(cfg.target, payload_rows)
         self.log(operation_id, f"Loaded {len(payload_rows)} row(s) from queue '{queue.code}'.")
         return ExecutionResultDto(
             data=payload_rows,

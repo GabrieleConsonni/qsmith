@@ -201,6 +201,19 @@ def dispatch_mock_runtime_request(
             raise_errors=True,
         )
 
+    response_operations = route.response_operations or []
+    if response_operations:
+        execute_mock_operations(
+            mock_server_id=runtime_server.id,
+            trigger_id=trigger_id,
+            source_type="api-response",
+            source_ref=route.id,
+            operations=response_operations,
+            data=event_payload,
+            run_context=run_context,
+            raise_errors=True,
+        )
+
     response_status, response_headers, response_body = build_runtime_response_payload(
         route,
         run_context=run_context,

@@ -12,3 +12,7 @@ class OperationType(str,Enum):
     ASSERT = "assert"
     RUN_SUITE = "run-suite"
     SET_VAR = "set-var"
+    SET_RESPONSE_STATUS = "set-response-status"
+    SET_RESPONSE_HEADER = "set-response-header"
+    SET_RESPONSE_BODY = "set-response-body"
+    BUILD_RESPONSE_FROM_TEMPLATE = "build-response-from-template"

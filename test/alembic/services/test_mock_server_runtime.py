@@ -157,6 +157,11 @@ def test_dispatch_mock_runtime_request_matches_and_schedules_task(monkeypatch):
         "_persist_mock_invocation",
         lambda **_kwargs: "inv-1",
     )
+    monkeypatch.setattr(
+        dispatcher_module,
+        "log_mock_server_event",
+        lambda *_args, **_kwargs: None,
+    )
 
     background_tasks = BackgroundTasks()
     dispatch_result = dispatch_mock_runtime_request(
@@ -186,3 +191,106 @@ def test_dispatch_mock_runtime_request_matches_and_schedules_task(monkeypatch):
     assert captured["mock_server_id"] == "server-1"
     assert captured["source_type"] == "api"
     assert captured["source_ref"] == "api-1"
+
+
+def test_dispatch_mock_runtime_request_applies_response_operations(monkeypatch):
+    import app.mock_servers.services.runtime.mock_runtime_dispatcher as dispatcher_module
+
+    def _fake_execute_mock_operations(**kwargs):
+        run_context = kwargs.get("run_context")
+        if run_context is None:
+            return
+        source_type = str(kwargs.get("source_type") or "")
+        if source_type == "api-response":
+            run_context.response_draft["status"] = 202
+            run_context.response_draft["body"] = {"ok": True}
+
+    runtime_server = MockRuntimeServer(
+        id="server-1",
+        code="mock_2",
+        description="server",
+        endpoint="orders-dynamic",
+        is_active=True,
+        apis=[
+            MockApiRoute(
+                id="api-1",
+                code="post_orders",
+                description="post orders",
+                order=1,
+                method="POST",
+                path="/orders",
+                params={},
+                headers={},
+                body=None,
+                body_match="contains",
+                priority=0,
+                response_status=200,
+                response_headers={"Content-Type": "application/json"},
+                response_body={"legacy": True},
+                response_operations=[
+                    MockOperationSnapshot(
+                        id="op-1",
+                        code="set-status",
+                        description="set status",
+                        operation_type="set-response-status",
+                        configuration_json={
+                            "operationType": "set-response-status",
+                            "status": 202,
+                        },
+                        order=1,
+                    ),
+                    MockOperationSnapshot(
+                        id="op-2",
+                        code="set-body",
+                        description="set body",
+                        operation_type="set-response-body",
+                        configuration_json={
+                            "operationType": "set-response-body",
+                            "body": {"ok": True},
+                        },
+                        order=2,
+                    ),
+                ],
+            )
+        ],
+        queues=[],
+    )
+
+    monkeypatch.setattr(
+        dispatcher_module.MockServerRuntimeRegistry,
+        "get_server_by_endpoint",
+        lambda _endpoint: runtime_server,
+    )
+    monkeypatch.setattr(
+        dispatcher_module,
+        "_persist_mock_invocation",
+        lambda **_kwargs: "inv-2",
+    )
+    monkeypatch.setattr(
+        dispatcher_module,
+        "execute_mock_operations",
+        _fake_execute_mock_operations,
+    )
+    monkeypatch.setattr(
+        dispatcher_module,
+        "log_mock_server_event",
+        lambda *_args, **_kwargs: None,
+    )
+
+    background_tasks = BackgroundTasks()
+    dispatch_result = dispatch_mock_runtime_request(
+        server_endpoint="orders-dynamic",
+        method="POST",
+        path="/orders",
+        query_params={},
+        headers={},
+        body_raw="",
+        body_json={"id": 1},
+        background_tasks=background_tasks,
+    )
+
+    assert dispatch_result is not None
+    status_code, headers, body = dispatch_result
+    assert status_code == 202
+    assert headers.get("X-Qsmith-Invocation-Id") == "inv-2"
+    assert body.get("ok") is True

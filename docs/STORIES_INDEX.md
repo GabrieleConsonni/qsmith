@@ -25,3 +25,4 @@
 | [QSM-032](stories/QSM-032-MOCK-SERVER-MODIFICHE-ALLA-UI-DELLA-CONFIGURAZIONE.md) | Mock server modifiche alla ui della configurazione | Da fare | 0/7 |
 | [QSM-033](stories/QSM-033-%20SCENARIO-CONTEXT.md) | Contesto mock server | In corso | Backend core completato, UI pending |
 | [QSM-034](stories/QSM-034-SUITE-DI-TEST.md) | Suite di test | In corso | Backend+UI core implementati, test/docs mirati aggiornati |
+| [QSM-035](stories/QSM-035-OPERATIONS.md) | Operations (suite+mock) | In corso | Contratto/policy runtime + mock-response family in avanzamento |

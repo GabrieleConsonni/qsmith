@@ -4,6 +4,11 @@ from typing import Any
 from _alembic.models.step_operation_entity import StepOperationEntity
 from _alembic.services.session_context_manager import managed_session
 from elaborations.services.operations.operation_executor_composite import execute_operations
+from elaborations.services.operations.operation_scope import (
+    SCOPE_MOCK_POST_RESPONSE,
+    SCOPE_MOCK_PRE_RESPONSE,
+    SCOPE_MOCK_RESPONSE,
+)
 from elaborations.services.scenarios.run_context import (
     RunContext,
     bind_run_context,
@@ -37,6 +42,15 @@ def _to_step_operation_snapshot(
     return snapshot
 
 
+def _scope_from_source_type(source_type: str) -> str:
+    normalized_source_type = str(source_type or "").strip().lower()
+    if normalized_source_type == "api-pre-response":
+        return SCOPE_MOCK_PRE_RESPONSE
+    if normalized_source_type == "api-response":
+        return SCOPE_MOCK_RESPONSE
+    return SCOPE_MOCK_POST_RESPONSE
+
+
 def execute_mock_operations(
     *,
     mock_server_id: str,
@@ -62,17 +76,24 @@ def execute_mock_operations(
         return
 
     context = run_context or deserialize_run_context(run_context_payload)
+    execution_scope = _scope_from_source_type(source_type)
     try:
         with managed_session() as session:
             context_manager = bind_run_context(context) if context else nullcontext()
             with context_manager:
-                execute_operations(session, snapshots, normalized_data)
+                execute_operations(
+                    session,
+                    snapshots,
+                    normalized_data,
+                    execution_scope=execution_scope,
+                )
         log_mock_server_event(
             mock_server_id,
             f"[{trigger_id}] Executed {len(snapshots)} operation(s) for {source_type} trigger.",
             payload={
                 "trigger_id": trigger_id,
                 "source_type": source_type,
+                "scope": execution_scope,
                 "source_ref": source_ref,
                 "operations": len(snapshots),
             },

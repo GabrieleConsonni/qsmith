@@ -9,6 +9,7 @@ from _alembic.models.step_operation_execution_entity import StepOperationExecuti
 from _alembic.models.step_operation_entity import StepOperationEntity
 from elaborations.models.dtos.configuration_operation_dto import (
     AssertConfigurationOperationDto,
+    BuildResponseFromTemplateConfigurationOperationDto,
     DataConfigurationOperationDto,
     DataFromDbConfigurationOperationDto,
     DataFromJsonArrayConfigurationOperationDto,
@@ -19,6 +20,9 @@ from elaborations.models.dtos.configuration_operation_dto import (
     RunSuiteConfigurationOperationDto,
     SaveInternalDBConfigurationOperationDto,
     SaveToExternalDBConfigurationOperationDto,
+    SetResponseBodyConfigurationOperationDto,
+    SetResponseHeaderConfigurationOperationDto,
+    SetResponseStatusConfigurationOperationDto,
     SetVarConfigurationOperationDto,
     SleepConfigurationOperationDto,
     convert_to_config_operation_type,
@@ -42,12 +46,28 @@ from elaborations.services.alembic.suite_item_operation_execution_service import
 )
 from elaborations.services.operations.operation_executor import ExecutionResultDto, OperationExecutor
 from elaborations.services.operations.assert_operation_executor import AssertOperationExecutor
+from elaborations.services.operations.build_response_from_template_operation_executor import (
+    BuildResponseFromTemplateOperationExecutor,
+)
+from elaborations.services.operations.operation_policy_validator import (
+    validate_operation_policy,
+)
+from elaborations.services.operations.operation_scope import resolve_execution_scope
 from elaborations.services.operations.publish_to_queue_operation_executor import PublishToQueueOperationExecutor
 from elaborations.services.operations.run_scenario_operation_executor import (
     RunSuiteOperationExecutor,
 )
 from elaborations.services.operations.save_to_external_db_operation_executor import SaveToExternalDbOperationExecutor
 from elaborations.services.operations.save_to_internal_db_operation_executor import SaveInternalDbOperationExecutor
+from elaborations.services.operations.set_response_body_operation_executor import (
+    SetResponseBodyOperationExecutor,
+)
+from elaborations.services.operations.set_response_header_operation_executor import (
+    SetResponseHeaderOperationExecutor,
+)
+from elaborations.services.operations.set_response_status_operation_executor import (
+    SetResponseStatusOperationExecutor,
+)
 from elaborations.services.operations.set_var_operation_executor import SetVarOperationExecutor
 from elaborations.services.operations.sleep_operation_executor import SleepOperationExecutor
 from elaborations.services.scenarios.execution_event_bus import (
@@ -83,6 +103,10 @@ _EXECUTOR_MAPPING: dict[type[ConfigurationOperationDto], type[OperationExecutor]
     SaveToExternalDBConfigurationOperationDto: SaveToExternalDbOperationExecutor,
     RunSuiteConfigurationOperationDto: RunSuiteOperationExecutor,
     SetVarConfigurationOperationDto: SetVarOperationExecutor,
+    SetResponseStatusConfigurationOperationDto: SetResponseStatusOperationExecutor,
+    SetResponseHeaderConfigurationOperationDto: SetResponseHeaderOperationExecutor,
+    SetResponseBodyConfigurationOperationDto: SetResponseBodyOperationExecutor,
+    BuildResponseFromTemplateConfigurationOperationDto: BuildResponseFromTemplateOperationExecutor,
     AssertConfigurationOperationDto: AssertOperationExecutor,
 }
 
@@ -145,10 +169,12 @@ def execute_operations(
     session: Session,
     operations: list[StepOperationEntity] | list[str],
     data: list[dict],
+    execution_scope: str | None = None,
 ) -> ExecutionResultDto:
     execution_result = ExecutionResultDto(data=data, result=[])
     operation_execution_service = StepOperationExecutionService()
     suite_operation_execution_service = SuiteItemOperationExecutionService()
+    resolved_execution_scope = resolve_execution_scope(execution_scope)
 
     log(f"Starting execution {len(operations)} operations")
 
@@ -198,7 +224,9 @@ def execute_operations(
 
         resolved_cfg_json = resolve_dynamic_value(op_cfg_json, build_run_context_scope())
         cfg = convert_to_config_operation_type(resolved_cfg_json)
+        contract = None
         try:
+            contract = validate_operation_policy(cfg, resolved_execution_scope)
             new_execution_result = execute_operation(session, op_id, cfg, execution_result.data)
             execution_result.extend(new_execution_result)
             if operation_execution_id:
@@ -231,6 +259,8 @@ def execute_operations(
                         "suite_item_operation_execution_id": suite_operation_execution_id or None,
                         "operation_id": op_id,
                         "operation_code": op_code,
+                        "operation_scope": resolved_execution_scope,
+                        "operation_family": contract.family if contract else None,
                         "status": "success",
                         "result": new_execution_result.result,
                     },
@@ -266,6 +296,8 @@ def execute_operations(
                         "suite_item_operation_execution_id": suite_operation_execution_id or None,
                         "operation_id": op_id,
                         "operation_code": op_code,
+                        "operation_scope": resolved_execution_scope,
+                        "operation_family": contract.family if contract else None,
                         "status": "error",
                         "error": str(op_exception),
                     },

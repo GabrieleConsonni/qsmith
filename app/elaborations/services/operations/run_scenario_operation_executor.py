@@ -11,6 +11,7 @@ from elaborations.services.operations.operation_executor import (
 from elaborations.services.scenarios.run_context import (
     build_run_context_scope,
     get_run_context,
+    write_context_path,
 )
 from elaborations.services.scenarios.run_context_resolver import resolve_dynamic_value
 
@@ -66,14 +67,19 @@ class RunSuiteOperationExecutor(OperationExecutor):
                 "invocation_id": run_context.invocation_id if run_context else None,
             },
         )
+        result_payload = {
+            "suite_id": suite_id,
+            "execution_id": execution_id,
+            "init_vars": init_vars,
+        }
+        if cfg.result_target:
+            write_context_path(cfg.result_target, result_payload)
         return ExecutionResultDto(
             data=data,
             result=[
                 {
                     "message": message,
-                    "suite_id": suite_id,
-                    "execution_id": execution_id,
-                    "init_vars": init_vars,
+                    **result_payload,
                 }
             ],
         )

@@ -7,6 +7,7 @@ from elaborations.services.operations.operation_executor import (
     ExecutionResultDto,
     OperationExecutor,
 )
+from elaborations.services.scenarios.run_context import write_context_path
 
 
 class DataOperationExecutor(OperationExecutor):
@@ -20,6 +21,8 @@ class DataOperationExecutor(OperationExecutor):
         del session
         del data
         exported = cfg.data if isinstance(cfg.data, list) else []
+        if cfg.target:
+            write_context_path(cfg.target, exported)
         self.log(operation_id, f"Loaded {len(exported)} row(s) from inline data.")
         return ExecutionResultDto(
             data=exported,

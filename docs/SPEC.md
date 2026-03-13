@@ -123,6 +123,9 @@ Obiettivi:
 - il dialog `Add operation` supporta:
   - `Save and add`: salva in anagrafica `operations` e aggiunge snapshot all'item
   - `Add only`: aggiunge solo snapshot all'item senza salvare nell'anagrafica
+  - campi di contesto per operation:
+    - `target` per operation di input
+    - `result_target` opzionale per operation action/trigger
 
 Modello dati suite:
 - `test_suites`, `suite_items` e `suite_item_operations` contengono i dettagli funzionali usati in esecuzione.
@@ -145,6 +148,10 @@ Obiettivi:
 
 Comportamento runtime:
 - route runtime sotto prefisso fisso `/mock/{server_endpoint}/...`
+- pipeline operation API:
+  - `pre_response_operations` (sync, senza side effects)
+  - `response_operations` (costruzione response draft)
+  - `post_response_operations` (async, side effects consentiti)
 - risposta API mock immediata, operazioni eseguite in background
 - listener queue avviati solo quando il server e attivo
 - su trigger queue viene eseguito `ACK` sempre (anche in caso errore operazioni)

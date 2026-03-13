@@ -30,6 +30,7 @@ class MockApiRoute:
     response_body: Any
     operations: list[MockOperationSnapshot] = field(default_factory=list)
     pre_response_operations: list[MockOperationSnapshot] = field(default_factory=list)
+    response_operations: list[MockOperationSnapshot] = field(default_factory=list)
     post_response_operations: list[MockOperationSnapshot] = field(default_factory=list)
 
 

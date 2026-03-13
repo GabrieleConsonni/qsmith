@@ -8,6 +8,7 @@ from brokers.services.alembic.queue_service import QueueService
 from brokers.services.connections.queue.queue_connection_service_factory import QueueConnectionServiceFactory
 from elaborations.models.dtos.configuration_operation_dto import PublishConfigurationOperationDto
 from elaborations.services.operations.operation_executor import OperationExecutor, ExecutionResultDto
+from elaborations.services.scenarios.run_context import write_context_path
 from json_utils.services.json_service import make_json_safe
 
 
@@ -21,6 +22,13 @@ class PublishToQueueOperationExecutor(OperationExecutor):
         msg = [make_json_safe(item) for item in data]
         service.publish_messages(connection_config, cfg.queue_id, msg)
         message=f"Published {len(data)} message(s) to queue '{queue.code}'"
+        result_payload = {
+            "queue_id": cfg.queue_id,
+            "queue_code": str(queue.code or ""),
+            "published": len(data),
+        }
+        if cfg.result_target:
+            write_context_path(cfg.result_target, result_payload)
         self.log(operation_id, message=message)
         return ExecutionResultDto(
             data=data,

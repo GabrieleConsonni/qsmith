@@ -50,6 +50,7 @@ class MockServerApiConfigurationDto(BaseModel):
     response_headers: dict | None = None
     response_body: dict | list | str | int | float | bool | None = None
     pre_response_operations: list[dict] | None = None
+    response_operations: list[dict] | None = None
     post_response_operations: list[dict] | None = None
     priority: int = 0
 

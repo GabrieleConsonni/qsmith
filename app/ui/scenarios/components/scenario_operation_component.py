@@ -39,6 +39,10 @@ OPERATION_TYPE_SAVE_EXTERNAL_DB = "save-external-db"
 OPERATION_TYPE_ASSERT = "assert"
 OPERATION_TYPE_RUN_SUITE = "run-suite"
 OPERATION_TYPE_SET_VAR = "set-var"
+OPERATION_TYPE_SET_RESPONSE_STATUS = "set-response-status"
+OPERATION_TYPE_SET_RESPONSE_HEADER = "set-response-header"
+OPERATION_TYPE_SET_RESPONSE_BODY = "set-response-body"
+OPERATION_TYPE_BUILD_RESPONSE_FROM_TEMPLATE = "build-response-from-template"
 OPERATION_TYPE_OPTIONS = [
     OPERATION_TYPE_DATA,
     OPERATION_TYPE_DATA_FROM_JSON_ARRAY,
@@ -51,6 +55,10 @@ OPERATION_TYPE_OPTIONS = [
     OPERATION_TYPE_ASSERT,
     OPERATION_TYPE_RUN_SUITE,
     OPERATION_TYPE_SET_VAR,
+    OPERATION_TYPE_SET_RESPONSE_STATUS,
+    OPERATION_TYPE_SET_RESPONSE_HEADER,
+    OPERATION_TYPE_SET_RESPONSE_BODY,
+    OPERATION_TYPE_BUILD_RESPONSE_FROM_TEMPLATE,
 ]
 ASSERT_OBJECT_TYPE_JSON_DATA = "json-data"
 ASSERT_OBJECT_TYPE_OPTIONS = [ASSERT_OBJECT_TYPE_JSON_DATA]
@@ -112,6 +120,10 @@ def _operation_type_label(operation_type: str) -> str:
         OPERATION_TYPE_ASSERT: "assert",
         OPERATION_TYPE_RUN_SUITE: "run-suite",
         OPERATION_TYPE_SET_VAR: "set-var",
+        OPERATION_TYPE_SET_RESPONSE_STATUS: "mock-response / set-status",
+        OPERATION_TYPE_SET_RESPONSE_HEADER: "mock-response / set-header",
+        OPERATION_TYPE_SET_RESPONSE_BODY: "mock-response / set-body",
+        OPERATION_TYPE_BUILD_RESPONSE_FROM_TEMPLATE: "mock-response / build-from-template",
     }
     return labels.get(operation_type, operation_type or "-")
 
@@ -207,18 +219,25 @@ def _parse_compare_keys(value: object) -> list[str]:
     return [item.strip() for item in raw.split(",") if item and item.strip()]
 
 
-def _parse_json_dict(value: object) -> tuple[dict | None, str | None]:
+def _parse_json_dict(
+    value: object,
+    *,
+    field_label: str = "Json schema",
+    allow_empty: bool = False,
+) -> tuple[dict | None, str | None]:
     if isinstance(value, dict):
         return value, None
     raw_value = str(value or "").strip()
     if not raw_value:
-        return None, "Il campo Json schema e' obbligatorio."
+        if allow_empty:
+            return {}, None
+        return None, f"Il campo {field_label} e' obbligatorio."
     try:
         parsed = json.loads(raw_value)
     except json.JSONDecodeError as exc:
-        return None, f"Json schema non valido: {str(exc)}"
+        return None, f"{field_label} non valido: {str(exc)}"
     if not isinstance(parsed, dict):
-        return None, "Json schema deve essere un oggetto JSON."
+        return None, f"{field_label} deve essere un oggetto JSON."
     return parsed, None
 
 
@@ -234,6 +253,17 @@ def _parse_json_value(value: object) -> tuple[object | None, str | None]:
         return json.loads(raw_value), None
     except json.JSONDecodeError:
         return raw_value, None
+
+
+def _normalize_context_target_path(value: object) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    if raw.startswith("$."):
+        return raw
+    if raw.startswith("$"):
+        return f"$.{raw[1:].lstrip('.')}"
+    return f"$.{raw.lstrip('.')}"
 
 
 def _connection_label(connection_item: dict) -> str:
@@ -292,6 +322,16 @@ def _render_operation_details(operation_item: dict):
 
     operation_type = str(operation_item.get("operation_type") or "").strip()
     configuration_json = _safe_dict(operation_item.get("configuration_json") or {})
+    target_path = str(
+        _resolve_configuration_value(configuration_json, "target", "targetPath") or ""
+    ).strip()
+    result_target_path = str(
+        _resolve_configuration_value(configuration_json, "result_target", "resultTarget") or ""
+    ).strip()
+    if target_path:
+        st.write(f"Target: {target_path}")
+    if result_target_path:
+        st.write(f"Result target: {result_target_path}")
 
     if operation_type == OPERATION_TYPE_DATA:
         data_payload = configuration_json.get("data") or []
@@ -462,6 +502,31 @@ def _render_operation_details(operation_item: dict):
         st.write(f"Scope: {configuration_json.get('scope') or 'auto'}")
         st.markdown("**Value**")
         st.code(_pretty_json(configuration_json.get("value")), language="json")
+        return
+
+    if operation_type == OPERATION_TYPE_SET_RESPONSE_STATUS:
+        st.write(f"Status: {configuration_json.get('status', 200)}")
+        return
+
+    if operation_type == OPERATION_TYPE_SET_RESPONSE_HEADER:
+        st.write(
+            f"Header: {configuration_json.get('name') or configuration_json.get('header') or '-'}"
+        )
+        st.markdown("**Value**")
+        st.code(_pretty_json(configuration_json.get("value")), language="json")
+        return
+
+    if operation_type == OPERATION_TYPE_SET_RESPONSE_BODY:
+        st.markdown("**Body**")
+        st.code(_pretty_json(configuration_json.get("body")), language="json")
+        return
+
+    if operation_type == OPERATION_TYPE_BUILD_RESPONSE_FROM_TEMPLATE:
+        st.write(f"Status: {configuration_json.get('status') or '-'}")
+        st.markdown("**Headers**")
+        st.code(_pretty_json(configuration_json.get("headers") or {}), language="json")
+        st.markdown("**Template**")
+        st.code(_pretty_json(configuration_json.get("template")), language="json")
         return
 
     st.code(_pretty_json(configuration_json), language="json")
@@ -667,6 +732,11 @@ def build_operation_creation_payload(dialog_nonce: int) -> tuple[dict | None, st
 
     cfg: dict
     if operation_type == OPERATION_TYPE_DATA:
+        target_path = _normalize_context_target_path(
+            st.session_state.get(f"scenario_add_operation_target_{dialog_nonce}")
+        )
+        if not target_path:
+            return None, "Il campo Target e' obbligatorio per le input operation."
         data_payload, parse_error = _parse_json_value(
             st.session_state.get(f"scenario_add_operation_data_payload_{dialog_nonce}")
         )
@@ -674,22 +744,49 @@ def build_operation_creation_payload(dialog_nonce: int) -> tuple[dict | None, st
             return None, parse_error
         if not isinstance(data_payload, list):
             return None, "Il payload Data deve essere un array JSON."
-        cfg = {"operationType": OPERATION_TYPE_DATA, "data": data_payload}
+        cfg = {
+            "operationType": OPERATION_TYPE_DATA,
+            "data": data_payload,
+            "target": target_path,
+        }
     elif operation_type == OPERATION_TYPE_DATA_FROM_JSON_ARRAY:
+        target_path = _normalize_context_target_path(
+            st.session_state.get(f"scenario_add_operation_target_{dialog_nonce}")
+        )
+        if not target_path:
+            return None, "Il campo Target e' obbligatorio per le input operation."
         json_array_id = str(
             st.session_state.get(f"scenario_add_operation_json_array_id_{dialog_nonce}") or ""
         ).strip()
         if not json_array_id:
             return None, "Il campo Json array e' obbligatorio."
-        cfg = {"operationType": OPERATION_TYPE_DATA_FROM_JSON_ARRAY, "json_array_id": json_array_id}
+        cfg = {
+            "operationType": OPERATION_TYPE_DATA_FROM_JSON_ARRAY,
+            "json_array_id": json_array_id,
+            "target": target_path,
+        }
     elif operation_type == OPERATION_TYPE_DATA_FROM_DB:
+        target_path = _normalize_context_target_path(
+            st.session_state.get(f"scenario_add_operation_target_{dialog_nonce}")
+        )
+        if not target_path:
+            return None, "Il campo Target e' obbligatorio per le input operation."
         dataset_id = str(
             st.session_state.get(f"scenario_add_operation_dataset_id_{dialog_nonce}") or ""
         ).strip()
         if not dataset_id:
             return None, "Il campo Dataset e' obbligatorio."
-        cfg = {"operationType": OPERATION_TYPE_DATA_FROM_DB, "dataset_id": dataset_id}
+        cfg = {
+            "operationType": OPERATION_TYPE_DATA_FROM_DB,
+            "dataset_id": dataset_id,
+            "target": target_path,
+        }
     elif operation_type == OPERATION_TYPE_DATA_FROM_QUEUE:
+        target_path = _normalize_context_target_path(
+            st.session_state.get(f"scenario_add_operation_target_{dialog_nonce}")
+        )
+        if not target_path:
+            return None, "Il campo Target e' obbligatorio per le input operation."
         queue_id = str(
             st.session_state.get(f"scenario_add_operation_queue_id_{dialog_nonce}") or ""
         ).strip()
@@ -707,6 +804,7 @@ def build_operation_creation_payload(dialog_nonce: int) -> tuple[dict | None, st
                 st.session_state.get(f"scenario_add_operation_max_messages_{dialog_nonce}"),
                 1000,
             ),
+            "target": target_path,
         }
     elif operation_type == OPERATION_TYPE_SLEEP:
         duration = _safe_int(st.session_state.get(f"scenario_add_operation_sleep_duration_{dialog_nonce}"), 0)
@@ -719,10 +817,15 @@ def build_operation_creation_payload(dialog_nonce: int) -> tuple[dict | None, st
         ).strip()
         if not queue_id:
             return None, "Il campo Queue id e' obbligatorio."
+        result_target = _normalize_context_target_path(
+            st.session_state.get(f"scenario_add_operation_result_target_{dialog_nonce}")
+        )
         cfg = {
             "operationType": OPERATION_TYPE_PUBLISH,
             "queue_id": queue_id,
         }
+        if result_target:
+            cfg["result_target"] = result_target
     elif operation_type == OPERATION_TYPE_SAVE_INTERNAL_DB:
         table_name = str(
             st.session_state.get(f"scenario_add_operation_internal_table_name_{dialog_nonce}")
@@ -730,10 +833,15 @@ def build_operation_creation_payload(dialog_nonce: int) -> tuple[dict | None, st
         ).strip()
         if not table_name:
             return None, "Il campo Table name e' obbligatorio."
+        result_target = _normalize_context_target_path(
+            st.session_state.get(f"scenario_add_operation_result_target_{dialog_nonce}")
+        )
         cfg = {
             "operationType": OPERATION_TYPE_SAVE_INTERNAL_DB,
             "table_name": table_name,
         }
+        if result_target:
+            cfg["result_target"] = result_target
     elif operation_type == OPERATION_TYPE_SAVE_EXTERNAL_DB:
         connection_id = str(
             st.session_state.get(f"scenario_add_operation_connection_id_{dialog_nonce}") or ""
@@ -746,11 +854,16 @@ def build_operation_creation_payload(dialog_nonce: int) -> tuple[dict | None, st
             return None, "Il campo Connection e' obbligatorio."
         if not table_name:
             return None, "Il campo Table name e' obbligatorio."
+        result_target = _normalize_context_target_path(
+            st.session_state.get(f"scenario_add_operation_result_target_{dialog_nonce}")
+        )
         cfg = {
             "operationType": OPERATION_TYPE_SAVE_EXTERNAL_DB,
             "connection_id": connection_id,
             "table_name": table_name,
         }
+        if result_target:
+            cfg["result_target"] = result_target
     elif operation_type == OPERATION_TYPE_ASSERT:
         evaluated_object_type = _normalize_token(
             st.session_state.get(
@@ -818,10 +931,15 @@ def build_operation_creation_payload(dialog_nonce: int) -> tuple[dict | None, st
         ).strip()
         if not suite_id:
             return None, "Il campo Suite id e' obbligatorio."
+        result_target = _normalize_context_target_path(
+            st.session_state.get(f"scenario_add_operation_result_target_{dialog_nonce}")
+        )
         cfg = {
             "operationType": OPERATION_TYPE_RUN_SUITE,
             "suite_id": suite_id,
         }
+        if result_target:
+            cfg["result_target"] = result_target
     elif operation_type == OPERATION_TYPE_SET_VAR:
         key = str(
             st.session_state.get(f"scenario_add_operation_set_var_key_{dialog_nonce}") or ""
@@ -840,6 +958,64 @@ def build_operation_creation_payload(dialog_nonce: int) -> tuple[dict | None, st
             "scope": scope or "auto",
             "value": value_payload,
         }
+    elif operation_type == OPERATION_TYPE_SET_RESPONSE_STATUS:
+        status_value = _safe_int(
+            st.session_state.get(f"scenario_add_operation_response_status_{dialog_nonce}"),
+            200,
+        )
+        cfg = {
+            "operationType": OPERATION_TYPE_SET_RESPONSE_STATUS,
+            "status": status_value,
+        }
+    elif operation_type == OPERATION_TYPE_SET_RESPONSE_HEADER:
+        header_name = str(
+            st.session_state.get(f"scenario_add_operation_response_header_name_{dialog_nonce}")
+            or ""
+        ).strip()
+        if not header_name:
+            return None, "Il campo Header name e' obbligatorio."
+        header_value, _ = _parse_json_value(
+            st.session_state.get(f"scenario_add_operation_response_header_value_{dialog_nonce}")
+        )
+        cfg = {
+            "operationType": OPERATION_TYPE_SET_RESPONSE_HEADER,
+            "name": header_name,
+            "value": header_value,
+        }
+    elif operation_type == OPERATION_TYPE_SET_RESPONSE_BODY:
+        body_value, _ = _parse_json_value(
+            st.session_state.get(f"scenario_add_operation_response_body_{dialog_nonce}")
+        )
+        cfg = {
+            "operationType": OPERATION_TYPE_SET_RESPONSE_BODY,
+            "body": body_value,
+        }
+    elif operation_type == OPERATION_TYPE_BUILD_RESPONSE_FROM_TEMPLATE:
+        template_value, _ = _parse_json_value(
+            st.session_state.get(
+                f"scenario_add_operation_response_template_{dialog_nonce}"
+            )
+        )
+        status_value_raw = str(
+            st.session_state.get(f"scenario_add_operation_response_template_status_{dialog_nonce}")
+            or ""
+        ).strip()
+        headers_value, headers_error = _parse_json_dict(
+            st.session_state.get(
+                f"scenario_add_operation_response_template_headers_{dialog_nonce}"
+            ),
+            field_label="Response headers",
+            allow_empty=True,
+        )
+        if headers_error:
+            return None, headers_error
+        cfg = {
+            "operationType": OPERATION_TYPE_BUILD_RESPONSE_FROM_TEMPLATE,
+            "template": template_value,
+            "headers": headers_value or {},
+        }
+        if status_value_raw:
+            cfg["status"] = _safe_int(status_value_raw, 200)
     else:
         return None, f"Operation type non supportato: {operation_type}"
 
@@ -1085,6 +1261,12 @@ def _render_new_operation_form_panel(
     )
 
     if operation_type == OPERATION_TYPE_DATA:
+        st.text_input(
+            "Target",
+            key=f"scenario_add_operation_target_{dialog_nonce}",
+            placeholder="$.local.actualRows",
+            help="Context path where loaded rows are stored.",
+        )
         if f"scenario_add_operation_data_payload_{dialog_nonce}" not in st.session_state:
             st.session_state[f"scenario_add_operation_data_payload_{dialog_nonce}"] = "[]"
         st.text_area(
@@ -1094,6 +1276,12 @@ def _render_new_operation_form_panel(
             help="JSON array used as input rows for the test/hook.",
         )
     elif operation_type == OPERATION_TYPE_DATA_FROM_JSON_ARRAY:
+        st.text_input(
+            "Target",
+            key=f"scenario_add_operation_target_{dialog_nonce}",
+            placeholder="$.local.expectedRows",
+            help="Context path where loaded rows are stored.",
+        )
         select_key = f"scenario_add_operation_json_array_id_{dialog_nonce}"
         _normalize_select_key(select_key, json_array_ids or [""])
         st.selectbox(
@@ -1108,6 +1296,12 @@ def _render_new_operation_form_panel(
             disabled=not bool(json_array_ids),
         )
     elif operation_type == OPERATION_TYPE_DATA_FROM_DB:
+        st.text_input(
+            "Target",
+            key=f"scenario_add_operation_target_{dialog_nonce}",
+            placeholder="$.local.actualRows",
+            help="Context path where loaded rows are stored.",
+        )
         select_key = f"scenario_add_operation_dataset_id_{dialog_nonce}"
         _normalize_select_key(select_key, datasource_ids or [""])
         st.selectbox(
@@ -1125,6 +1319,12 @@ def _render_new_operation_form_panel(
             disabled=not bool(datasource_ids),
         )
     elif operation_type == OPERATION_TYPE_DATA_FROM_QUEUE:
+        st.text_input(
+            "Target",
+            key=f"scenario_add_operation_target_{dialog_nonce}",
+            placeholder="$.local.incomingMessages",
+            help="Context path where loaded rows are stored.",
+        )
         broker_select_key = f"scenario_add_operation_broker_id_{dialog_nonce}"
         _normalize_select_key(broker_select_key, broker_ids or [""])
         selected_broker_id = st.selectbox(
@@ -1179,6 +1379,12 @@ def _render_new_operation_form_panel(
             key=f"scenario_add_operation_sleep_duration_{dialog_nonce}",
         )
     elif operation_type == OPERATION_TYPE_PUBLISH:
+        st.text_input(
+            "Result target (optional)",
+            key=f"scenario_add_operation_result_target_{dialog_nonce}",
+            placeholder="$.local.publishResult",
+            help="Optional context path to store technical output.",
+        )
         broker_select_key = f"scenario_add_operation_broker_id_{dialog_nonce}"
         _normalize_select_key(broker_select_key, broker_ids or [""])
         selected_broker_id = st.selectbox(
@@ -1221,6 +1427,12 @@ def _render_new_operation_form_panel(
             "Table name",
             key=f"scenario_add_operation_internal_table_name_{dialog_nonce}",
         )
+        st.text_input(
+            "Result target (optional)",
+            key=f"scenario_add_operation_result_target_{dialog_nonce}",
+            placeholder="$.local.writeDbResult",
+            help="Optional context path to store technical output.",
+        )
     elif operation_type == OPERATION_TYPE_SAVE_EXTERNAL_DB:
         connection_select_key = f"scenario_add_operation_connection_id_{dialog_nonce}"
         _normalize_select_key(connection_select_key, database_connection_ids or [""])
@@ -1238,6 +1450,12 @@ def _render_new_operation_form_panel(
         st.text_input(
             "Table name",
             key=f"scenario_add_operation_external_table_name_{dialog_nonce}",
+        )
+        st.text_input(
+            "Result target (optional)",
+            key=f"scenario_add_operation_result_target_{dialog_nonce}",
+            placeholder="$.local.writeDbResult",
+            help="Optional context path to store technical output.",
         )
         if not database_connection_ids:
             st.info("Nessuna connection database configurata.")
@@ -1336,6 +1554,12 @@ def _render_new_operation_form_panel(
             key=f"scenario_add_operation_run_suite_id_{dialog_nonce}",
             placeholder="test suite uuid",
         )
+        st.text_input(
+            "Result target (optional)",
+            key=f"scenario_add_operation_result_target_{dialog_nonce}",
+            placeholder="$.local.triggeredSuite",
+            help="Optional context path to store technical output.",
+        )
     elif operation_type == OPERATION_TYPE_SET_VAR:
         st.text_input(
             "Key",
@@ -1352,6 +1576,53 @@ def _render_new_operation_form_panel(
             key=f"scenario_add_operation_set_var_value_{dialog_nonce}",
             height=140,
             help="JSON or plain text value to store in context.",
+        )
+    elif operation_type == OPERATION_TYPE_SET_RESPONSE_STATUS:
+        st.number_input(
+            "Response status",
+            min_value=100,
+            max_value=599,
+            value=200,
+            key=f"scenario_add_operation_response_status_{dialog_nonce}",
+        )
+    elif operation_type == OPERATION_TYPE_SET_RESPONSE_HEADER:
+        st.text_input(
+            "Header name",
+            key=f"scenario_add_operation_response_header_name_{dialog_nonce}",
+            placeholder="Content-Type",
+        )
+        st.text_area(
+            "Header value",
+            key=f"scenario_add_operation_response_header_value_{dialog_nonce}",
+            height=100,
+            help="JSON or plain text value.",
+        )
+    elif operation_type == OPERATION_TYPE_SET_RESPONSE_BODY:
+        st.text_area(
+            "Response body",
+            key=f"scenario_add_operation_response_body_{dialog_nonce}",
+            height=160,
+            help="JSON or plain text value.",
+        )
+    elif operation_type == OPERATION_TYPE_BUILD_RESPONSE_FROM_TEMPLATE:
+        st.number_input(
+            "Response status (optional)",
+            min_value=100,
+            max_value=599,
+            value=200,
+            key=f"scenario_add_operation_response_template_status_{dialog_nonce}",
+        )
+        st.text_area(
+            "Response headers (JSON object)",
+            key=f"scenario_add_operation_response_template_headers_{dialog_nonce}",
+            height=120,
+            help="Optional headers object.",
+        )
+        st.text_area(
+            "Response template",
+            key=f"scenario_add_operation_response_template_{dialog_nonce}",
+            height=180,
+            help="JSON or plain text template.",
         )
 
     create_cols = st.columns([1, 1], gap="small")

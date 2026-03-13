@@ -8,6 +8,7 @@ from elaborations.services.operations.operation_executor import (
     ExecutionResultDto,
     OperationExecutor,
 )
+from elaborations.services.scenarios.run_context import write_context_path
 from json_utils.services.alembic.json_files_service import JsonFilesService
 
 
@@ -28,6 +29,8 @@ class DataFromJsonArrayOperationExecutor(OperationExecutor):
             raise ValueError(f"Json array '{cfg.json_array_id}' not found")
         payload = json_payload_entity.payload
         rows = payload if isinstance(payload, list) else [payload]
+        if cfg.target:
+            write_context_path(cfg.target, rows)
         self.log(operation_id, f"Loaded {len(rows)} row(s) from json array.")
         return ExecutionResultDto(
             data=rows,

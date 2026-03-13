@@ -115,12 +115,19 @@ def load_runtime_server(session, entity: MockServerEntity) -> MockRuntimeServer:
         explicit_post_operations = _parse_inline_operations(
             raw_post_operations
         )
+        response_operations = _parse_inline_operations(
+            api_cfg.get("response_operations")
+        )
 
         response_cfg = (
             api_cfg.get("response")
             if isinstance(api_cfg.get("response"), dict)
             else {}
         )
+        if not response_operations:
+            response_operations = _parse_inline_operations(
+                response_cfg.get("operations")
+            )
         response_status = response_cfg.get(
             "status",
             api_cfg.get("response_status") or 200,
@@ -154,6 +161,7 @@ def load_runtime_server(session, entity: MockServerEntity) -> MockRuntimeServer:
                 response_body=response_body,
                 operations=legacy_operations if not has_explicit_post_operations else [],
                 pre_response_operations=pre_response_operations,
+                response_operations=response_operations,
                 post_response_operations=(
                     explicit_post_operations if has_explicit_post_operations else []
                 ),

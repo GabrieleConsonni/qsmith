@@ -10,6 +10,7 @@ from elaborations.services.operations.operation_executor import (
     ExecutionResultDto,
     OperationExecutor,
 )
+from elaborations.services.scenarios.run_context import write_context_path
 from json_utils.models.enums.json_type import JsonType
 from json_utils.services.alembic.json_files_service import JsonFilesService
 from sqlalchemy_utils.database_table_reader import DatabaseTableReader, ReadTableConfig
@@ -44,9 +45,12 @@ class DataFromDbOperationExecutor(OperationExecutor):
             engine,
             ReadTableConfig(table_name=table_name),
         )
+        normalized_rows = rows if isinstance(rows, list) else []
+        if cfg.target:
+            write_context_path(cfg.target, normalized_rows)
         self.log(operation_id, f"Loaded {len(rows)} row(s) from table '{table_name}'.")
         return ExecutionResultDto(
-            data=rows if isinstance(rows, list) else [],
+            data=normalized_rows,
             result=[{"message": f"Loaded {len(rows)} row(s) from table '{table_name}'."}],
         )
 

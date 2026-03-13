@@ -2,6 +2,7 @@ import streamlit as st
 
 from test_suites.services.api_service import (
     create_test_suite,
+    delete_test_suite_by_id,
     get_all_test_suites,
     get_test_suite_by_id,
     update_test_suite,
@@ -33,6 +34,15 @@ def _open_suite_editor(suite_id: str | None):
     st.session_state.pop(TEST_SUITE_DRAFT_KEY, None)
     st.session_state.pop(TEST_SUITE_LAST_EXECUTION_ID_KEY, None)
     st.switch_page(SUITE_EDITOR_PAGE_PATH)
+
+
+def _clear_selected_suite_state(suite_id: str | None = None):
+    selected_suite_id = str(st.session_state.get(SELECTED_TEST_SUITE_ID_KEY) or "").strip()
+    target_suite_id = str(suite_id or "").strip()
+    if not target_suite_id or selected_suite_id == target_suite_id:
+        st.session_state.pop(SELECTED_TEST_SUITE_ID_KEY, None)
+        st.session_state.pop(TEST_SUITE_DRAFT_KEY, None)
+        st.session_state.pop(TEST_SUITE_LAST_EXECUTION_ID_KEY, None)
 
 
 def _show_feedback():
@@ -110,7 +120,7 @@ def _edit_test_suite_dialog(suite_item: dict):
         value=str(suite_item.get("description") or ""),
     )
 
-    action_cols = st.columns([1, 1], gap="small", vertical_alignment="center")
+    action_cols = st.columns([1, 1, 1], gap="small", vertical_alignment="center")
     with action_cols[0]:
         if st.button(
             "Save",
@@ -141,6 +151,24 @@ def _edit_test_suite_dialog(suite_item: dict):
             st.session_state[TEST_SUITE_FEEDBACK_KEY] = response.get("message") or "Test suite updated."
             st.rerun()
     with action_cols[1]:
+        if st.button(
+            "Delete",
+            key=f"{dialog_suffix}_delete",
+            icon=":material/delete:",
+            type="secondary",
+            use_container_width=True,
+        ):
+            try:
+                response = delete_test_suite_by_id(suite_id)
+            except Exception as exc:
+                st.error(f"Error deleting test suite: {str(exc)}")
+                return
+
+            _clear_selected_suite_state(suite_id)
+            _load_test_suites(force=True)
+            st.session_state[TEST_SUITE_FEEDBACK_KEY] = response.get("message") or "Test suite deleted."
+            st.rerun()
+    with action_cols[2]:
         if st.button(
             "Cancel",
             key=f"{dialog_suffix}_cancel",

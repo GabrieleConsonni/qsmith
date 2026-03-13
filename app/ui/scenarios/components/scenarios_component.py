@@ -231,6 +231,13 @@ def _close_add_step_operation_dialog():
     st.session_state.pop(ADD_STEP_OPERATION_DIALOG_TARGET_STEP_UI_KEY, None)
 
 
+def _consume_add_step_operation_dialog_request() -> bool:
+    is_open_requested = bool(st.session_state.get(ADD_STEP_OPERATION_DIALOG_OPEN_KEY, False))
+    if is_open_requested:
+        st.session_state[ADD_STEP_OPERATION_DIALOG_OPEN_KEY] = False
+    return is_open_requested
+
+
 def _new_scenario_draft() -> dict:
     return {
         "id": None,
@@ -890,7 +897,7 @@ def _render_editor():
 
     if st.session_state.get(ADD_SCENARIO_STEP_DIALOG_OPEN_KEY, False):
         _add_scenario_step_dialog(draft, step_catalog, step_labels_by_id)
-    if st.session_state.get(ADD_STEP_OPERATION_DIALOG_OPEN_KEY, False):
+    if _consume_add_step_operation_dialog_request():
         _add_step_operation_dialog(draft, operation_catalog, operation_labels_by_id)
 
 

@@ -206,6 +206,13 @@ def _close_add_operation_dialog():
     st.session_state.pop(ADD_STEP_OPERATION_DIALOG_TARGET_STEP_UI_KEY, None)
 
 
+def _consume_add_operation_dialog_request() -> bool:
+    is_open_requested = bool(st.session_state.get(ADD_STEP_OPERATION_DIALOG_OPEN_KEY, False))
+    if is_open_requested:
+        st.session_state[ADD_STEP_OPERATION_DIALOG_OPEN_KEY] = False
+    return is_open_requested
+
+
 def _open_add_test_dialog():
     st.session_state[ADD_TEST_DIALOG_OPEN_KEY] = True
     st.session_state[ADD_TEST_DIALOG_NONCE_KEY] = int(st.session_state.get(ADD_TEST_DIALOG_NONCE_KEY, 0)) + 1
@@ -595,7 +602,7 @@ def render_suite_editor_page():
         _render_section_summary(summary)
         _render_hook_section(draft, active_phase, active_label, execution_state_map)
 
-    if bool(st.session_state.get(ADD_STEP_OPERATION_DIALOG_OPEN_KEY, False)):
+    if _consume_add_operation_dialog_request():
         _render_add_operation_dialog(draft)
 
     if bool(st.session_state.get(ADD_TEST_DIALOG_OPEN_KEY, False)):

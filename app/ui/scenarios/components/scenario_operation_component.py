@@ -83,6 +83,13 @@ OPERATION_STATUS_IDLE = "idle"
 OPERATION_PAGE_SIZE = 5
 
 
+def _rerun_dialog_fragment():
+    try:
+        st.rerun(scope="fragment")
+    except Exception:
+        st.rerun()
+
+
 def _safe_int(value: object, default: int = 0) -> int:
     if isinstance(value, bool):
         return default
@@ -1129,7 +1136,7 @@ def _render_existing_operations_panel(
     total_items = max(_safe_int(page_payload.get("total_items"), 0), 0)
     if total_pages > 0 and current_page > total_pages:
         st.session_state[page_key] = total_pages
-        st.rerun()
+        _rerun_dialog_fragment()
 
     available_operations = page_payload.get("items") or []
     if not isinstance(available_operations, list):
@@ -1178,7 +1185,7 @@ def _render_existing_operations_panel(
                     return
                 load_operations_catalog(force=True)
                 st.session_state[SCENARIO_FEEDBACK_KEY] = "Operazione eliminata da anagrafica."
-                st.rerun()
+                _rerun_dialog_fragment()
 
     pagination_cols = st.columns([1, 1, 6], gap="small", vertical_alignment="center")
     with pagination_cols[0]:
@@ -1191,7 +1198,7 @@ def _render_existing_operations_panel(
             disabled=current_page <= 1,
         ):
             st.session_state[page_key] = max(current_page - 1, 1)
-            st.rerun()
+            _rerun_dialog_fragment()
     with pagination_cols[1]:
         if st.button(
             "",
@@ -1202,7 +1209,7 @@ def _render_existing_operations_panel(
             disabled=(total_pages <= 0 or current_page >= total_pages),
         ):
             st.session_state[page_key] = current_page + 1
-            st.rerun()
+            _rerun_dialog_fragment()
     with pagination_cols[2]:
         if total_items > 0:
             st.caption(
@@ -1731,7 +1738,7 @@ def render_add_step_operation_dialog(
             use_container_width=True,
         ):
             st.session_state[show_existing_key] = not show_existing
-            st.rerun()
+            _rerun_dialog_fragment()
 
     if bool(st.session_state.get(show_existing_key, False)):
         _render_existing_operations_panel(

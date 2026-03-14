@@ -1,23 +1,23 @@
 import streamlit as st
 import re
 
-from scenarios.components.scenario_operation_component import (
-    _edit_step_operation_dialog,
+from elaborations_shared.components.test_operation_component import (
+    _edit_test_operation_dialog,
     _operation_status_icon,
     _operation_type_label,
     _render_operation_details,
-    render_add_step_operation_dialog,
+    render_add_test_operation_dialog,
 )
-from scenarios.services.data_loader_service import (
+from elaborations_shared.services.data_loader_service import (
     load_operations_catalog,
-    load_step_editor_context,
+    load_test_editor_context,
 )
-from scenarios.services.state_keys import (
-    ADD_STEP_OPERATION_DIALOG_NONCE_KEY,
-    ADD_STEP_OPERATION_DIALOG_OPEN_KEY,
-    ADD_STEP_OPERATION_DIALOG_TARGET_STEP_UI_KEY,
+from elaborations_shared.services.state_keys import (
+    ADD_TEST_OPERATION_DIALOG_NONCE_KEY,
+    ADD_TEST_OPERATION_DIALOG_OPEN_KEY,
+    ADD_TEST_OPERATION_DIALOG_TARGET_TEST_UI_KEY,
     OPERATIONS_CATALOG_KEY,
-    SCENARIO_FEEDBACK_KEY,
+    SUITE_FEEDBACK_KEY,
 )
 from test_suites.services.api_service import (
     execute_test_suite_by_id,
@@ -196,20 +196,20 @@ def _render_operation_feedback():
     suite_feedback = str(st.session_state.pop(TEST_SUITE_FEEDBACK_KEY, "") or "").strip()
     if suite_feedback:
         st.success(suite_feedback)
-    feedback = str(st.session_state.pop(SCENARIO_FEEDBACK_KEY, "") or "").strip()
+    feedback = str(st.session_state.pop(SUITE_FEEDBACK_KEY, "") or "").strip()
     if feedback:
         st.success(feedback)
 
 
 def _close_add_operation_dialog():
-    st.session_state[ADD_STEP_OPERATION_DIALOG_OPEN_KEY] = False
-    st.session_state.pop(ADD_STEP_OPERATION_DIALOG_TARGET_STEP_UI_KEY, None)
+    st.session_state[ADD_TEST_OPERATION_DIALOG_OPEN_KEY] = False
+    st.session_state.pop(ADD_TEST_OPERATION_DIALOG_TARGET_TEST_UI_KEY, None)
 
 
 def _consume_add_operation_dialog_request() -> bool:
-    is_open_requested = bool(st.session_state.get(ADD_STEP_OPERATION_DIALOG_OPEN_KEY, False))
+    is_open_requested = bool(st.session_state.get(ADD_TEST_OPERATION_DIALOG_OPEN_KEY, False))
     if is_open_requested:
-        st.session_state[ADD_STEP_OPERATION_DIALOG_OPEN_KEY] = False
+        st.session_state[ADD_TEST_OPERATION_DIALOG_OPEN_KEY] = False
     return is_open_requested
 
 
@@ -276,10 +276,10 @@ def _open_add_operation_dialog_for_hook(draft: dict, hook_phase: str):
 
 
 def _open_add_operation_dialog_for_item(item_ui_key: str):
-    st.session_state[ADD_STEP_OPERATION_DIALOG_OPEN_KEY] = True
-    st.session_state[ADD_STEP_OPERATION_DIALOG_TARGET_STEP_UI_KEY] = str(item_ui_key or "")
-    st.session_state[ADD_STEP_OPERATION_DIALOG_NONCE_KEY] = (
-        int(st.session_state.get(ADD_STEP_OPERATION_DIALOG_NONCE_KEY, 0)) + 1
+    st.session_state[ADD_TEST_OPERATION_DIALOG_OPEN_KEY] = True
+    st.session_state[ADD_TEST_OPERATION_DIALOG_TARGET_TEST_UI_KEY] = str(item_ui_key or "")
+    st.session_state[ADD_TEST_OPERATION_DIALOG_NONCE_KEY] = (
+        int(st.session_state.get(ADD_TEST_OPERATION_DIALOG_NONCE_KEY, 0)) + 1
     )
 
 
@@ -340,13 +340,13 @@ def _render_suite_item_operation(
             type="tertiary",
             use_container_width=True,
         ):
-            _edit_step_operation_dialog(
-                scenario_step=item,
+            _edit_test_operation_dialog(
+                suite_test=item,
                 operation=operation,
                 op_idx=op_idx,
-                step_ui_key=item_ui_key,
+                test_ui_key=item_ui_key,
                 nonce=0,
-                persist_scenario_changes_fn=_persist_changes,
+                persist_suite_changes_fn=_persist_changes,
             )
 
 
@@ -433,12 +433,12 @@ def _render_add_operation_dialog(draft: dict):
         for item in operations_catalog
         if item.get("id")
     }
-    render_add_step_operation_dialog(
+    render_add_test_operation_dialog(
         draft,
         operations_catalog,
         operation_labels_by_id,
         _close_add_operation_dialog,
-        persist_scenario_changes_fn=_persist_changes,
+        persist_suite_changes_fn=_persist_changes,
     )
 
 
@@ -488,7 +488,7 @@ def _render_add_test_dialog(draft: dict):
 
 
 def render_suite_editor_page():
-    load_step_editor_context(force=False)
+    load_test_editor_context(force=False)
     load_operations_catalog(force=False)
 
     suites = _load_test_suites(force=False)
@@ -607,3 +607,4 @@ def render_suite_editor_page():
 
     if bool(st.session_state.get(ADD_TEST_DIALOG_OPEN_KEY, False)):
         _render_add_test_dialog(draft)
+

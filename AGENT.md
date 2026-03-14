@@ -6,8 +6,8 @@ Leggi prima `docs/CODEX_CONTEXT.md` per contesto e comandi principali.
 - Evita di inserire segreti o credenziali reali nei file del repo.
 - Per ricerche nel repo preferisci `rg` (ripgrep).
 - Quando identifichi una modifica strutturale, aggiorna questo file e la documentazione correlata.
-- Per scenari: `scenario_steps`/`step_operations` sono snapshot funzionali (`code/type/configuration_json`), non riferimenti runtime a `steps`/`operations`.
-- Prima di iniziare una modifica, leggi `docs/SPEC.md`, `docs/STORIES_INDEX.md` (se presente) e `docs/stories/*.md` rilevanti.
+- Per le suite: `suite_items`/`suite_item_operations` sono snapshot funzionali (`code/type/configuration_json`), non riferimenti runtime a cataloghi separati.
+- Prima di iniziare una modifica, leggi `docs/SPEC.md`, `docs/stories/STORIES_INDEX.md` (se presente) e `docs/stories/*.md` rilevanti.
 - Se una modifica impatta specifiche o piano di lavoro, aggiorna `docs/SPEC.md` e/o `docs/stories/QSM-*.md` e/o `README.md` e/o `docs/CODEX_CONTEXT.md`.
 - Per bug fixing, consultare/aggiornare `docs/bugs/QSMB-*.md`.
 
@@ -104,9 +104,9 @@ Template review consigliato (per ogni finding):
 
 ## Priorita code review UI (fase successiva)
 Ambito iniziale:
-- `app/ui/scenarios/components/scenarios_component.py`
-- `app/ui/steps/step_component.py`
-- `app/ui/scenarios/components/scenario_operation_component.py`
+- `app/ui/test_suites/components/suite_editor_component.py`
+- `app/ui/elaborations_shared/components/test_operation_component.py`
+- `app/ui/mock_servers/components/mock_server_editor_component.py`
 - `app/ui/mock_servers/components/mock_server_editor_component.py`
 - `app/ui/queues/components/queue_details_component.py`
 - `app/ui/pages/Logs.py`

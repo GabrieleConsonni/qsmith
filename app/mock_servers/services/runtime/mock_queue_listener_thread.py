@@ -13,7 +13,7 @@ from brokers.services.alembic.queue_service import QueueService
 from brokers.services.connections.queue.queue_connection_service_factory import (
     QueueConnectionServiceFactory,
 )
-from elaborations.services.scenarios.run_context import create_run_context
+from elaborations.services.suite_runs.run_context import create_run_context
 from logs.models.enums.log_level import LogLevel
 from mock_servers.models.runtime_models import MockQueueBinding
 from mock_servers.services.alembic.mock_server_invocation_service import (

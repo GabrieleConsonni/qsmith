@@ -132,7 +132,7 @@ class RunSuiteConfigurationOperationDto(ConfigurationOperationDto):
         return self
 
 
-RunScenarioConfigurationOperationDto = RunSuiteConfigurationOperationDto
+RunSuiteConfigurationOperationDto = RunSuiteConfigurationOperationDto
 
 
 class SetVarConfigurationOperationDto(ConfigurationOperationDto):
@@ -368,15 +368,15 @@ def convert_to_config_operation_type(data: dict):
                 data, "result_target", "resultTarget", "outputTarget"
             ),
         )
-    if operation_type in {OperationType.RUN_SUITE.value, "run-scenario"}:
+    if operation_type in {OperationType.RUN_SUITE.value, "run-suite"}:
         return RunSuiteConfigurationOperationDto(
-            suite_id=_first_non_empty(data, "suite_id", "suiteId", "scenario_id", "scenarioId"),
+            suite_id=_first_non_empty(data, "suite_id", "suiteId", "suite_id", "suiteId"),
             suite_code=_first_non_empty(
                 data,
                 "suite_code",
                 "suiteCode",
-                "scenario_code",
-                "scenarioCode",
+                "suite_code",
+                "suiteCode",
             ),
             init_vars=_first_non_empty(data, "init_vars", "initVars"),
             result_target=_first_non_empty(

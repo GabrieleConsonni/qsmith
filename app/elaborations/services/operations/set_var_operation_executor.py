@@ -7,11 +7,11 @@ from elaborations.services.operations.operation_executor import (
     ExecutionResultDto,
     OperationExecutor,
 )
-from elaborations.services.scenarios.run_context import (
+from elaborations.services.suite_runs.run_context import (
     build_run_context_scope,
     set_context_var,
 )
-from elaborations.services.scenarios.run_context_resolver import resolve_dynamic_value
+from elaborations.services.suite_runs.run_context_resolver import resolve_dynamic_value
 
 
 class SetVarOperationExecutor(OperationExecutor):

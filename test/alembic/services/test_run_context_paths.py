@@ -1,6 +1,6 @@
 import pytest
 
-from app.elaborations.services.scenarios.run_context import (
+from app.elaborations.services.suite_runs.run_context import (
     bind_run_context,
     bind_suite_item_context,
     create_run_context,

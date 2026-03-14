@@ -22,8 +22,8 @@ I mock server sono dei server attivabili su qsmith per eseguire test in modo asi
         - body
     - le code si riferiscono alle code esistenti su qsmith
     - ad ogni coda\api associata ad un server possono essere associate le operazioni di qsmith
-    - aggiungere un'altra operazione `run scenario`
-        - impostare lo scenario da eseguire
+    - aggiungere un'altra operazione `run suite`
+        - impostare lo suite da eseguire
     - una volta creato un mock server è possibile attivarlo\spengerlo
     - l'attivazione di un mock server mette in ascolto le api e le code
     - all'invocazione di api\coda partono le operazioni ad esse associate
@@ -32,9 +32,9 @@ I mock server sono dei server attivabili su qsmith per eseguire test in modo asi
 - [x] Aggiungere relativa anagrafica a db per persistenza dei mock server
     - mock_servers: code, desc json configurazione
     - mock_server_apis: code, desc e json della configurazione
-    - ms_api_operations: prendere a riferimento step_operations
+    - ms_api_operations: prendere a riferimento test_operations
     - mock_server_queues: code, desc e id della queue
-    - ms_queue_operations: prendere a riferimento step_operations
+    - ms_queue_operations: prendere a riferimento test_operations
 
 ## Fonte
 - Estratto da `docs/TASK.md`

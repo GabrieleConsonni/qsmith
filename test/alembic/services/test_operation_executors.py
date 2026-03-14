@@ -17,7 +17,7 @@ from app.elaborations.api.operations_api import insert_operation_api
 from app.elaborations.models.dtos.configuration_operation_dto import (
     AssertConfigurationOperationDto,
     PublishConfigurationOperationDto,
-    RunScenarioConfigurationOperationDto,
+    RunSuiteConfigurationOperationDto,
     SaveInternalDBConfigurationOperationDto,
     SaveToExternalDBConfigurationOperationDto,
     SetVarConfigurationOperationDto,
@@ -42,10 +42,10 @@ from app.elaborations.services.operations.save_to_internal_db_operation_executor
 from app.elaborations.services.operations.set_var_operation_executor import (
     SetVarOperationExecutor,
 )
-from app.elaborations.services.operations.run_scenario_operation_executor import (
-    RunScenarioOperationExecutor,
+from app.elaborations.services.operations.run_suite_operation_executor import (
+    RunSuiteOperationExecutor,
 )
-from elaborations.services.scenarios.run_context import (
+from elaborations.services.suite_runs.run_context import (
     bind_run_context,
     create_run_context,
     get_run_context,
@@ -300,24 +300,24 @@ def test_save_external_db_operation_executor_sqlserver(alembic_container, extern
     assert result.result == [{"message": f"Created 2 rows in {table_name} table"}]
 
 
-def test_run_scenario_operation_executor_starts_execution(monkeypatch, alembic_container):
-    import elaborations.services.scenarios.scenario_executor_service as scenario_service_module
+def test_run_suite_operation_executor_starts_execution(monkeypatch, alembic_container):
+    import elaborations.services.test_suites.test_suite_executor_service as suite_service_module
 
     captured: dict[str, str] = {}
 
-    def _fake_execute_scenario_by_id(scenario_id: str, **kwargs):
-        captured["scenario_id"] = scenario_id
+    def _fake_execute_test_suite_by_id(test_suite_id: str, **kwargs):
+        captured["suite_id"] = test_suite_id
         captured["kwargs"] = kwargs
-        return "exec-run-scenario-1"
+        return "exec-run-suite-1"
 
     monkeypatch.setattr(
-        scenario_service_module,
-        "execute_scenario_by_id",
-        _fake_execute_scenario_by_id,
+        suite_service_module,
+        "execute_test_suite_by_id",
+        _fake_execute_test_suite_by_id,
     )
 
-    cfg = RunScenarioConfigurationOperationDto(
-        scenario_id="scenario-123",
+    cfg = RunSuiteConfigurationOperationDto(
+        suite_id="suite-123",
         init_vars={"order_id": {"$ref": "$.event.payload.orderId"}},
     )
     run_context = create_run_context(
@@ -329,19 +329,19 @@ def test_run_scenario_operation_executor_starts_execution(monkeypatch, alembic_c
 
     with managed_session() as session:
         with bind_run_context(run_context):
-            result = RunScenarioOperationExecutor().execute(
+            result = RunSuiteOperationExecutor().execute(
                 session,
-                "op-run-scenario",
+                "op-run-suite",
                 cfg,
                 [{"id": 1}],
             )
 
-    assert captured["scenario_id"] == "scenario-123"
+    assert captured["suite_id"] == "suite-123"
     assert captured["kwargs"]["run_event"] == {"payload": {"orderId": "ORD-100"}}
     assert captured["kwargs"]["invocation_id"] == "inv-1"
     assert captured["kwargs"]["vars_init"] == {"order_id": "ORD-100"}
-    assert result.result[0]["scenario_id"] == "scenario-123"
-    assert result.result[0]["execution_id"] == "exec-run-scenario-1"
+    assert result.result[0]["suite_id"] == "suite-123"
+    assert result.result[0]["execution_id"] == "exec-run-suite-1"
     assert result.result[0]["init_vars"] == {"order_id": "ORD-100"}
 
 

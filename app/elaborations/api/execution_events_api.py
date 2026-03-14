@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
-from elaborations.services.scenarios.execution_event_bus import stream_execution_events
+from elaborations.services.suite_runs.execution_event_bus import stream_execution_events
 
 router = APIRouter(prefix="/elaborations")
 

@@ -1,7 +1,7 @@
 from urllib.parse import quote_plus
 
 from api_client import api_delete, api_get, api_post, api_put
-from scenarios.services.scenario_api_service import (
+from elaborations_shared.services.api_service import (
     create_operation,
     delete_operation_by_id,
     get_all_brokers,

@@ -1,10 +1,10 @@
 from typing import Any
 
-from elaborations.services.scenarios.run_context import (
+from elaborations.services.suite_runs.run_context import (
     RunContext,
     build_run_context_scope,
 )
-from elaborations.services.scenarios.run_context_resolver import resolve_dynamic_value
+from elaborations.services.suite_runs.run_context_resolver import resolve_dynamic_value
 from mock_servers.models.runtime_models import MockApiRoute
 
 

@@ -1,2 +1,0 @@
-"""Components for Scenarios page."""
-

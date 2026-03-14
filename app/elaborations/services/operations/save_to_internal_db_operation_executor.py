@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from _alembic.services.alembic_config_service import url_from_env
 from elaborations.models.dtos.configuration_operation_dto import SaveInternalDBConfigurationOperationDto
 from elaborations.services.operations.operation_executor import OperationExecutor, ExecutionResultDto
-from elaborations.services.scenarios.run_context import write_context_path
+from elaborations.services.suite_runs.run_context import write_context_path
 from sqlalchemy_utils.database_table_writer import DatabaseTableWriter
 
 

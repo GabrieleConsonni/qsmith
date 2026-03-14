@@ -1,15 +1,15 @@
 ### Analisi
 ## Cambio terminologia
-Cambiare step con test
-Cambiare scenario con suite
+Cambiare test con test
+Cambiare suite con suite
 Togliere l’ordinamento dai test
 
 ## Hooks
 Aggiungere before, beforeAll, aftereach e afterAll, al più uno per Suite.
 Anche essi hanno operazioni configurabili
 
-## Cambio elaborazione degli steps
-Modificare l’elaborazione degli step come esecutore di operazioni in ordine.
+## Cambio elaborazione degli tests
+Modificare l’elaborazione degli test come esecutore di operazioni in ordine.
 Trasformare Data from db, data from json array etc…in operazioni.
 
 ## Operations
@@ -44,11 +44,11 @@ L’esecuzione di una Suite di test avviene come di seguito:
 - Test automatici: Parziali
 
 ## Implementazione
-- sostituito il dominio `scenario/step` con `test_suite/suite_item`
-- rimossi gli endpoint pubblici `/elaborations/scenario*` e `/elaborations/step*` dal bootstrap applicativo
+- sostituito il dominio `suite/test` con `test_suite/suite_item`
+- rimossi gli endpoint pubblici `/elaborations/suite*` e `/elaborations/test*` dal bootstrap applicativo
 - introdotti `test_suites`, `suite_items`, `suite_item_operations`, `test_suite_executions`, `suite_item_executions`, `suite_item_operation_executions`
-- gli ex `stepType` (`data`, `data-from-json-array`, `data-from-db`, `data-from-queue`, `sleep`) sono ora `operationType`
-- `run-scenario` e stato sostituito da `run-suite`
+- gli ex `testType` (`data`, `data-from-json-array`, `data-from-db`, `data-from-queue`, `sleep`) sono ora `operationType`
+- `run-suite` e stato sostituito da `run-suite`
 
 ## Runtime
 - introdotto workflow `beforeAll -> [beforeEach -> test -> afterEach]* -> afterAll`
@@ -59,7 +59,7 @@ L’esecuzione di una Suite di test avviene come di seguito:
 
 ## UI
 - nuova navigazione `Test Suites` / `Suite Editor`
-- rimosso il catalogo `steps`
+- rimosso il catalogo `tests`
 - aggiunti 4 pannelli hook fissi
 - i test sono embedded nella suite
 - il dialog operazioni supporta i nuovi `operationType` e `run-suite`

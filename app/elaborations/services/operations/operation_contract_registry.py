@@ -156,9 +156,9 @@ _CONTRACTS: dict[str, OperationContract] = {
         async_allowed=True,
         failure_mode="fail-fast",
     ),
-    "run-scenario": OperationContract(
+    "run-suite": OperationContract(
         family="trigger",
-        name="run-scenario",
+        name="run-suite",
         supported_scopes=(
             *_HOOK_AND_TEST_SCOPES,
             SCOPE_MOCK_POST_RESPONSE,

@@ -6,7 +6,7 @@ from json_arrays.services.data_loader_service import load_json_arrays
 load_json_arrays()
 
 st.subheader("Json arrays list")
-st.caption("Configure JSON array data sources to use them in queues or in scenarios.")
+st.caption("Configure JSON array data sources to use them in queues or in suites.")
 st.divider()
 
 json_arrays = st.session_state.get("json_arrays", [])

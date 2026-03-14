@@ -4,7 +4,7 @@ from fastapi import BackgroundTasks
 
 from _alembic.models.mock_server_invocation_entity import MockServerInvocationEntity
 from _alembic.services.session_context_manager import managed_session
-from elaborations.services.scenarios.run_context import (
+from elaborations.services.suite_runs.run_context import (
     create_run_context,
     serialize_run_context,
 )

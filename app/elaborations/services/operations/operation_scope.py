@@ -1,6 +1,6 @@
 from elaborations.models.enums.hook_phase import HookPhase
 from elaborations.models.enums.suite_item_kind import SuiteItemKind
-from elaborations.services.scenarios.run_context import get_run_context
+from elaborations.services.suite_runs.run_context import get_run_context
 
 
 SCOPE_TEST = "test"

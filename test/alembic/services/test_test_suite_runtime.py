@@ -28,6 +28,10 @@ from app.elaborations.services.test_suites.test_suite_executor_thread import (
 )
 
 
+def _cfg_payload(cfg) -> dict:
+    return cfg.model_dump() if hasattr(cfg, "model_dump") else cfg
+
+
 def test_test_suite_api_and_runtime_happy_path(alembic_container):
     del alembic_container
     dto = CreateTestSuiteDto(
@@ -42,11 +46,11 @@ def test_test_suite_api_and_runtime_happy_path(alembic_container):
                     CreateSuiteItemOperationDto(
                         order=1,
                         code="set-tenant",
-                        cfg=SetVarConfigurationOperationDto(
+                        cfg=_cfg_payload(SetVarConfigurationOperationDto(
                             key="tenant",
                             value="ACME",
                             scope="global",
-                        ),
+                        )),
                     )
                 ],
             ),
@@ -58,11 +62,11 @@ def test_test_suite_api_and_runtime_happy_path(alembic_container):
                     CreateSuiteItemOperationDto(
                         order=1,
                         code="set-local",
-                        cfg=SetVarConfigurationOperationDto(
+                        cfg=_cfg_payload(SetVarConfigurationOperationDto(
                             key="local_customer",
                             value="C-001",
                             scope="local",
-                        ),
+                        )),
                     )
                 ],
             ),
@@ -75,27 +79,27 @@ def test_test_suite_api_and_runtime_happy_path(alembic_container):
                     CreateSuiteItemOperationDto(
                         order=1,
                         code="load-inline-data",
-                        cfg=DataConfigurationOperationDto(
+                        cfg=_cfg_payload(DataConfigurationOperationDto(
                             data=[{"id": 1, "customer": "C-001"}],
-                        ),
+                        )),
                     ),
                     CreateSuiteItemOperationDto(
                         order=2,
                         code="assert-tenant",
-                        cfg=AssertConfigurationOperationDto(
+                        cfg=_cfg_payload(AssertConfigurationOperationDto(
                             assert_type="equals",
                             actual="$.global.tenant",
                             expected="ACME",
-                        ),
+                        )),
                     ),
                     CreateSuiteItemOperationDto(
                         order=3,
                         code="assert-local",
-                        cfg=AssertConfigurationOperationDto(
+                        cfg=_cfg_payload(AssertConfigurationOperationDto(
                             assert_type="equals",
                             actual="$.local.local_customer",
                             expected="C-001",
-                        ),
+                        )),
                     ),
                 ],
             )
@@ -142,11 +146,11 @@ def test_test_execution_cannot_write_global_context(alembic_container):
                     CreateSuiteItemOperationDto(
                         order=1,
                         code="set-global-in-test",
-                        cfg=SetVarConfigurationOperationDto(
+                        cfg=_cfg_payload(SetVarConfigurationOperationDto(
                             key="forbidden",
                             value="boom",
                             scope="global",
-                        ),
+                        )),
                     )
                 ],
             )

@@ -19,21 +19,21 @@ from mock_servers.services.state_keys import (
     MOCK_SERVER_EDITOR_NONCE_KEY,
     SELECTED_MOCK_SERVER_ID_KEY,
 )
-from scenarios.components.scenario_operation_component import (
-    render_add_step_operation_dialog,
+from elaborations_shared.components.test_operation_component import (
+    render_add_test_operation_dialog,
     render_operation_component,
 )
-from scenarios.services.data_loader_service import (
+from elaborations_shared.services.data_loader_service import (
     load_operations_catalog,
-    load_step_editor_brokers,
-    load_step_editor_queues_for_broker,
+    load_test_editor_brokers,
+    load_test_editor_queues_for_broker,
 )
-from scenarios.services.state_keys import (
-    ADD_STEP_OPERATION_DIALOG_NONCE_KEY,
-    ADD_STEP_OPERATION_DIALOG_OPEN_KEY,
-    ADD_STEP_OPERATION_DIALOG_TARGET_STEP_UI_KEY,
+from elaborations_shared.services.state_keys import (
+    ADD_TEST_OPERATION_DIALOG_NONCE_KEY,
+    ADD_TEST_OPERATION_DIALOG_OPEN_KEY,
+    ADD_TEST_OPERATION_DIALOG_TARGET_TEST_UI_KEY,
     OPERATIONS_CATALOG_KEY,
-    STEP_EDITOR_BROKERS_KEY,
+    TEST_EDITOR_BROKERS_KEY,
 )
 
 MOCK_SERVERS_PAGE_PATH = "pages/MockServers.py"
@@ -775,8 +775,8 @@ def _persist_draft_after_change():
 
 
 def _load_queue_options() -> tuple[list[dict], dict[str, dict]]:
-    load_step_editor_brokers(force=False)
-    brokers = st.session_state.get(STEP_EDITOR_BROKERS_KEY, [])
+    load_test_editor_brokers(force=False)
+    brokers = st.session_state.get(TEST_EDITOR_BROKERS_KEY, [])
     if not isinstance(brokers, list):
         brokers = []
 
@@ -789,7 +789,7 @@ def _load_queue_options() -> tuple[list[dict], dict[str, dict]]:
         if not broker_id:
             continue
         broker_label = str(broker.get("description") or broker.get("code") or broker_id)
-        queues = load_step_editor_queues_for_broker(broker_id, force=False)
+        queues = load_test_editor_queues_for_broker(broker_id, force=False)
         if not isinstance(queues, list):
             continue
         for queue in queues:
@@ -814,17 +814,17 @@ def _load_queue_options() -> tuple[list[dict], dict[str, dict]]:
 def _open_add_operation_dialog(target_ui_key: str, scope_key: str = "operations"):
     if not target_ui_key:
         return
-    st.session_state[ADD_STEP_OPERATION_DIALOG_OPEN_KEY] = True
-    st.session_state[ADD_STEP_OPERATION_DIALOG_TARGET_STEP_UI_KEY] = target_ui_key
+    st.session_state[ADD_TEST_OPERATION_DIALOG_OPEN_KEY] = True
+    st.session_state[ADD_TEST_OPERATION_DIALOG_TARGET_TEST_UI_KEY] = target_ui_key
     st.session_state[MOCK_SERVER_EDITOR_ADD_OPERATION_SCOPE_KEY] = str(scope_key or "operations")
-    st.session_state[ADD_STEP_OPERATION_DIALOG_NONCE_KEY] = int(
-        st.session_state.get(ADD_STEP_OPERATION_DIALOG_NONCE_KEY, 0)
+    st.session_state[ADD_TEST_OPERATION_DIALOG_NONCE_KEY] = int(
+        st.session_state.get(ADD_TEST_OPERATION_DIALOG_NONCE_KEY, 0)
     ) + 1
 
 
 def _close_add_operation_dialog():
-    st.session_state[ADD_STEP_OPERATION_DIALOG_OPEN_KEY] = False
-    st.session_state.pop(ADD_STEP_OPERATION_DIALOG_TARGET_STEP_UI_KEY, None)
+    st.session_state[ADD_TEST_OPERATION_DIALOG_OPEN_KEY] = False
+    st.session_state.pop(ADD_TEST_OPERATION_DIALOG_TARGET_TEST_UI_KEY, None)
     st.session_state.pop(MOCK_SERVER_EDITOR_ADD_OPERATION_SCOPE_KEY, None)
 
 
@@ -848,7 +848,7 @@ def _add_operation_dialog(
     operation_catalog: list[dict],
     operation_labels_by_id: dict[str, str],
 ):
-    target_ui_key = str(st.session_state.get(ADD_STEP_OPERATION_DIALOG_TARGET_STEP_UI_KEY) or "").strip()
+    target_ui_key = str(st.session_state.get(ADD_TEST_OPERATION_DIALOG_TARGET_TEST_UI_KEY) or "").strip()
     target_scope = str(st.session_state.get(MOCK_SERVER_EDITOR_ADD_OPERATION_SCOPE_KEY) or "operations").strip()
     target_item = _find_draft_item_by_ui_key(draft, target_ui_key)
     if not isinstance(target_item, dict):
@@ -874,13 +874,13 @@ def _add_operation_dialog(
             "operations": target_item[target_scope],
         }
     )
-    pseudo_draft = {"steps": [pseudo_target]}
-    render_add_step_operation_dialog(
+    pseudo_draft = {"tests": [pseudo_target]}
+    render_add_test_operation_dialog(
         pseudo_draft,
         operation_catalog,
         operation_labels_by_id,
         _close_add_operation_dialog,
-        persist_scenario_changes_fn=_persist_draft_after_change,
+        persist_suite_changes_fn=_persist_draft_after_change,
     )
 
 
@@ -968,12 +968,12 @@ def _response_resolver_help_dialog():
     st.markdown("## Context creation & resolver guide")
     with st.expander("What is the context and how to use resolver?..."):
         st.markdown("When a request is received, the mock server creates a context")
-        st.markdown("That context can be used to generate dynamic responses based on the incoming data and the operations defined in the scenario.")
+        st.markdown("That context can be used to generate dynamic responses based on the incoming data and the operations defined in the suite.")
         
         st.markdown("**Resolver overview**")
         st.markdown("The resolver is a powerful tool that allows you to ")
         st.markdown("- extract and manipulate data from the incoming request to create dynamic responses.")
-        st.markdown("- share data between different steps/operations within the same scenario.")
+        st.markdown("- share data between different tests/operations within the same suite.")
 
         st.markdown("**Resolver sintax**")
         st.markdown("The resolver syntax is based on JSON and supports two main patterns:")
@@ -1098,7 +1098,7 @@ def _edit_api_dialog(api_entry: dict, api_idx: int):
     st.number_input(
         "Order",
         min_value=1,
-        step=1,
+        test=1,
         key=f"mock_server_edit_api_order_{api_ui_key}",
         value=max(_safe_int(api_entry.get("order"), api_idx + 1), 1),
     )
@@ -1325,7 +1325,7 @@ def _edit_queue_dialog(queue_entry: dict, queue_idx: int):
     st.number_input(
         "Order",
         min_value=1,
-        step=1,
+        test=1,
         key=f"mock_server_edit_queue_order_{queue_ui_key}",
         value=max(_safe_int(queue_entry.get("order"), queue_idx + 1), 1),
     )
@@ -1700,15 +1700,15 @@ def _render_api_editor(api_entry: dict, api_idx: int, nonce: int):
                 ["Pre-response", "Response", "Post-response"]
             )
             with pre_tab:
-                pre_scope_step = {"operations": pre_operations}
+                pre_scope_test = {"operations": pre_operations}
                 for op_idx, operation in enumerate(pre_operations):
                     render_operation_component(
-                        pre_scope_step,
+                        pre_scope_test,
                         operation,
                         op_idx,
                         f"{api_ui_key}_pre",
                         nonce,
-                        persist_scenario_changes_fn=_persist_draft_after_change,
+                        persist_suite_changes_fn=_persist_draft_after_change,
                     )
                 pre_add_cols = st.columns([8, 2], gap="small", vertical_alignment="center")
                 with pre_add_cols[1]:
@@ -1722,15 +1722,15 @@ def _render_api_editor(api_entry: dict, api_idx: int, nonce: int):
                         st.rerun()
 
             with response_tab:
-                response_scope_step = {"operations": response_operations}
+                response_scope_test = {"operations": response_operations}
                 for op_idx, operation in enumerate(response_operations):
                     render_operation_component(
-                        response_scope_step,
+                        response_scope_test,
                         operation,
                         op_idx,
                         f"{api_ui_key}_response",
                         nonce,
-                        persist_scenario_changes_fn=_persist_draft_after_change,
+                        persist_suite_changes_fn=_persist_draft_after_change,
                     )
                 response_add_cols = st.columns([8, 2], gap="small", vertical_alignment="center")
                 with response_add_cols[1]:
@@ -1744,15 +1744,15 @@ def _render_api_editor(api_entry: dict, api_idx: int, nonce: int):
                         st.rerun()
 
             with post_tab:
-                post_scope_step = {"operations": post_operations}
+                post_scope_test = {"operations": post_operations}
                 for op_idx, operation in enumerate(post_operations):
                     render_operation_component(
-                        post_scope_step,
+                        post_scope_test,
                         operation,
                         op_idx,
                         f"{api_ui_key}_post",
                         nonce,
-                        persist_scenario_changes_fn=_persist_draft_after_change,
+                        persist_suite_changes_fn=_persist_draft_after_change,
                     )
                 post_add_cols = st.columns([8, 2], gap="small", vertical_alignment="center")
                 with post_add_cols[1]:
@@ -1813,7 +1813,7 @@ def _render_queue_editor(
                     op_idx,
                     queue_ui_key,
                     nonce,
-                    persist_scenario_changes_fn=_persist_draft_after_change,
+                    persist_suite_changes_fn=_persist_draft_after_change,
                 )
             add_op_cols = st.columns([8, 2], gap="small", vertical_alignment="center")
             with add_op_cols[1]:
@@ -1952,10 +1952,11 @@ def _render_editor():
             continue
         _render_queue_editor(queue_entry, queue_idx, queue_by_id, nonce)
 
-    if st.session_state.get(ADD_STEP_OPERATION_DIALOG_OPEN_KEY, False):
+    if st.session_state.get(ADD_TEST_OPERATION_DIALOG_OPEN_KEY, False):
         _add_operation_dialog(draft, operation_catalog, operation_labels_by_id)
     _render_feedback()
 
 
 def render_mock_server_editor_page():
     _render_editor()
+

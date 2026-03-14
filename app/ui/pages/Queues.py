@@ -43,7 +43,7 @@ if not selected_broker:
     st.stop()
 
 st.subheader(f"Broker [{selected_broker.get('description', selected_broker.get('code', ''))}]")
-st.caption("Configure queues for this broker to start sending messages and testing scenarios.")
+st.caption("Configure queues for this broker to start sending messages and testing suites.")
 st.divider()
 
 render_queues_component(

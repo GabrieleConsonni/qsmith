@@ -5,7 +5,7 @@ from data_sources.models.database_connection_config_types import DatabaseConnect
 from data_sources.models.database_connection_config_types import convert_database_connection_config
 from elaborations.models.dtos.configuration_operation_dto import SaveToExternalDBConfigurationOperationDto
 from elaborations.services.operations.operation_executor import OperationExecutor, ExecutionResultDto
-from elaborations.services.scenarios.run_context import write_context_path
+from elaborations.services.suite_runs.run_context import write_context_path
 from json_utils.models.enums.json_type import JsonType
 from json_utils.services.alembic.json_files_service import JsonFilesService
 from sqlalchemy_utils.database_table_writer import DatabaseTableWriter

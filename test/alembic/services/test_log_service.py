@@ -11,7 +11,7 @@ def test_log_service(alembic_container):
 
     ids.append(_verify_log(LogEntity(
         subject_type=LogSubjectType.SERVICE.value,
-        subject="scenario_id",
+        subject="suite_id",
         level=LogLevel.INFO.value,
         message="Test log message 1",
         payload={"key": "value"}
@@ -21,14 +21,14 @@ def test_log_service(alembic_container):
         [
             LogEntity(
                 subject_type=LogSubjectType.SERVICE.value,
-                subject="scenario_id",
+                subject="suite_id",
                 level=LogLevel.INFO.value,
                 message="Test log message 2",
                 payload={"key": "value"}
             ),
             LogEntity(
                 subject_type=LogSubjectType.SERVICE.value,
-                subject="scenario_id",
+                subject="suite_id",
                 level=LogLevel.INFO.value,
                 message="Test log messagw 3",
                 payload={"key": "value"}
@@ -51,7 +51,7 @@ def _verify_log(entity: LogEntity) -> str:
 
         assert retrieved_entity is not None
         assert retrieved_entity.subject_type == LogSubjectType.SERVICE.value
-        assert retrieved_entity.subject == "scenario_id"
+        assert retrieved_entity.subject == "suite_id"
         assert retrieved_entity.level == LogLevel.INFO.value
         assert retrieved_entity.message == "Test log message 1"
         assert retrieved_entity.payload == {"key": "value"}

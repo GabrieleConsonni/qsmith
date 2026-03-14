@@ -7,7 +7,7 @@ from elaborations.services.operations.operation_executor import (
     ExecutionResultDto,
     OperationExecutor,
 )
-from elaborations.services.scenarios.run_context import write_context_path
+from elaborations.services.suite_runs.run_context import write_context_path
 
 
 class DataOperationExecutor(OperationExecutor):

@@ -14,8 +14,8 @@ from elaborations.services.operations.operation_scope import (
     SCOPE_HOOK_BEFORE_EACH,
     SCOPE_TEST,
 )
-from elaborations.services.scenarios.execution_runtime_context import bind_execution_context
-from elaborations.services.scenarios.run_context import set_context_last
+from elaborations.services.suite_runs.execution_runtime_context import bind_execution_context
+from elaborations.services.suite_runs.run_context import set_context_last
 
 
 def _resolve_suite_item_scope(suite_item: SuiteItemEntity) -> str | None:

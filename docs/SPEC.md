@@ -18,7 +18,7 @@ La soluzione copre:
     - JSON array
     - dataset (table/view da database)
 - gestione scenari di test
-    - creazione di scenari composti da step e operazioni
+    - creazione di scenari composti da test e operazioni
     - esecuzione singola o multipla di scenari
     - esecuzione singola di scenari in modalità debug  
 - visualizzazione log applicativi 
@@ -129,7 +129,7 @@ Obiettivi:
 
 Modello dati suite:
 - `test_suites`, `suite_items` e `suite_item_operations` contengono i dettagli funzionali usati in esecuzione.
-- Lo scenario non dipende più da `step_id`/`operation_id` in runtime.
+- Lo suite non dipende più da `test_id`/`operation_id` in runtime.
 
 
 ### 4.9 Logs

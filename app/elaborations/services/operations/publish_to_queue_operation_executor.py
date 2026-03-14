@@ -8,7 +8,7 @@ from brokers.services.alembic.queue_service import QueueService
 from brokers.services.connections.queue.queue_connection_service_factory import QueueConnectionServiceFactory
 from elaborations.models.dtos.configuration_operation_dto import PublishConfigurationOperationDto
 from elaborations.services.operations.operation_executor import OperationExecutor, ExecutionResultDto
-from elaborations.services.scenarios.run_context import write_context_path
+from elaborations.services.suite_runs.run_context import write_context_path
 from json_utils.services.json_service import make_json_safe
 
 

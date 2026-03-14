@@ -12,7 +12,7 @@ from app.elaborations.services.operations.build_response_from_template_operation
 from app.elaborations.services.operations.data_operation_executor import (
     DataOperationExecutor,
 )
-from app.elaborations.services.operations.run_scenario_operation_executor import (
+from app.elaborations.services.operations.run_suite_operation_executor import (
     RunSuiteOperationExecutor,
 )
 from app.elaborations.services.operations.set_response_body_operation_executor import (
@@ -24,7 +24,7 @@ from app.elaborations.services.operations.set_response_header_operation_executor
 from app.elaborations.services.operations.set_response_status_operation_executor import (
     SetResponseStatusOperationExecutor,
 )
-from elaborations.services.scenarios.run_context import (
+from elaborations.services.suite_runs.run_context import (
     bind_run_context,
     create_run_context,
 )

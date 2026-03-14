@@ -19,12 +19,12 @@ from elaborations.services.alembic.test_suite_execution_service import (
     TestSuiteExecutionService,
 )
 from elaborations.services.alembic.test_suite_service import TestSuiteService
-from elaborations.services.scenarios.execution_event_bus import (
+from elaborations.services.suite_runs.execution_event_bus import (
     publish_execution_event,
     publish_runtime_log_event,
 )
-from elaborations.services.scenarios.execution_runtime_context import bind_execution_context
-from elaborations.services.scenarios.run_context import (
+from elaborations.services.suite_runs.execution_runtime_context import bind_execution_context
+from elaborations.services.suite_runs.run_context import (
     bind_run_context,
     bind_suite_item_context,
     create_run_context,
@@ -41,6 +41,8 @@ from logs.services.alembic.log_service import LogService
 
 @dataclass
 class TestSuiteExecutionInput:
+    __test__ = False
+
     execution_id: str
     test_suite_id: str
     test_suite_code: str
@@ -58,7 +60,7 @@ def _utc_now() -> datetime:
 
 def log(test_suite_id: str, message: str, level: LogLevel = LogLevel.INFO, payload: dict | None = None):
     log_dto = LogDto(
-        subject_type=LogSubjectType.SCENARIO_EXECUTION,
+        subject_type=LogSubjectType.SUITE_EXECUTION,
         subject=test_suite_id,
         message=message,
         level=level,
@@ -66,7 +68,7 @@ def log(test_suite_id: str, message: str, level: LogLevel = LogLevel.INFO, paylo
     )
     LogService().log(log_dto)
     publish_runtime_log_event(
-        subject_type=LogSubjectType.SCENARIO_EXECUTION,
+        subject_type=LogSubjectType.SUITE_EXECUTION,
         subject=test_suite_id,
         level=level,
         message=message,
@@ -429,6 +431,8 @@ def _execute(execution_input: TestSuiteExecutionInput):
 
 
 class TestSuiteExecutorThread(threading.Thread):
+    __test__ = False
+
     def __init__(
         self,
         test_suite_id: str,
@@ -469,3 +473,4 @@ class TestSuiteExecutorThread(threading.Thread):
                 include_previous=self.include_previous,
             )
         )
+

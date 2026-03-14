@@ -20,4 +20,4 @@ class AssertEvaluationContext:
 class AssertEvaluator(ABC):
     @abstractmethod
     def evaluate(self, context: AssertEvaluationContext) -> None:
-        pass
+        raise NotImplementedError

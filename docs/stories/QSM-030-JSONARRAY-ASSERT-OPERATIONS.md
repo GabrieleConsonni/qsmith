@@ -21,7 +21,7 @@
         - impostare un array di keys per fare il confronto
     - [x] `JsonArrayEquals` <-- verifica che i dati siano uguali al json array impostato
         - impostare il json array expected
-- [x] introdurre una family `assert` con un evalutor orchestratore\composite + strategy interne simile a quanto fatto per step_executor (NotEmptyData, EmptyData, ecc.).
+- [x] introdurre una family `assert` con un evalutor orchestratore\composite + strategy interne simile a quanto fatto per test_executor (NotEmptyData, EmptyData, ecc.).
 - [x] modificare il dialog delle operazioni per integrare questa funzionalitÃ 
 - [x] integrare i test esistenti
 

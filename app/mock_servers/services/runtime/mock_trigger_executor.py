@@ -1,7 +1,7 @@
 from contextlib import nullcontext
 from typing import Any
 
-from _alembic.models.step_operation_entity import StepOperationEntity
+from _alembic.models.test_operation_entity import TestOperationEntity
 from _alembic.services.session_context_manager import managed_session
 from elaborations.services.operations.operation_executor_composite import execute_operations
 from elaborations.services.operations.operation_scope import (
@@ -9,7 +9,7 @@ from elaborations.services.operations.operation_scope import (
     SCOPE_MOCK_PRE_RESPONSE,
     SCOPE_MOCK_RESPONSE,
 )
-from elaborations.services.scenarios.run_context import (
+from elaborations.services.suite_runs.run_context import (
     RunContext,
     bind_run_context,
     deserialize_run_context,
@@ -27,13 +27,13 @@ def _normalize_input_data(data: Any) -> list[dict]:
     return []
 
 
-def _to_step_operation_snapshot(
+def _to_test_operation_snapshot(
     source_id: str,
     operation: MockOperationSnapshot,
-) -> StepOperationEntity:
-    snapshot = StepOperationEntity()
+) -> TestOperationEntity:
+    snapshot = TestOperationEntity()
     snapshot.id = operation.id
-    snapshot.scenario_step_id = source_id or "mock-runtime"
+    snapshot.suite_test_id = source_id or "mock-runtime"
     snapshot.code = operation.code
     snapshot.description = operation.description
     snapshot.operation_type = operation.operation_type
@@ -65,7 +65,7 @@ def execute_mock_operations(
 ):
     normalized_data = _normalize_input_data(data)
     snapshots = [
-        _to_step_operation_snapshot(source_ref, operation)
+        _to_test_operation_snapshot(source_ref, operation)
         for operation in operations or []
     ]
     if not snapshots:

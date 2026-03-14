@@ -69,7 +69,7 @@ Organizzazione UI modulare gia presente in package dedicati:
 - `app/ui/database_datasources`
 - `app/ui/json_arrays`
 - `app/ui/mock_servers`
-- `app/ui/scenarios` (componenti operation legacy/shared)
+- `app/ui/suites` (componenti operation legacy/shared)
 - `app/ui/test_suites`
 - `app/ui/queues`
 
@@ -107,7 +107,7 @@ Organizzazione UI modulare gia presente in package dedicati:
 - `mock_server_queues`, `ms_queue_operations`
 - `logs`
 
-Nota: il runtime suite usa gli snapshot (`suite_items`/`suite_item_operations`), non esiste piu il catalogo `steps`.
+Nota: il runtime suite usa gli snapshot (`suite_items`/`suite_item_operations`), non esiste piu il catalogo `tests`.
 
 ## Configurazione ambiente
 Valori esempio `.env`:
@@ -160,5 +160,5 @@ I test usano Testcontainers, quindi Docker deve essere disponibile.
 Quando cambia il comportamento funzionale o il piano di lavoro:
 - aggiornare `docs/SPEC.md`
 - aggiornare `docs/stories/QSM-*.md`
-- aggiornare `docs/STORY_INDEX.md` se cambiano le storie
+- aggiornare `docs/stories/STORY_INDEX.md` se cambiano le storie
 - aggiornare `docs/CODEX_CONTEXT.md` se cambia il contesto progetto

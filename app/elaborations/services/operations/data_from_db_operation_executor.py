@@ -10,7 +10,7 @@ from elaborations.services.operations.operation_executor import (
     ExecutionResultDto,
     OperationExecutor,
 )
-from elaborations.services.scenarios.run_context import write_context_path
+from elaborations.services.suite_runs.run_context import write_context_path
 from json_utils.models.enums.json_type import JsonType
 from json_utils.services.alembic.json_files_service import JsonFilesService
 from sqlalchemy_utils.database_table_reader import DatabaseTableReader, ReadTableConfig

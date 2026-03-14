@@ -3,7 +3,7 @@
 ## Stato
 - Stato: In corso
 - Scope funzionale: solo runtime `test suite + mock server`
-- Fuori scope: runtime legacy `scenario/step` (compatibilita mantenuta, nessuna nuova feature dedicata)
+- Fuori scope: runtime legacy `suite/test` (compatibilita mantenuta, nessuna nuova feature dedicata)
 
 ## Analisi AS-IS
 - Runtime suite gia presente con lifecycle `beforeAll -> beforeEach -> test -> afterEach -> afterAll`.

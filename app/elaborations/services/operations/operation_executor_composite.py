@@ -5,8 +5,9 @@ from sqlalchemy.orm import Session
 from _alembic.models.suite_item_operation_execution_entity import (
     SuiteItemOperationExecutionEntity,
 )
-from _alembic.models.step_operation_execution_entity import StepOperationExecutionEntity
-from _alembic.models.step_operation_entity import StepOperationEntity
+from _alembic.models.suite_item_operation_entity import SuiteItemOperationEntity
+from _alembic.models.test_operation_execution_entity import TestOperationExecutionEntity
+from _alembic.models.test_operation_entity import TestOperationEntity
 from elaborations.models.dtos.configuration_operation_dto import (
     AssertConfigurationOperationDto,
     BuildResponseFromTemplateConfigurationOperationDto,
@@ -38,8 +39,8 @@ from elaborations.services.operations.data_from_queue_operation_executor import 
 )
 from elaborations.services.operations.data_operation_executor import DataOperationExecutor
 from elaborations.services.alembic.operation_service import OperationService
-from elaborations.services.alembic.step_operation_execution_service import (
-    StepOperationExecutionService,
+from elaborations.services.alembic.test_operation_execution_service import (
+    TestOperationExecutionService,
 )
 from elaborations.services.alembic.suite_item_operation_execution_service import (
     SuiteItemOperationExecutionService,
@@ -54,7 +55,7 @@ from elaborations.services.operations.operation_policy_validator import (
 )
 from elaborations.services.operations.operation_scope import resolve_execution_scope
 from elaborations.services.operations.publish_to_queue_operation_executor import PublishToQueueOperationExecutor
-from elaborations.services.operations.run_scenario_operation_executor import (
+from elaborations.services.operations.run_suite_operation_executor import (
     RunSuiteOperationExecutor,
 )
 from elaborations.services.operations.save_to_external_db_operation_executor import SaveToExternalDbOperationExecutor
@@ -70,23 +71,23 @@ from elaborations.services.operations.set_response_status_operation_executor imp
 )
 from elaborations.services.operations.set_var_operation_executor import SetVarOperationExecutor
 from elaborations.services.operations.sleep_operation_executor import SleepOperationExecutor
-from elaborations.services.scenarios.execution_event_bus import (
+from elaborations.services.suite_runs.execution_event_bus import (
     publish_execution_event,
     publish_runtime_log_event,
 )
-from elaborations.services.scenarios.execution_runtime_context import (
+from elaborations.services.suite_runs.execution_runtime_context import (
     get_execution_id,
-    get_scenario_execution_id,
-    get_scenario_step_id,
-    get_scenario_step_execution_id,
+    get_suite_execution_id,
+    get_suite_test_id,
+    get_suite_test_execution_id,
     get_suite_item_execution_id,
     get_suite_item_id,
     get_test_suite_execution_id,
 )
-from elaborations.services.scenarios.run_context import (
+from elaborations.services.suite_runs.run_context import (
     build_run_context_scope,
 )
-from elaborations.services.scenarios.run_context_resolver import resolve_dynamic_value
+from elaborations.services.suite_runs.run_context_resolver import resolve_dynamic_value
 from logs.models.dtos.log_dto import LogDto
 from logs.models.enums.log_level import LogLevel
 from logs.models.enums.log_subject_type import LogSubjectType
@@ -133,9 +134,9 @@ def log(message: str, level: LogLevel = LogLevel.INFO):
 
 def _resolve_operation_payload(
     session: Session,
-    operation_input: StepOperationEntity | str,
+    operation_input: TestOperationEntity | SuiteItemOperationEntity | str,
 ) -> tuple[str, dict, str, str, int]:
-    if isinstance(operation_input, StepOperationEntity):
+    if isinstance(operation_input, (TestOperationEntity, SuiteItemOperationEntity)):
         operation_id = str(operation_input.id)
         cfg_json = (
             operation_input.configuration_json
@@ -167,12 +168,12 @@ def _resolve_operation_payload(
 
 def execute_operations(
     session: Session,
-    operations: list[StepOperationEntity] | list[str],
+    operations: list[TestOperationEntity] | list[SuiteItemOperationEntity] | list[str],
     data: list[dict],
     execution_scope: str | None = None,
 ) -> ExecutionResultDto:
     execution_result = ExecutionResultDto(data=data, result=[])
-    operation_execution_service = StepOperationExecutionService()
+    operation_execution_service = TestOperationExecutionService()
     suite_operation_execution_service = SuiteItemOperationExecutionService()
     resolved_execution_scope = resolve_execution_scope(execution_scope)
 
@@ -184,23 +185,23 @@ def execute_operations(
             operation_input,
         )
 
-        scenario_execution_id = str(get_scenario_execution_id() or "").strip()
-        scenario_step_execution_id = str(get_scenario_step_execution_id() or "").strip()
-        scenario_step_id = str(get_scenario_step_id() or "").strip()
+        suite_execution_id = str(get_suite_execution_id() or "").strip()
+        suite_test_execution_id = str(get_suite_test_execution_id() or "").strip()
+        suite_test_id = str(get_suite_test_id() or "").strip()
         test_suite_execution_id = str(get_test_suite_execution_id() or "").strip()
         suite_item_execution_id = str(get_suite_item_execution_id() or "").strip()
         suite_item_id = str(get_suite_item_id() or "").strip()
 
         operation_execution_id = ""
         suite_operation_execution_id = ""
-        if scenario_execution_id and scenario_step_execution_id:
+        if suite_execution_id and suite_test_execution_id:
             operation_execution_id = operation_execution_service.insert(
                 session,
-                StepOperationExecutionEntity(
-                    scenario_execution_id=scenario_execution_id,
-                    scenario_step_execution_id=scenario_step_execution_id,
-                    scenario_step_id=scenario_step_id or None,
-                    step_operation_id=op_id or None,
+                TestOperationExecutionEntity(
+                    suite_execution_id=suite_execution_id,
+                    suite_test_execution_id=suite_test_execution_id,
+                    suite_test_id=suite_test_id or None,
+                    test_operation_id=op_id or None,
                     operation_code=op_code,
                     operation_description=op_description,
                     operation_order=op_order,
@@ -251,9 +252,9 @@ def execute_operations(
                     execution_id,
                     "operation_finished",
                     {
-                        "scenario_step_id": scenario_step_id,
-                        "scenario_step_execution_id": scenario_step_execution_id or None,
-                        "step_operation_execution_id": operation_execution_id or None,
+                        "suite_test_id": suite_test_id,
+                        "suite_test_execution_id": suite_test_execution_id or None,
+                        "test_operation_execution_id": operation_execution_id or None,
                         "suite_item_id": suite_item_id or None,
                         "suite_item_execution_id": suite_item_execution_id or None,
                         "suite_item_operation_execution_id": suite_operation_execution_id or None,
@@ -288,9 +289,9 @@ def execute_operations(
                     execution_id,
                     "operation_finished",
                     {
-                        "scenario_step_id": scenario_step_id,
-                        "scenario_step_execution_id": scenario_step_execution_id or None,
-                        "step_operation_execution_id": operation_execution_id or None,
+                        "suite_test_id": suite_test_id,
+                        "suite_test_execution_id": suite_test_execution_id or None,
+                        "test_operation_execution_id": operation_execution_id or None,
                         "suite_item_id": suite_item_id or None,
                         "suite_item_execution_id": suite_item_execution_id or None,
                         "suite_item_operation_execution_id": suite_operation_execution_id or None,

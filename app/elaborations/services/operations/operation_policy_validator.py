@@ -9,7 +9,7 @@ from elaborations.services.operations.operation_scope import (
     SCOPE_MOCK_RESPONSE,
     SCOPE_TEST,
 )
-from elaborations.services.scenarios.run_context import extract_context_root
+from elaborations.services.suite_runs.run_context import extract_context_root
 
 
 def _collect_target_paths(cfg: Any) -> list[str]:

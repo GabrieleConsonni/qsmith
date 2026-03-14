@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from _alembic.services.session_context_manager import managed_session
 from elaborations.models.dtos.configuration_operation_dto import ConfigurationOperationTypes
 from _alembic.models.log_entity import LogEntity
-from elaborations.services.scenarios.execution_event_bus import publish_runtime_log_event
+from elaborations.services.suite_runs.execution_event_bus import publish_runtime_log_event
 from logs.models.dtos.log_dto import LogDto
 from logs.models.enums.log_level import LogLevel
 from logs.models.enums.log_subject_type import LogSubjectType

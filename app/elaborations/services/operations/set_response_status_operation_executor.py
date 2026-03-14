@@ -7,7 +7,7 @@ from elaborations.services.operations.operation_executor import (
     ExecutionResultDto,
     OperationExecutor,
 )
-from elaborations.services.scenarios.run_context import set_response_status
+from elaborations.services.suite_runs.run_context import set_response_status
 
 
 class SetResponseStatusOperationExecutor(OperationExecutor):

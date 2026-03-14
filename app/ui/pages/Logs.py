@@ -62,7 +62,7 @@ with col1:
     if st.button("Ricarica Logs"):
         _load_logs(show_error=True)
 with col2:
-    days = st.number_input("Cancella log piu vecchi di (giorni)", min_value=1, value=30, step=1)
+    days = st.number_input("Cancella log piu vecchi di (giorni)", min_value=1, value=30, test=1)
     if st.button("Pulisci Logs"):
         try:
             api_delete(f"/logs/{int(days)}")

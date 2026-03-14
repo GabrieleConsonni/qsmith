@@ -8,7 +8,7 @@ from database_connections.services.data_loader_service import load_database_conn
 load_database_connections()
 
 st.subheader("Database connections")
-st.caption("Configure database connections for scenarios and database datasources.")
+st.caption("Configure database connections for suites and database datasources.")
 st.divider()
 
 connections = st.session_state.get("database_connections", [])

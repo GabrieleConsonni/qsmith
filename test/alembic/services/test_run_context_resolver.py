@@ -1,6 +1,6 @@
 import pytest
 
-from app.elaborations.services.scenarios.run_context_resolver import resolve_dynamic_value
+from app.elaborations.services.suite_runs.run_context_resolver import resolve_dynamic_value
 
 
 def test_resolve_dynamic_value_supports_ref_paths():

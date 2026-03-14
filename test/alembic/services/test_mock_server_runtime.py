@@ -127,12 +127,12 @@ def test_dispatch_mock_runtime_request_matches_and_schedules_task(monkeypatch):
                 operations=[
                     MockOperationSnapshot(
                         id="op-1",
-                        code="run_scenario",
+                        code="run_suite",
                         description="run",
-                        operation_type="run-scenario",
+                        operation_type="run-suite",
                         configuration_json={
-                            "operationType": "run-scenario",
-                            "scenario_id": "scenario-1",
+                            "operationType": "run-suite",
+                            "suite_id": "suite-1",
                         },
                         order=1,
                     )

@@ -12,8 +12,7 @@ SELECTED_DATABASE_DATASOURCE_ID_KEY = "selected_database_datasource_id"
 
 
 def _connection_label(connection_item: dict) -> str:
-    code = str(connection_item.get("code") or "-")
-    description = str(connection_item.get("description") or code)
+    description = str(connection_item.get("description") or connection_item.get("id") or "-")
     payload = connection_item.get("payload") or {}
     connection_type = str(payload.get("database_type") or "-")
     return f"{description} [{connection_type}]"
@@ -96,7 +95,6 @@ def add_database_datasource_dialog():
         st.info("Configura prima almeno una connessione database.")
         return
 
-    code = st.text_input("Code", key="add_database_datasource_code")
     description = st.text_input("Description", key="add_database_datasource_description")
     selected_connection_id = _render_connection_selector(
         "add_database_datasource",
@@ -127,8 +125,8 @@ def add_database_datasource_dialog():
     ):
         return
 
-    if not code.strip():
-        st.error("Il campo Code e' obbligatorio.")
+    if not description.strip():
+        st.error("Il campo Description e' obbligatorio.")
         return
     if not selected_object_name or not selected_object_type:
         st.error("Seleziona una tabella o una view dal tree.")
@@ -145,7 +143,6 @@ def add_database_datasource_dialog():
         response = api_post(
             "/data-source/database",
             {
-                "code": code.strip(),
                 "description": description,
                 "payload": payload,
             },
@@ -176,11 +173,6 @@ def edit_database_datasource_dialog(datasource_item: dict):
         st.info("Nessuna connessione database disponibile.")
         return
 
-    code = st.text_input(
-        "Code",
-        value=str(datasource_item.get("code") or ""),
-        key=f"edit_database_datasource_code_{datasource_id}",
-    )
     description = st.text_input(
         "Description",
         value=str(datasource_item.get("description") or ""),
@@ -222,8 +214,8 @@ def edit_database_datasource_dialog(datasource_item: dict):
     if not datasource_id:
         st.error("Id datasource non valido.")
         return
-    if not code.strip():
-        st.error("Il campo Code e' obbligatorio.")
+    if not description.strip():
+        st.error("Il campo Description e' obbligatorio.")
         return
     if not selected_object_name or not selected_object_type:
         st.error("Seleziona una tabella o una view dal tree.")
@@ -240,7 +232,6 @@ def edit_database_datasource_dialog(datasource_item: dict):
             "/data-source/database",
             {
                 "id": datasource_id,
-                "code": code.strip(),
                 "description": description,
                 "payload": updated_payload,
             },
@@ -260,7 +251,6 @@ def delete_database_datasource_dialog(datasource_item: dict):
     datasource_id = str(datasource_item.get("id") or "")
     datasource_label = (
         datasource_item.get("description")
-        or datasource_item.get("code")
         or datasource_id
         or "-"
     )
@@ -287,4 +277,3 @@ def delete_database_datasource_dialog(datasource_item: dict):
             st.rerun()
     with col_cancel:
         st.button("Annulla", key=f"delete_database_datasource_cancel_{datasource_id}")
-

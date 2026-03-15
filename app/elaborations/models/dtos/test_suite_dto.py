@@ -8,7 +8,6 @@ from elaborations.models.enums.suite_item_kind import SuiteItemKind
 
 class CreateSuiteItemOperationDto(BaseModel):
     order: int
-    code: str | None = None
     description: str | None = ""
     cfg: ConfigurationOperationTypes | None = None
     operation_id: str | None = None
@@ -17,7 +16,6 @@ class CreateSuiteItemOperationDto(BaseModel):
 class CreateSuiteItemDto(BaseModel):
     kind: str = SuiteItemKind.TEST.value
     hook_phase: str | None = None
-    code: str | None = None
     description: str | None = ""
     on_failure: str | None = OnFailure.ABORT.value
     operations: list[CreateSuiteItemOperationDto] = Field(default_factory=list)
@@ -29,7 +27,6 @@ class CreateSuiteItemDto(BaseModel):
             raise ValueError(f"Unsupported suite item kind: {self.kind}")
         self.kind = normalized_kind
 
-        normalized_code = str(self.code or "").strip()
         normalized_hook_phase = str(self.hook_phase or "").strip().lower() or None
         self.description = str(self.description or "")
         self.on_failure = str(self.on_failure or OnFailure.ABORT.value).strip().upper()
@@ -40,18 +37,13 @@ class CreateSuiteItemDto(BaseModel):
             if normalized_hook_phase not in {phase.value for phase in HookPhase}:
                 raise ValueError("hook_phase is required for hook suite items.")
             self.hook_phase = normalized_hook_phase
-            self.code = normalized_code or normalized_hook_phase
         else:
-            if not normalized_code:
-                raise ValueError("code is required for test suite items.")
-            self.code = normalized_code
             self.hook_phase = None
 
         return self
 
 
 class CreateTestSuiteDto(BaseModel):
-    code: str
     description: str
     tests: list[CreateSuiteItemDto] = Field(default_factory=list)
     hooks: list[CreateSuiteItemDto] = Field(default_factory=list)

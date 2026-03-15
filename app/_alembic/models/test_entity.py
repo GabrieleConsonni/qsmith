@@ -9,5 +9,6 @@ class TestEntity(Base,CodeDescEntity):
     __tablename__ = TEST_DEF_TABLE
     __test__ = False
 
+    code = Column(Text, nullable=False)
     test_type = Column(TEST_KIND_COL, Text, nullable=False)
     configuration_json = Column(TEST_CFG_COL, JSON, nullable=False)

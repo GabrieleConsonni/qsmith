@@ -1,12 +1,8 @@
 import streamlit as st
-import re
 
 from elaborations_shared.components.test_operation_component import (
-    _edit_test_operation_dialog,
-    _operation_status_icon,
-    _operation_type_label,
-    _render_operation_details,
     render_add_test_operation_dialog,
+    render_operation_component,
 )
 from elaborations_shared.services.data_loader_service import (
     load_operations_catalog,
@@ -62,7 +58,6 @@ def _new_suite_item(kind: str, hook_phase: str | None = None) -> dict:
         "id": None,
         "kind": kind,
         "hook_phase": hook_phase,
-        "code": hook_phase or "",
         "description": "",
         "position": 0,
         "on_failure": "ABORT",
@@ -142,7 +137,9 @@ def _load_execution_history(suite_id: str) -> list[dict]:
 def _format_execution_label(execution: dict) -> str:
     execution_id = str(execution.get("id") or "").strip() or "-"
     requested_item = str(
-        execution.get("requested_test_code") or execution.get("test_suite_code") or execution_id
+        execution.get("requested_test_id")
+        or execution.get("test_suite_description")
+        or execution_id
     ).strip()
     started_at = str(execution.get("started_at") or "-")
     status = str(execution.get("status") or "-")
@@ -171,7 +168,13 @@ def _render_execution_summary(execution: dict | None):
             st.write(str(execution.get("started_at") or "-"))
         with cols[2]:
             st.caption("Requested item")
-            st.write(str(execution.get("requested_test_code") or execution.get("test_suite_code") or "-"))
+            st.write(
+                str(
+                    execution.get("requested_test_id")
+                    or execution.get("test_suite_description")
+                    or "-"
+                )
+            )
 
         error_message = str(execution.get("error_message") or "").strip()
         if error_message:
@@ -220,24 +223,6 @@ def _open_add_test_dialog():
 
 def _close_add_test_dialog():
     st.session_state[ADD_TEST_DIALOG_OPEN_KEY] = False
-
-
-def _build_test_code(description: str, tests: list[dict]) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", str(description or "").strip().lower()).strip("-")
-    base_code = slug or "test"
-    used_codes = {
-        str(item.get("code") or "").strip().lower()
-        for item in tests
-        if isinstance(item, dict) and str(item.get("code") or "").strip()
-    }
-    if base_code not in used_codes:
-        return base_code
-
-    suffix = 2
-    while f"{base_code}-{suffix}" in used_codes:
-        suffix += 1
-    return f"{base_code}-{suffix}"
-
 
 def _get_hook_item(draft: dict, hook_phase: str) -> dict | None:
     hooks = draft.get("hooks")
@@ -295,59 +280,25 @@ def _render_suite_item_operation(
     item: dict,
     operation: dict,
     op_idx: int,
-    parent_label: str,
+    _parent_label: str,
     execution_state: dict,
 ):
     item_ui_key = str(item.get("_ui_key") or new_ui_key())
     item["_ui_key"] = item_ui_key
-
-    operation_ui_key = str(operation.get("_ui_key") or f"{item_ui_key}_op_{op_idx}")
-    operation["_ui_key"] = operation_ui_key
-    operation_code = str(operation.get("code") or "").strip()
-    operation_description = str(operation.get("description") or "").strip()
-    operation_label = (
-        f"{operation_description} [{operation_code}]"
-        if operation_code and operation_description and operation_code != operation_description
-        else (operation_description or operation_code or f"Operation {op_idx + 1}")
-    )
-
     operation_key = _operation_state_key(item.get("id"), operation.get("id"))
     operation_status = str((execution_state.get("operation_status") or {}).get(operation_key) or "idle")
     operation_error = str((execution_state.get("operation_error") or {}).get(operation_key) or "").strip()
-
-    action_cols = st.columns([1, 18, 1], gap="small", vertical_alignment="top")
-    with action_cols[0]:
-        st.button(
-            "",
-            key=f"suite_editor_operation_status_{item_ui_key}_{operation_ui_key}",
-            icon=_operation_status_icon(operation_status),
-            type="tertiary",
-            disabled=True,
-            use_container_width=True,
-        )
-    with action_cols[1]:
-        with st.expander(operation_label, expanded=False):
-            st.caption(f"{parent_label} - {_operation_type_label(str(operation.get('operation_type') or ''))}")
-            _render_operation_details(operation)
-            if operation_error:
-                st.caption(f"Error: {operation_error}")
-    with action_cols[2]:
-        if st.button(
-            "",
-            key=f"suite_editor_operation_more_{item_ui_key}_{operation_ui_key}",
-            icon=":material/more_vert:",
-            help="Modify operation",
-            type="tertiary",
-            use_container_width=True,
-        ):
-            _edit_test_operation_dialog(
-                suite_test=item,
-                operation=operation,
-                op_idx=op_idx,
-                test_ui_key=item_ui_key,
-                nonce=0,
-                persist_suite_changes_fn=_persist_changes,
-            )
+    render_operation_component(
+        suite_test=item,
+        operation=operation,
+        op_idx=op_idx,
+        test_ui_key=item_ui_key,
+        nonce=0,
+        operation_status=operation_status,
+        operation_error_message=operation_error,
+        persist_suite_changes_fn=_persist_changes,
+        summary_only=True,
+    )
 
 
 def _render_section(section_title: str, summary: str):
@@ -389,15 +340,13 @@ def _ensure_test_item(test: dict, index: int) -> dict:
         test["operations"] = []
     if not str(test.get("kind") or "").strip():
         test["kind"] = "test"
-    if not str(test.get("code") or "").strip():
-        test["code"] = f"test-{index}"
     return test
 
 
 def _test_label(test: dict, index: int) -> str:
     description = str(test.get("description") or "").strip()
-    code = str(test.get("code") or "").strip()
-    return description or code or f"Test {index}"
+    test_id = str(test.get("id") or "").strip()
+    return description or test_id or f"Test {index}"
 
 
 def _render_test_item(test: dict, index: int, execution_state: dict):
@@ -429,7 +378,7 @@ def _render_add_operation_dialog(draft: dict):
         operations_catalog = []
 
     operation_labels_by_id = {
-        str(item.get("id")): str(item.get("description") or item.get("code") or item.get("id"))
+        str(item.get("id")): str(item.get("description") or item.get("id"))
         for item in operations_catalog
         if item.get("id")
     }
@@ -462,6 +411,9 @@ def _render_add_test_dialog(draft: dict):
             use_container_width=True,
         ):
             description = str(st.session_state.get(description_key) or "").strip()
+            if not description:
+                st.error("Il campo Description del test e' obbligatorio.")
+                return
             tests = draft.setdefault("tests", [])
             if not isinstance(tests, list):
                 tests = []
@@ -470,8 +422,7 @@ def _render_add_test_dialog(draft: dict):
             tests.append(
                 {
                     **_new_suite_item("test"),
-                    "code": _build_test_code(description, tests),
-                    "description": description or f"Test {len(tests) + 1}",
+                    "description": description,
                     "position": len(tests) + 1,
                 }
             )

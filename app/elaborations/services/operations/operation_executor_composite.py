@@ -143,10 +143,9 @@ def _resolve_operation_payload(
             if isinstance(operation_input.configuration_json, dict)
             else {}
         )
-        operation_code = str(operation_input.code or operation_id)
         operation_description = str(operation_input.description or "")
         operation_order = int(operation_input.order or 0)
-        return operation_id, cfg_json, operation_code, operation_description, operation_order
+        return operation_id, cfg_json, operation_description, operation_description, operation_order
 
     # Backward compatibility for old code paths that still pass operation ids.
     operation_id = str(operation_input or "").strip()
@@ -160,10 +159,9 @@ def _resolve_operation_payload(
         if isinstance(operation_entity.configuration_json, dict)
         else {}
     )
-    operation_code = str(operation_entity.code or operation_id)
     operation_description = str(operation_entity.description or "")
     operation_order = 0
-    return operation_id, cfg_json, operation_code, operation_description, operation_order
+    return operation_id, cfg_json, operation_description, operation_description, operation_order
 
 
 def execute_operations(
@@ -180,7 +178,7 @@ def execute_operations(
     log(f"Starting execution {len(operations)} operations")
 
     for operation_input in operations:
-        op_id, op_cfg_json, op_code, op_description, op_order = _resolve_operation_payload(
+        op_id, op_cfg_json, _op_label, op_description, op_order = _resolve_operation_payload(
             session,
             operation_input,
         )
@@ -202,7 +200,6 @@ def execute_operations(
                     suite_test_execution_id=suite_test_execution_id,
                     suite_test_id=suite_test_id or None,
                     test_operation_id=op_id or None,
-                    operation_code=op_code,
                     operation_description=op_description,
                     operation_order=op_order,
                     status="running",
@@ -216,7 +213,6 @@ def execute_operations(
                     suite_item_execution_id=suite_item_execution_id,
                     suite_item_id=suite_item_id or None,
                     suite_item_operation_id=op_id or None,
-                    operation_code=op_code,
                     operation_description=op_description,
                     operation_order=op_order,
                     status="running",
@@ -259,7 +255,7 @@ def execute_operations(
                         "suite_item_execution_id": suite_item_execution_id or None,
                         "suite_item_operation_execution_id": suite_operation_execution_id or None,
                         "operation_id": op_id,
-                        "operation_code": op_code,
+                        "operation_description": op_description,
                         "operation_scope": resolved_execution_scope,
                         "operation_family": contract.family if contract else None,
                         "status": "success",
@@ -296,7 +292,7 @@ def execute_operations(
                         "suite_item_execution_id": suite_item_execution_id or None,
                         "suite_item_operation_execution_id": suite_operation_execution_id or None,
                         "operation_id": op_id,
-                        "operation_code": op_code,
+                        "operation_description": op_description,
                         "operation_scope": resolved_execution_scope,
                         "operation_family": contract.family if contract else None,
                         "status": "error",

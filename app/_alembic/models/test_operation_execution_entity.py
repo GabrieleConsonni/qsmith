@@ -32,7 +32,6 @@ class TestOperationExecutionEntity(Base, BaseIdEntity):
     )
     suite_test_id = Column(SUITE_TEST_FK, Text, nullable=True)
     test_operation_id = Column(OP_LINK_COL, Text, nullable=True)
-    operation_code = Column(Text, nullable=False)
     operation_description = Column(Text, nullable=True)
     operation_order = Column(Numeric, nullable=False, default=0)
     status = Column(Text, nullable=False, default="running")

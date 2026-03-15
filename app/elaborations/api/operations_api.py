@@ -14,7 +14,6 @@ router = APIRouter(prefix="/elaborations")
 async def insert_operation_api(dto:CreateOperationDto):
     with managed_session() as session:
         entity = OperationEntity()
-        entity.code = dto.code
         entity.description = dto.description
         entity.operation_type = dto.cfg.operationType
         entity.configuration_json = dto.cfg.model_dump()
@@ -41,7 +40,6 @@ async def find_all_operation_api(
             for op in ops:
                 result.append({
                     "id": op.id,
-                    "code": op.code,
                     "description": op.description,
                     "operation_type": op.operation_type,
                     "configuration_json": op.configuration_json
@@ -57,7 +55,6 @@ async def find_all_operation_api(
         for op in ops:
             items.append({
                 "id": op.id,
-                "code": op.code,
                 "description": op.description,
                 "operation_type": op.operation_type,
                 "configuration_json": op.configuration_json
@@ -80,7 +77,6 @@ async def find_operation_by_id_api(_id:str):
             raise QsmithAppException(f"No Operation found with id [ {_id} ]")
         return {
                 "id": op.id,
-                "code": op.code,
                 "description": op.description,
                 "operation_type": op.operation_type,
                 "configuration_json": op.configuration_json

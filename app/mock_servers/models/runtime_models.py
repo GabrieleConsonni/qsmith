@@ -5,7 +5,6 @@ from typing import Any
 @dataclass
 class MockOperationSnapshot:
     id: str
-    code: str
     description: str
     operation_type: str
     configuration_json: dict[str, Any]
@@ -15,7 +14,6 @@ class MockOperationSnapshot:
 @dataclass
 class MockApiRoute:
     id: str
-    code: str
     description: str
     order: int
     method: str
@@ -37,7 +35,6 @@ class MockApiRoute:
 @dataclass
 class MockQueueBinding:
     id: str
-    code: str
     description: str
     order: int
     queue_id: str
@@ -49,7 +46,6 @@ class MockQueueBinding:
 @dataclass
 class MockRuntimeServer:
     id: str
-    code: str
     description: str
     endpoint: str
     is_active: bool

@@ -12,8 +12,6 @@ class MockServerInvocationEntity(Base, BaseIdEntity):
         ForeignKey(f"{SCHEMA}.mock_servers.id", ondelete="CASCADE"),
         nullable=False,
     )
-    mock_server_code = Column(Text, nullable=False)
     trigger_type = Column(Text, nullable=False)
-    trigger_code = Column(Text, nullable=True)
     event_json = Column(JSON, nullable=False)
     created_at = Column(DateTime, nullable=False, default=func.now())

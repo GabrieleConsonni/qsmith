@@ -103,12 +103,11 @@ async def insert_database_data_source_api(dto: CreateJsonPayloadDto):
 
     with managed_session() as session:
         entity = JsonPayloadEntity()
-        entity.code = dto.code
         entity.description = dto.description
         entity.json_type = JsonType.DATABASE_TABLE.value
         entity.payload = dto.payload
         _id = JsonFilesService().insert(session, entity)
-        return {"id": _id, "message": f"Database datasource [ {dto.code} ] added"}
+        return {"id": _id, "message": "Database datasource added"}
 
 
 @router.put("/database")
@@ -119,12 +118,11 @@ async def update_database_data_source_api(dto: UpdateJsonPayloadDto):
         JsonFilesService().update(
             session,
             dto.id,
-            code=dto.code,
             description=dto.description,
             json_type=JsonType.DATABASE_TABLE.value,
             payload=dto.payload,
         )
-        return {"message": f"Database datasource [ {dto.code} ] updated"}
+        return {"message": "Database datasource updated"}
 
 
 @router.get("/database")
@@ -136,7 +134,6 @@ async def find_all_database_data_source_api():
             result.append(
                 {
                     "id": data.id,
-                    "code": data.code,
                     "description": data.description,
                     "payload": data.payload,
                 }
@@ -152,7 +149,6 @@ async def find_database_data_source_api(_id: str):
             raise QsmithAppException(f"No database datasource found with id [ {_id} ]")
         return {
             "id": entity.id,
-            "code": entity.code,
             "description": entity.description,
             "payload": entity.payload,
         }

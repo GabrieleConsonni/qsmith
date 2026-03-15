@@ -14,12 +14,12 @@ else:
         label = (
             f"{execution.get('status') or '-'} | "
             f"{execution.get('started_at') or '-'} | "
-            f"{execution.get('requested_test_code') or execution.get('test_suite_code') or execution.get('id')}"
+            f"{execution.get('requested_test_id') or execution.get('test_suite_description') or execution.get('id')}"
         )
         with st.expander(label, expanded=False):
-            st.write(f"Suite: {execution.get('test_suite_code') or '-'}")
+            st.write(f"Suite: {execution.get('test_suite_description') or execution.get('test_suite_id') or '-'}")
             st.write(f"Error: {execution.get('error_message') or '-'}")
             for item in execution.get("items") or []:
                 st.markdown(
-                    f"- {item.get('item_kind')} | {item.get('hook_phase') or item.get('item_code')} | {item.get('status')}"
+                    f"- {item.get('item_kind')} | {item.get('hook_phase') or item.get('item_description') or item.get('suite_item_id')} | {item.get('status')}"
                 )

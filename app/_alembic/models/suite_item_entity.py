@@ -17,7 +17,6 @@ class SuiteItemEntity(Base, BaseIdEntity):
     )
     kind = Column(Text, nullable=False, default=SuiteItemKind.TEST.value)
     hook_phase = Column(Text, nullable=True)
-    code = Column(Text, nullable=False)
     description = Column(Text, nullable=True)
     position = Column(Numeric, nullable=False, default=0)
     on_failure = Column(Text, nullable=False, default=OnFailure.ABORT.value)

@@ -30,6 +30,8 @@ Regole per layer:
 - Vietato introdurre nuove chiavi `session_state` come stringhe raw sparse: usare costanti in `state_keys.py`.
 - Operazioni mutative devono avere submit esplicito (`st.form_submit_button` o bottone di conferma in `st.dialog`).
 - Letture idempotenti ripetute devono valutare caching (`st.cache_data`/`st.cache_resource`) con invalidazione esplicita.
+- Nel `Suite Editor`, le operation renderizzate dentro i test non devono usare `st.expander`: usare `st.container(border=True)` con riepilogo `type + target/result target + description` e menu `:material/more_vert:` per modifica/cancellazione.
+- Nei dialog delle operation, i placeholder dei campi `Target` e `Result target` devono iniziare con `Example:`.
 
 ### 3) Regole di modularita e dimensione file
 - Per file nuovi UI:

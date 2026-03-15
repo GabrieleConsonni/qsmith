@@ -14,7 +14,7 @@ class RunContext:
     local_vars: dict[str, Any] = field(default_factory=dict)
     last: dict[str, Any] = field(
         default_factory=lambda: {
-            "item_code": "",
+            "item_id": "",
             "data": [],
         }
     )
@@ -98,15 +98,15 @@ def reset_local_context():
     if context is None:
         return
     context.local_vars = {}
-    context.last = {"item_code": "", "data": []}
+    context.last = {"item_id": "", "data": []}
 
 
-def set_context_last(item_code: str, data: Any):
+def set_context_last(item_id: str, data: Any):
     context = get_run_context()
     if context is None:
         return
     context.last = {
-        "item_code": str(item_code or "").strip(),
+        "item_id": str(item_id or "").strip(),
         "data": data,
     }
 
@@ -399,7 +399,7 @@ def deserialize_run_context(payload: dict[str, Any] | None) -> RunContext:
     context.last = (
         source.get("last")
         if isinstance(source.get("last"), dict)
-        else {"item_code": "", "data": []}
+        else {"item_id": "", "data": []}
     )
     context.artifacts = (
         source.get("artifacts") if isinstance(source.get("artifacts"), dict) else {}

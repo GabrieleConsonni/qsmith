@@ -14,10 +14,5 @@ class OperationService(BaseIdEntityService):
         search_value = str(search or "").strip()
         if search_value:
             search_pattern = f"%{search_value}%"
-            query = query.filter(
-                or_(
-                    OperationEntity.code.ilike(search_pattern),
-                    OperationEntity.description.ilike(search_pattern),
-                )
-            )
-        return query.order_by(OperationEntity.code.asc())
+            query = query.filter(OperationEntity.description.ilike(search_pattern))
+        return query.order_by(OperationEntity.description.asc(), OperationEntity.id.asc())

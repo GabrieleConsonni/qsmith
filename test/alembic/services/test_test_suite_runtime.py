@@ -35,17 +35,16 @@ def _cfg_payload(cfg) -> dict:
 def test_test_suite_api_and_runtime_happy_path(alembic_container):
     del alembic_container
     dto = CreateTestSuiteDto(
-        code="suite_orders",
         description="orders suite",
         hooks=[
             CreateSuiteItemDto(
                 kind="hook",
                 hook_phase="before-all",
-                code="before-all",
+                description="before all",
                 operations=[
                     CreateSuiteItemOperationDto(
                         order=1,
-                        code="set-tenant",
+                        description="set tenant",
                         cfg=_cfg_payload(SetVarConfigurationOperationDto(
                             key="tenant",
                             value="ACME",
@@ -57,11 +56,11 @@ def test_test_suite_api_and_runtime_happy_path(alembic_container):
             CreateSuiteItemDto(
                 kind="hook",
                 hook_phase="before-each",
-                code="before-each",
+                description="before each",
                 operations=[
                     CreateSuiteItemOperationDto(
                         order=1,
-                        code="set-local",
+                        description="set local",
                         cfg=_cfg_payload(SetVarConfigurationOperationDto(
                             key="local_customer",
                             value="C-001",
@@ -73,19 +72,18 @@ def test_test_suite_api_and_runtime_happy_path(alembic_container):
         ],
         tests=[
             CreateSuiteItemDto(
-                code="test-customer",
                 description="verifies global and local values",
                 operations=[
                     CreateSuiteItemOperationDto(
                         order=1,
-                        code="load-inline-data",
+                        description="load inline data",
                         cfg=_cfg_payload(DataConfigurationOperationDto(
                             data=[{"id": 1, "customer": "C-001"}],
                         )),
                     ),
                     CreateSuiteItemOperationDto(
                         order=2,
-                        code="assert-tenant",
+                        description="assert tenant",
                         cfg=_cfg_payload(AssertConfigurationOperationDto(
                             assert_type="equals",
                             actual="$.global.tenant",
@@ -94,7 +92,7 @@ def test_test_suite_api_and_runtime_happy_path(alembic_container):
                     ),
                     CreateSuiteItemOperationDto(
                         order=3,
-                        code="assert-local",
+                        description="assert local",
                         cfg=_cfg_payload(AssertConfigurationOperationDto(
                             assert_type="equals",
                             actual="$.local.local_customer",
@@ -111,7 +109,7 @@ def test_test_suite_api_and_runtime_happy_path(alembic_container):
     assert test_suite_id
 
     payload = asyncio.run(find_test_suite_api(test_suite_id))
-    assert payload["code"] == "suite_orders"
+    assert payload["description"] == "orders suite"
     assert len(payload["hooks"]) == 2
     assert len(payload["tests"]) == 1
 
@@ -119,7 +117,6 @@ def test_test_suite_api_and_runtime_happy_path(alembic_container):
         TestSuiteExecutionInput(
             execution_id=str(uuid4()),
             test_suite_id=test_suite_id,
-            test_suite_code="suite_orders",
             test_suite_description="orders suite",
         )
     )
@@ -137,15 +134,14 @@ def test_test_suite_api_and_runtime_happy_path(alembic_container):
 def test_test_execution_cannot_write_global_context(alembic_container):
     del alembic_container
     dto = CreateTestSuiteDto(
-        code="suite_global_guard",
         description="suite global guard",
         tests=[
             CreateSuiteItemDto(
-                code="test-invalid-global-write",
+                description="test invalid global write",
                 operations=[
                     CreateSuiteItemOperationDto(
                         order=1,
-                        code="set-global-in-test",
+                        description="set global in test",
                         cfg=_cfg_payload(SetVarConfigurationOperationDto(
                             key="forbidden",
                             value="boom",
@@ -165,7 +161,6 @@ def test_test_execution_cannot_write_global_context(alembic_container):
         TestSuiteExecutionInput(
             execution_id=str(uuid4()),
             test_suite_id=test_suite_id,
-            test_suite_code="suite_global_guard",
             test_suite_description="suite global guard",
         )
     )

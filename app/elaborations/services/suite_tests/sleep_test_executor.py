@@ -19,5 +19,5 @@ class SleepTestExecutor(TestExecutor):
         test_code = str(suite_test.code or suite_test.id)
         self.log(test_code, f"Slept for {cfg.duration} seconds")
         output = [{"status": "slept", "duration": str(cfg.duration)}]
-        set_context_last(item_code=test_code, data=output)
+        set_context_last(item_id=test_code, data=output)
         return output

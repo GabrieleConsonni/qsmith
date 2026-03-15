@@ -4,6 +4,5 @@ from elaborations.models.dtos.configuration_operation_dto import ConfigurationOp
 
 
 class CreateOperationDto(BaseModel):
-    code: str
     description: str
     cfg: ConfigurationOperationTypes

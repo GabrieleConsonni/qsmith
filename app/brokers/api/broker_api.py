@@ -16,7 +16,7 @@ router = APIRouter(prefix="/broker")
 async def insert_broker_connection_api(dto: CreateJsonPayloadDto):
     with managed_session() as session:
         _id = JsonFilesService().insert(session,convertDtoToEntity(dto.model_dump(),JsonType.BROKER_CONNECTION))
-    return {"id":_id, "message": f"Broker connection [ {dto.code} ] added"}
+    return {"id":_id, "message": "Broker connection added"}
 
 @router.put("/connection")
 async def update_broker_connection_api(dto: UpdateJsonPayloadDto):
@@ -24,11 +24,10 @@ async def update_broker_connection_api(dto: UpdateJsonPayloadDto):
         entity = JsonFilesService().update(
             session,
             dto.id,
-            code=dto.code,
             description=dto.description,
             payload=dto.payload
         )
-        return {"message": f"Broker connection [ {entity.code} ] updated"}
+        return {"message": "Broker connection updated"}
 
 @router.get("/connection")
 async def find_all_broker_connections_api():

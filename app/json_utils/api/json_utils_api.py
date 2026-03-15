@@ -13,7 +13,7 @@ async def extract_json_schema_api(dto:JsonPayloadDto)-> dict | str:
         builder = SchemaBuilder()
         builder.add_object(dto.payload)
         schema = builder.to_schema()
-        schema['title'] = dto.code
+        schema['title'] = str(dto.description or "payload")
         return schema
     except json.JSONDecodeError:
         return "Invalid JSON input."

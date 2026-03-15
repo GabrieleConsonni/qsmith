@@ -24,7 +24,6 @@ def _pretty_json(value: object) -> str:
 
 @st.dialog("Aggiungi json-array", width="large")
 def add_json_array_dialog():
-    code = st.text_input("Code", key="add_json_array_code")
     description = st.text_input("Description", key="add_json_array_description")
     body_key = "add_json_array_body"
     if body_key not in st.session_state:
@@ -51,8 +50,8 @@ def add_json_array_dialog():
     ):
         return
 
-    if not code:
-        st.error("Il campo Code e' obbligatorio.")
+    if not description.strip():
+        st.error("Il campo Description e' obbligatorio.")
         return
 
     payload, error = _parse_json_array(st.session_state.get(body_key, "[]"))
@@ -64,7 +63,6 @@ def add_json_array_dialog():
         response = api_post(
             "/data-source/json-array",
             {
-                "code": code,
                 "description": description,
                 "payload": payload or [],
             },
@@ -83,11 +81,6 @@ def add_json_array_dialog():
 @st.dialog("Modifica json-array", width="large")
 def edit_json_array_dialog(json_array_item: dict):
     json_array_id = json_array_item.get("id", "")
-    code = st.text_input(
-        "Code",
-        value=json_array_item.get("code", ""),
-        key=f"edit_json_array_code_{json_array_id}",
-    )
     description = st.text_input(
         "Description",
         value=json_array_item.get("description", ""),
@@ -121,8 +114,8 @@ def edit_json_array_dialog(json_array_item: dict):
     if not json_array_id:
         st.error("Id json-array non valido.")
         return
-    if not code:
-        st.error("Il campo Code e' obbligatorio.")
+    if not description.strip():
+        st.error("Il campo Description e' obbligatorio.")
         return
 
     payload, error = _parse_json_array(st.session_state.get(body_key, "[]"))
@@ -135,7 +128,6 @@ def edit_json_array_dialog(json_array_item: dict):
             "/data-source/json-array",
             {
                 "id": json_array_id,
-                "code": code,
                 "description": description,
                 "payload": payload or [],
             },
@@ -154,7 +146,6 @@ def delete_json_array_dialog(json_array_item: dict):
     json_array_id = json_array_item.get("id", "")
     json_array_label = (
         json_array_item.get("description")
-        or json_array_item.get("code")
         or json_array_id
         or "-"
     )

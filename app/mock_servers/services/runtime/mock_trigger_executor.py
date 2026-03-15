@@ -34,7 +34,7 @@ def _to_test_operation_snapshot(
     snapshot = TestOperationEntity()
     snapshot.id = operation.id
     snapshot.suite_test_id = source_id or "mock-runtime"
-    snapshot.code = operation.code
+    snapshot.code = operation.id
     snapshot.description = operation.description
     snapshot.operation_type = operation.operation_type
     snapshot.configuration_json = operation.configuration_json

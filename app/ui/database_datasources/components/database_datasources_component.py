@@ -62,7 +62,7 @@ def render_database_datasources_component(
     selected_item = _find_selected_datasource(datasources, selected_id)
     connection_labels = {
         str(item.get("id")): (
-            item.get("description") or item.get("code") or str(item.get("id"))
+            item.get("description") or str(item.get("id"))
         )
         for item in connections
         if item.get("id")
@@ -77,7 +77,6 @@ def render_database_datasources_component(
                     datasource_id = str(datasource_item.get("id") or "")
                     description = (
                         datasource_item.get("description")
-                        or datasource_item.get("code")
                         or datasource_id
                         or "-"
                     )
@@ -175,6 +174,5 @@ def render_database_datasources_component(
             ):
                 if selected_item:
                     edit_database_datasource_dialog(selected_item)
-
 
 

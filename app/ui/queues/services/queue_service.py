@@ -67,11 +67,10 @@ def load_json_arrays() -> list[dict]:
     return api_get("/data-source/json-array")
 
 
-def save_json_array(code: str, description: str, payload: list[object]) -> dict:
+def save_json_array(description: str, payload: list[object]) -> dict:
     return api_post(
         "/data-source/json-array",
         {
-            "code": code,
             "description": description,
             "payload": payload,
         },

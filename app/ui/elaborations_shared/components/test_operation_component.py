@@ -136,11 +136,11 @@ def _operation_type_label(operation_type: str) -> str:
 
 
 def _broker_label(broker_item: dict) -> str:
-    return str(broker_item.get("description") or broker_item.get("code") or "-")
+    return str(broker_item.get("description") or broker_item.get("id") or "-")
 
 
 def _json_array_label(json_array_item: dict) -> str:
-    return str(json_array_item.get("description") or json_array_item.get("code") or "-")
+    return str(json_array_item.get("description") or json_array_item.get("id") or "-")
 
 
 def _assert_object_type_label(object_type: str) -> str:
@@ -163,7 +163,7 @@ def _assert_type_label(assert_type: str) -> str:
 
 
 def _queue_label(queue_item: dict) -> str:
-    return str(queue_item.get("description") or queue_item.get("code") or "-")
+    return str(queue_item.get("description") or queue_item.get("id") or "-")
 
 
 def _normalize_select_key(key: str, options: list[str]):
@@ -179,6 +179,10 @@ def _normalize_select_key(key: str, options: list[str]):
 
 def _pretty_json(value: object) -> str:
     return json.dumps(value, indent=2, ensure_ascii=True)
+
+
+def _example_placeholder(example_value: str) -> str:
+    return f"Example: {example_value}"
 
 
 def _safe_dict(value: object) -> dict:
@@ -274,7 +278,24 @@ def _normalize_context_target_path(value: object) -> str:
 
 
 def _connection_label(connection_item: dict) -> str:
-    return str(connection_item.get("description") or connection_item.get("code") or "-")
+    return str(connection_item.get("description") or connection_item.get("id") or "-")
+
+
+def _resolve_operation_target_summary(operation_item: dict) -> tuple[str, str]:
+    configuration_json = _safe_dict(operation_item.get("configuration_json") or {})
+    target_path = str(
+        _resolve_configuration_value(configuration_json, "target", "targetPath") or ""
+    ).strip()
+    if target_path:
+        return "Target", target_path
+
+    result_target_path = str(
+        _resolve_configuration_value(configuration_json, "result_target", "resultTarget") or ""
+    ).strip()
+    if result_target_path:
+        return "Result target", result_target_path
+
+    return "Target", "-"
 
 
 def _reload_test_operations(suite_test: dict):
@@ -369,7 +390,7 @@ def _render_operation_details(operation_item: dict):
             or ""
         ).strip()
         datasource_item = datasources_by_id.get(datasource_id, {})
-        label = str(datasource_item.get("description") or datasource_item.get("code") or datasource_id or "-")
+        label = str(datasource_item.get("description") or datasource_id or "-")
         st.write(f"Dataset: {label}")
         return
 
@@ -403,8 +424,8 @@ def _render_operation_details(operation_item: dict):
             _resolve_configuration_value(configuration_json, "queue_id", "queueId") or ""
         ).strip()
         queue_item, broker_item = _find_queue_and_broker_by_queue_id(queue_id, brokers_by_id)
-        queue_label = str(queue_item.get("description") or queue_item.get("code") or queue_id or "-")
-        broker_label = str(broker_item.get("description") or broker_item.get("code") or "-")
+        queue_label = str(queue_item.get("description") or queue_id or "-")
+        broker_label = str(broker_item.get("description") or broker_item.get("id") or "-")
         st.write(f"Queue: {queue_label} [ {broker_label} ]")
         return
 
@@ -540,7 +561,6 @@ def _render_operation_details(operation_item: dict):
 
 
 def _new_draft_operation(
-    code: str = "",
     description: str = "",
     operation_type: str = OPERATION_TYPE_PUBLISH,
     configuration_json: dict | None = None,
@@ -549,7 +569,6 @@ def _new_draft_operation(
     return {
         "id": None,
         "order": order,
-        "code": str(code or "").strip(),
         "description": str(description or ""),
         "operation_type": str(operation_type or OPERATION_TYPE_PUBLISH),
         "configuration_json": configuration_json if isinstance(configuration_json, dict) else {},
@@ -557,7 +576,7 @@ def _new_draft_operation(
     }
 
 
-def _extract_operation_draft_fields(operation_item: dict) -> tuple[str, str, str, dict]:
+def _extract_operation_draft_fields(operation_item: dict) -> tuple[str, str, dict]:
     cfg = operation_item.get("configuration_json")
     if not isinstance(cfg, dict):
         cfg = {}
@@ -565,7 +584,6 @@ def _extract_operation_draft_fields(operation_item: dict) -> tuple[str, str, str
         operation_item.get("operation_type") or cfg.get("operationType") or ""
     ).strip().replace("_", "-").lower()
     return (
-        str(operation_item.get("code") or "").strip(),
         str(operation_item.get("description") or ""),
         operation_type or OPERATION_TYPE_PUBLISH,
         cfg,
@@ -583,6 +601,31 @@ def _edit_test_operation_dialog(
 ):
     operation_ui_key = operation.get("_ui_key") or f"{test_ui_key}_op_{op_idx}"
     operation["_ui_key"] = operation_ui_key
+    operation_type = _operation_type_label(str(operation.get("operation_type") or ""))
+    configuration_json = _safe_dict(operation.get("configuration_json") or {})
+    description_key = (
+        f"suite_{nonce}_test_{test_ui_key}_operation_edit_description_{operation_ui_key}"
+    )
+    cfg_key = f"suite_{nonce}_test_{test_ui_key}_operation_edit_cfg_{operation_ui_key}"
+
+    st.text_input(
+        "Description",
+        key=description_key,
+        value=str(operation.get("description") or ""),
+    )
+    st.text_input(
+        "Operation type",
+        key=f"suite_{nonce}_test_{test_ui_key}_operation_edit_type_{operation_ui_key}",
+        value=operation_type,
+        disabled=True,
+    )
+    st.text_area(
+        "Configuration JSON",
+        key=cfg_key,
+        value=_pretty_json(configuration_json),
+        height=240,
+        help="Modifica i parametri dell'operazione come oggetto JSON.",
+    )
     selected_order = int(
         st.number_input(
             "Operation order",
@@ -601,6 +644,49 @@ def _edit_test_operation_dialog(
             type="secondary",
             use_container_width=True,
         ):
+            operation_description = str(st.session_state.get(description_key) or "").strip()
+            if not operation_description:
+                st.error("Il campo Description dell'operazione e' obbligatorio.")
+                return
+
+            cfg_raw = str(st.session_state.get(cfg_key) or "").strip()
+            if not cfg_raw:
+                st.error("Il campo Configuration JSON e' obbligatorio.")
+                return
+
+            try:
+                updated_cfg = json.loads(cfg_raw)
+            except json.JSONDecodeError as exc:
+                st.error(f"Configuration JSON non valido: {str(exc)}")
+                return
+
+            if not isinstance(updated_cfg, dict):
+                st.error("Configuration JSON deve essere un oggetto JSON.")
+                return
+
+            normalized_operation_type = str(
+                updated_cfg.get("operationType") or operation.get("operation_type") or ""
+            ).strip().replace("_", "-").lower()
+            if not normalized_operation_type:
+                st.error("Configuration JSON deve includere operationType.")
+                return
+
+            target_path = _normalize_context_target_path(updated_cfg.get("target"))
+            if target_path:
+                updated_cfg["target"] = target_path
+            elif "target" in updated_cfg:
+                updated_cfg.pop("target", None)
+
+            result_target_path = _normalize_context_target_path(updated_cfg.get("result_target"))
+            if result_target_path:
+                updated_cfg["result_target"] = result_target_path
+            elif "result_target" in updated_cfg:
+                updated_cfg.pop("result_target", None)
+
+            updated_cfg["operationType"] = normalized_operation_type
+            operation["description"] = operation_description
+            operation["operation_type"] = normalized_operation_type
+            operation["configuration_json"] = updated_cfg
             operation["order"] = selected_order
             _reload_test_operations(suite_test)
             _persist_suite_changes(persist_suite_changes_fn)
@@ -643,17 +729,14 @@ def render_operation_component(
     operation_status: str = OPERATION_STATUS_IDLE,
     operation_error_message: str = "",
     persist_suite_changes_fn=None,
+    summary_only: bool = False,
 ):
     operation_ui_key = operation.get("_ui_key") or f"{test_ui_key}_op_{op_idx}"
     operation["_ui_key"] = operation_ui_key
-    operation_code = str(operation.get("code") or "").strip()
     operation_description = str(operation.get("description") or "").strip()
-    operation_label = (
-        f"{operation_description} [{operation_code}]"
-        if operation_code and operation_description and operation_code != operation_description
-        else (operation_description or operation_code or f"Operation {op_idx + 1}")
-    )
+    operation_label = operation_description or f"Operation {op_idx + 1}"
     operation_type = _operation_type_label(str(operation.get("operation_type") or ""))
+    target_label, target_value = _resolve_operation_target_summary(operation)
     operation_action_cols = st.columns([1, 18, 1], gap="small", vertical_alignment="top")
     with operation_action_cols[0]:
         st.button(
@@ -667,9 +750,19 @@ def render_operation_component(
 
     with operation_action_cols[1]:
         with st.container(border=True):
-            st.markdown(f"**{operation_label}**")
-            st.markdown(f"*{operation_type} operation*")
-            _render_operation_details(operation)
+            summary_cols = st.columns(3, gap="small", vertical_alignment="top")
+            with summary_cols[0]:
+                st.caption("Type")
+                st.write(operation_type or "-")
+            with summary_cols[1]:
+                st.caption(target_label)
+                st.write(target_value or "-")
+            with summary_cols[2]:
+                st.caption("Description")
+                st.write(operation_description or "-")
+            if not summary_only:
+                st.caption(operation_label)
+                _render_operation_details(operation)
             if operation_error_message:
                 st.caption(f"Error: {operation_error_message}")
     with operation_action_cols[2]:
@@ -711,13 +804,12 @@ def find_draft_test_by_ui_key(draft: dict, test_ui_key: str) -> dict | None:
 def append_operation_to_test(suite_test: dict, operation_item: dict):
     if not isinstance(operation_item, dict):
         return
-    code, description, operation_type, cfg = _extract_operation_draft_fields(operation_item)
-    if not code:
+    description, operation_type, cfg = _extract_operation_draft_fields(operation_item)
+    if not description:
         return
     operations = suite_test.setdefault("operations", [])
     operations.append(
         _new_draft_operation(
-            code=code,
             description=description,
             operation_type=operation_type,
             configuration_json=cfg,
@@ -727,15 +819,14 @@ def append_operation_to_test(suite_test: dict, operation_item: dict):
 
 
 def build_operation_creation_payload(dialog_nonce: int) -> tuple[dict | None, str | None]:
-    code = str(st.session_state.get(f"suite_add_operation_code_{dialog_nonce}") or "").strip()
     description = str(
         st.session_state.get(f"suite_add_operation_description_{dialog_nonce}") or ""
     )
     operation_type = str(
         st.session_state.get(f"suite_add_operation_type_{dialog_nonce}") or OPERATION_TYPE_PUBLISH
     )
-    if not code:
-        return None, "Il campo Code dell'operazione e' obbligatorio."
+    if not description.strip():
+        return None, "Il campo Description dell'operazione e' obbligatorio."
 
     cfg: dict
     if operation_type == OPERATION_TYPE_DATA:
@@ -1027,7 +1118,6 @@ def build_operation_creation_payload(dialog_nonce: int) -> tuple[dict | None, st
         return None, f"Operation type non supportato: {operation_type}"
 
     return {
-        "code": code,
         "description": description,
         "cfg": cfg,
     }, None
@@ -1039,7 +1129,6 @@ def build_draft_operation_from_creation_payload(payload: dict) -> dict:
         cfg = {}
     operation_type = str(cfg.get("operationType") or OPERATION_TYPE_PUBLISH).strip().replace("_", "-").lower()
     return {
-        "code": str((payload or {}).get("code") or "").strip(),
         "description": str((payload or {}).get("description") or ""),
         "operation_type": operation_type or OPERATION_TYPE_PUBLISH,
         "configuration_json": cfg,
@@ -1052,12 +1141,6 @@ def render_readonly_operation_preview(selected_operation: dict, dialog_nonce: in
         return
 
     operation_id = str(selected_operation.get("id") or "")
-    st.text_input(
-        "Code",
-        value=str(selected_operation.get("code") or ""),
-        key=f"suite_add_operation_preview_code_{dialog_nonce}_{operation_id}",
-        disabled=True,
-    )
     st.text_input(
         "Description",
         value=str(selected_operation.get("description") or ""),
@@ -1119,7 +1202,7 @@ def _render_existing_operations_panel(
     search_value = st.text_input(
         "Filter by text/description",
         key=search_key,
-        placeholder="Search by code or description",
+        placeholder="Search by description",
     ).strip()
     normalized_search = search_value.lower()
     if normalized_search != str(st.session_state.get(last_search_key) or ""):
@@ -1151,8 +1234,8 @@ def _render_existing_operations_panel(
 
     for op_idx, operation_item in enumerate(available_operations):
         operation_id = str(operation_item.get("id") or "").strip()
-        operation_label = operation_labels_by_id.get(operation_id) or (
-            f"{operation_item.get('code') or '-'} ({operation_item.get('description') or '-'})"
+        operation_label = operation_labels_by_id.get(operation_id) or str(
+            operation_item.get("description") or operation_id or "-"
         )
         with st.expander(operation_label, expanded=False):
             _render_operation_details(operation_item)
@@ -1253,10 +1336,6 @@ def _render_new_operation_form_panel(
 
     st.markdown("**Insert new one**")
     st.text_input(
-        "Code",
-        key=f"suite_add_operation_code_{dialog_nonce}",
-    )
-    st.text_input(
         "Description",
         key=f"suite_add_operation_description_{dialog_nonce}",
     )
@@ -1271,7 +1350,7 @@ def _render_new_operation_form_panel(
         st.text_input(
             "Target",
             key=f"suite_add_operation_target_{dialog_nonce}",
-            placeholder="$.local.actualRows",
+            placeholder=_example_placeholder("$.local.actualRows"),
             help="Context path where loaded rows are stored.",
         )
         if f"suite_add_operation_data_payload_{dialog_nonce}" not in st.session_state:
@@ -1286,7 +1365,7 @@ def _render_new_operation_form_panel(
         st.text_input(
             "Target",
             key=f"suite_add_operation_target_{dialog_nonce}",
-            placeholder="$.local.expectedRows",
+            placeholder=_example_placeholder("$.local.expectedRows"),
             help="Context path where loaded rows are stored.",
         )
         select_key = f"suite_add_operation_json_array_id_{dialog_nonce}"
@@ -1306,7 +1385,7 @@ def _render_new_operation_form_panel(
         st.text_input(
             "Target",
             key=f"suite_add_operation_target_{dialog_nonce}",
-            placeholder="$.local.actualRows",
+            placeholder=_example_placeholder("$.local.actualRows"),
             help="Context path where loaded rows are stored.",
         )
         select_key = f"suite_add_operation_dataset_id_{dialog_nonce}"
@@ -1329,7 +1408,7 @@ def _render_new_operation_form_panel(
         st.text_input(
             "Target",
             key=f"suite_add_operation_target_{dialog_nonce}",
-            placeholder="$.local.incomingMessages",
+            placeholder=_example_placeholder("$.local.incomingMessages"),
             help="Context path where loaded rows are stored.",
         )
         broker_select_key = f"suite_add_operation_broker_id_{dialog_nonce}"
@@ -1389,7 +1468,7 @@ def _render_new_operation_form_panel(
         st.text_input(
             "Result target (optional)",
             key=f"suite_add_operation_result_target_{dialog_nonce}",
-            placeholder="$.local.publishResult",
+            placeholder=_example_placeholder("$.local.publishResult"),
             help="Optional context path to store technical output.",
         )
         broker_select_key = f"suite_add_operation_broker_id_{dialog_nonce}"
@@ -1437,7 +1516,7 @@ def _render_new_operation_form_panel(
         st.text_input(
             "Result target (optional)",
             key=f"suite_add_operation_result_target_{dialog_nonce}",
-            placeholder="$.local.writeDbResult",
+            placeholder=_example_placeholder("$.local.writeDbResult"),
             help="Optional context path to store technical output.",
         )
     elif operation_type == OPERATION_TYPE_SAVE_EXTERNAL_DB:
@@ -1461,7 +1540,7 @@ def _render_new_operation_form_panel(
         st.text_input(
             "Result target (optional)",
             key=f"suite_add_operation_result_target_{dialog_nonce}",
-            placeholder="$.local.writeDbResult",
+            placeholder=_example_placeholder("$.local.writeDbResult"),
             help="Optional context path to store technical output.",
         )
         if not database_connection_ids:
@@ -1533,7 +1612,7 @@ def _render_new_operation_form_panel(
             st.text_input(
                 "Compare keys",
                 key=compare_keys_key,
-                placeholder="id, code",
+                placeholder="id, description",
                 help="Comma-separated keys used for order-insensitive comparison.",
             )
             if not json_array_ids:
@@ -1564,7 +1643,7 @@ def _render_new_operation_form_panel(
         st.text_input(
             "Result target (optional)",
             key=f"suite_add_operation_result_target_{dialog_nonce}",
-            placeholder="$.local.triggeredSuite",
+            placeholder=_example_placeholder("$.local.triggeredSuite"),
             help="Optional context path to store technical output.",
         )
     elif operation_type == OPERATION_TYPE_SET_VAR:

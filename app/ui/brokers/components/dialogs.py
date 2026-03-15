@@ -7,7 +7,6 @@ from brokers.services.data_loader_service import load_brokers, load_queues
 
 @st.dialog("Aggiungi broker")
 def add_broker_dialog():
-    code = st.text_input("Code", key="add_broker_code")
     description = st.text_input("Description", key="add_broker_description")
     broker_type_label = st.selectbox(
         "Type",
@@ -31,8 +30,8 @@ def add_broker_dialog():
         return
 
     errors = []
-    if not code:
-        errors.append("Il campo Code e' obbligatorio.")
+    if not description:
+        errors.append("Il campo Description e' obbligatorio.")
     if not endpoint_url:
         errors.append("Il campo Endpoint url e' obbligatorio.")
     if broker_type_label == "Amazon":
@@ -64,7 +63,6 @@ def add_broker_dialog():
         response = api_post(
             "/broker/connection",
             {
-                "code": code,
                 "description": description,
                 "payload": payload,
             },
@@ -84,7 +82,6 @@ def add_broker_dialog():
 def edit_broker_dialog(broker_item: dict):
     broker_id = broker_item.get("id", "")
     payload = broker_item.get("payload") or {}
-    code = st.text_input("Code", value=broker_item.get("code", ""), key=f"edit_code_{broker_id}")
     description = st.text_input(
         "Description",
         value=broker_item.get("description", ""),
@@ -126,8 +123,8 @@ def edit_broker_dialog(broker_item: dict):
         return
 
     errors = []
-    if not code:
-        errors.append("Il campo Code e' obbligatorio.")
+    if not description:
+        errors.append("Il campo Description e' obbligatorio.")
     if not endpoint_url:
         errors.append("Il campo Endpoint url e' obbligatorio.")
     if broker_type_label == "Amazon":
@@ -160,7 +157,6 @@ def edit_broker_dialog(broker_item: dict):
             "/broker/connection",
             {
                 "id": broker_id,
-                "code": code,
                 "description": description,
                 "payload": payload,
             },
@@ -424,4 +420,3 @@ def delete_queue_dialog(broker_id: str, queue_item: dict):
             st.rerun()
     with col_cancel:
         st.button("Annulla", key=f"delete_queue_cancel_{queue_id}")
-

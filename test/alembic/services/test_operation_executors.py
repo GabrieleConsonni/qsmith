@@ -588,7 +588,6 @@ def test_execute_operations_raises_when_operation_not_found(alembic_container):
 
 def test_insert_operation_api_persists_scalar_fields(alembic_container):
     dto = CreateOperationDto(
-        code=_new_name("op"),
         description="api operation",
         cfg={
             "operationType": "save-internal-db",
@@ -601,14 +600,12 @@ def test_insert_operation_api_persists_scalar_fields(alembic_container):
     with managed_session() as session:
         entity = OperationService().get_by_id(session, created_operation_id)
         assert entity is not None
-        assert entity.code == dto.code
         assert entity.description == dto.description
         assert entity.operation_type == dto.cfg.operationType
 
 
 def test_insert_operation_api_persists_assert_configuration(alembic_container):
     dto = CreateOperationDto(
-        code=_new_name("op_assert"),
         description="api assert operation",
         cfg={
             "operationType": "assert",

@@ -35,7 +35,6 @@ def build_test_suite_draft(payload: dict | None) -> dict:
 
     return {
         "id": source.get("id"),
-        "code": str(source.get("code") or ""),
         "description": str(source.get("description") or ""),
         "hooks": hooks_map,
         "tests": tests,
@@ -50,7 +49,6 @@ def draft_to_test_suite_payload(draft: dict) -> dict:
             operations.append(
                 {
                     "order": int(operation.get("order") or op_idx),
-                    "code": str(operation.get("code") or "").strip(),
                     "description": str(operation.get("description") or ""),
                     "cfg": cfg if isinstance(cfg, dict) else {},
                 }
@@ -58,7 +56,6 @@ def draft_to_test_suite_payload(draft: dict) -> dict:
 
         payload = {
             "kind": str(item.get("kind") or "test"),
-            "code": str(item.get("code") or "").strip(),
             "description": str(item.get("description") or ""),
             "on_failure": str(item.get("on_failure") or "ABORT"),
             "operations": operations,
@@ -87,7 +84,6 @@ def draft_to_test_suite_payload(draft: dict) -> dict:
         tests_payload.append(_serialize_item(item))
 
     return {
-        "code": str(draft.get("code") or "").strip(),
         "description": str(draft.get("description") or ""),
         "hooks": hooks_payload,
         "tests": tests_payload,

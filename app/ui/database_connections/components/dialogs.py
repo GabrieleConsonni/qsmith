@@ -13,7 +13,7 @@ TEST_CONNECTION_ICON = ":material/network_check:"
 
 
 def _validate_connection_fields(
-    code: str,
+    description: str,
     host: str,
     port: int,
     database: str,
@@ -22,8 +22,8 @@ def _validate_connection_fields(
     password: str,
 ) -> str | None:
     errors = []
-    if not code:
-        errors.append("Il campo Code e' obbligatorio.")
+    if not description:
+        errors.append("Il campo Description e' obbligatorio.")
     if not host:
         errors.append("Il campo Host e' obbligatorio.")
     if port <= 0:
@@ -120,7 +120,7 @@ def _render_connection_form(prefix: str, payload: dict | None = None) -> tuple[d
     left_col, right_col = st.columns(2, gap="medium")
 
     with left_col:
-        code = st.text_input("Code", key=f"{prefix}_code")
+        description = st.text_input("Description", key=f"{prefix}_description")
         host = st.text_input("Host", key=f"{prefix}_host")
         database = st.text_input(
             "Database / Service",
@@ -129,7 +129,6 @@ def _render_connection_form(prefix: str, payload: dict | None = None) -> tuple[d
         user = st.text_input("User", key=f"{prefix}_user")
 
     with right_col:
-        description = st.text_input("Description", key=f"{prefix}_description")
         port = int(
             st.number_input(
                 "Port",
@@ -143,7 +142,6 @@ def _render_connection_form(prefix: str, payload: dict | None = None) -> tuple[d
         password = st.text_input("Password", type="password", key=f"{prefix}_password")
 
     form_values = {
-        "code": code,
         "description": description,
         "database_type": selected_type,
         "host": host,
@@ -167,7 +165,7 @@ def add_database_connection_dialog():
         "user": "",
         "password": "",
     }
-    for field_name in ("code", "description", "host", "database", "db_schema", "user", "password"):
+    for field_name in ("description", "host", "database", "db_schema", "user", "password"):
         st.session_state.setdefault(f"add_db_conn_{field_name}", "")
         
     feedback_key = "add_db_conn_test_feedback"
@@ -202,7 +200,6 @@ def add_database_connection_dialog():
                     result = api_post(
                         "/database/connection/test",
                         {
-                            "code": "test-connection",
                             "description": "test-connection",
                             "payload": _build_connection_payload(values),
                         },
@@ -230,7 +227,7 @@ def add_database_connection_dialog():
             use_container_width=True,
         ):
             validation_error = _validate_connection_fields(
-                values["code"].strip(),
+                values["description"].strip(),
                 values["host"].strip(),
                 values["port"],
                 values["database"].strip(),
@@ -246,7 +243,6 @@ def add_database_connection_dialog():
                 response = api_post(
                     "/database/connection",
                     {
-                        "code": values["code"].strip(),
                         "description": values["description"],
                         "payload": _build_connection_payload(values),
                     },
@@ -271,7 +267,6 @@ def edit_database_connection_dialog(connection_item: dict):
     payload = connection_item.get("payload") or {}
 
     defaults = {
-        "code": str(connection_item.get("code") or ""),
         "description": str(connection_item.get("description") or ""),
         "host": str(payload.get("host") or ""),
         "database": str(payload.get("database") or ""),
@@ -320,7 +315,6 @@ def edit_database_connection_dialog(connection_item: dict):
                     result = api_post(
                         "/database/connection/test",
                         {
-                            "code": values["code"].strip() or "test-connection",
                             "description": values["description"] or "test-connection",
                             "payload": _build_connection_payload(values),
                         },
@@ -348,7 +342,7 @@ def edit_database_connection_dialog(connection_item: dict):
             use_container_width=True,
         ):
             validation_error = _validate_connection_fields(
-                values["code"].strip(),
+                values["description"].strip(),
                 values["host"].strip(),
                 values["port"],
                 values["database"].strip(),
@@ -365,7 +359,6 @@ def edit_database_connection_dialog(connection_item: dict):
                     "/database/connection",
                     {
                         "id": connection_id,
-                        "code": values["code"].strip(),
                         "description": values["description"],
                         "payload": _build_connection_payload(values),
                     },
@@ -386,7 +379,7 @@ def edit_database_connection_dialog(connection_item: dict):
 def delete_database_connection_dialog(connection_item: dict):
     connection_id = str(connection_item.get("id") or "")
     connection_label = (
-        connection_item.get("description") or connection_item.get("code") or connection_id or "-"
+        connection_item.get("description") or connection_id or "-"
     )
     st.write(f"Eliminare la connessione database '{connection_label}'?")
 

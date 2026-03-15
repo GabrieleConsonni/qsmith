@@ -37,7 +37,6 @@ from logs.services.alembic.log_service import LogService
 class SuiteExecutionInput:
     execution_id: str
     suite_id: str
-    suite_code: str
     suite_description: str = ""
     event: dict[str, Any] | None = None
     vars_init: dict[str, Any] | None = None
@@ -102,28 +101,17 @@ def _execute(suite_input: SuiteExecutionInput):
     with managed_session() as session:
         suite_execution_service = SuiteExecutionService()
         suite_test_execution_service = SuiteTestExecutionService()
+        suite_label = str(suite_input.suite_description or suite_input.suite_id).strip()
 
         suite_tests_all: list[SuiteTestEntity] = SuiteTestService().get_all_by_suite_id(
             session, suite_input.suite_id
         )
         target_test_id = str(suite_input.target_suite_test_id or "").strip()
-        target_test_code = str(
-            next(
-                (
-                    suite_test.code
-                    for suite_test in suite_tests_all
-                    if str(suite_test.id) == target_test_id
-                ),
-                "",
-            )
-            or ""
-        )
 
         suite_execution_id = suite_execution_service.insert(
             session,
             SuiteExecutionEntity(
                 suite_id=suite_input.suite_id,
-                suite_code=suite_input.suite_code,
                 suite_description=suite_input.suite_description,
                 status="running",
                 invocation_id=str(suite_input.invocation_id or "").strip() or None,
@@ -134,7 +122,6 @@ def _execute(suite_input: SuiteExecutionInput):
                 ),
                 include_previous=bool(suite_input.include_previous),
                 requested_test_id=target_test_id or None,
-                requested_test_code=target_test_code or None,
             ),
         )
         run_context = create_run_context(
@@ -162,7 +149,7 @@ def _execute(suite_input: SuiteExecutionInput):
             error_count = 0
             first_error_message = ""
             try:
-                start_message = f"Starting execution of suite '{suite_input.suite_code}'"
+                start_message = f"Starting execution of suite '{suite_label}'"
                 log(suite_input.suite_id, message=start_message)
                 publish_execution_event(
                     suite_input.execution_id,
@@ -170,7 +157,7 @@ def _execute(suite_input: SuiteExecutionInput):
                     {
                         "suite_execution_id": suite_execution_id,
                         "suite_id": suite_input.suite_id,
-                        "suite_code": suite_input.suite_code,
+                        "suite_description": suite_input.suite_description,
                         "target_suite_test_id": suite_input.target_suite_test_id,
                         "include_previous": suite_input.include_previous,
                     },
@@ -200,7 +187,6 @@ def _execute(suite_input: SuiteExecutionInput):
                         SuiteTestExecutionEntity(
                             suite_execution_id=suite_execution_id,
                             suite_test_id=suite_test.id,
-                            test_code=str(suite_test.code or ""),
                             test_description=str(suite_test.description or ""),
                             test_order=suite_test.order,
                             status="running",
@@ -209,7 +195,7 @@ def _execute(suite_input: SuiteExecutionInput):
 
                     test_start_message = (
                         f"Executing suite_test {suite_test.order} "
-                        f"of {total_tests} in suite '{suite_input.suite_code}'"
+                        f"of {total_tests} in suite '{suite_label}'"
                     )
                     log(suite_input.suite_id, message=test_start_message)
                     publish_execution_event(
@@ -219,7 +205,7 @@ def _execute(suite_input: SuiteExecutionInput):
                             "suite_execution_id": suite_execution_id,
                             "suite_test_execution_id": test_execution_id,
                             "suite_test_id": suite_test.id,
-                            "test_code": suite_test.code,
+                            "test_description": str(suite_test.description or ""),
                             "test_order": int(suite_test.order),
                             "test_index": test_index,
                             "total_tests": total_tests,
@@ -248,7 +234,7 @@ def _execute(suite_input: SuiteExecutionInput):
                                 "suite_execution_id": suite_execution_id,
                                 "suite_test_execution_id": test_execution_id,
                                 "suite_test_id": suite_test.id,
-                                "test_code": suite_test.code,
+                                "test_description": str(suite_test.description or ""),
                                 "test_order": int(suite_test.order),
                                 "status": "success",
                                 "result": test_results,
@@ -260,7 +246,7 @@ def _execute(suite_input: SuiteExecutionInput):
                             first_error_message = str(test_exception)
                         error_message = (
                             f"Error executing suite_test n.'{suite_test.order}' "
-                            f"in suite '{suite_input.suite_code}'"
+                            f"in suite '{suite_label}'"
                         )
                         log(
                             suite_input.suite_id,
@@ -282,7 +268,7 @@ def _execute(suite_input: SuiteExecutionInput):
                                 "suite_execution_id": suite_execution_id,
                                 "suite_test_execution_id": test_execution_id,
                                 "suite_test_id": suite_test.id,
-                                "test_code": suite_test.code,
+                                "test_description": str(suite_test.description or ""),
                                 "test_order": int(suite_test.order),
                                 "status": "error",
                                 "error": str(test_exception),
@@ -301,7 +287,7 @@ def _execute(suite_input: SuiteExecutionInput):
                             },
                         )
 
-                finish_message = f"Finished execution of suite '{suite_input.suite_code}'"
+                finish_message = f"Finished execution of suite '{suite_label}'"
                 log(
                     suite_input.suite_id,
                     message=finish_message,
@@ -313,7 +299,7 @@ def _execute(suite_input: SuiteExecutionInput):
                     first_error_message = str(suite_exception)
                 log(
                     suite_input.suite_id,
-                    message=f"Suite execution failed for '{suite_input.suite_code}'",
+                    message=f"Suite execution failed for '{suite_label}'",
                     level=LogLevel.ERROR,
                     payload={"error": str(suite_exception)},
                 )
@@ -334,7 +320,7 @@ def _execute(suite_input: SuiteExecutionInput):
                 payload = {
                     "suite_execution_id": suite_execution_id,
                     "suite_id": suite_input.suite_id,
-                    "suite_code": suite_input.suite_code,
+                    "suite_description": suite_input.suite_description,
                     "status": execution_status,
                     "results": results,
                     "errors": error_count,
@@ -375,15 +361,13 @@ class SuiteExecutorThread(threading.Thread):
                 log(suite_id, message=message, level=LogLevel.ERROR)
                 raise QsmithAppException(message)
             self.suite_id = suite.id
-            self.suite_code = suite.code
-            self.suite_description = str(suite.description or "")
+            self.suite_description = str(suite.description or suite.code or suite.id or "")
 
     def run(self):
         _execute(
             SuiteExecutionInput(
                 execution_id=self.execution_id,
                 suite_id=self.suite_id,
-                suite_code=self.suite_code,
                 suite_description=self.suite_description,
                 event=self.run_event,
                 vars_init=self.vars_init,

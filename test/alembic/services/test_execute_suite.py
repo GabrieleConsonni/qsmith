@@ -34,7 +34,7 @@ def test_execution(alembic_container):
         test_suite_id = TestSuiteService().insert(
             session,
             TestSuiteEntity(
-                code="suite_code"
+                description="suite execution"
             )
         )
         suite_item_id = SuiteItemService().insert(
@@ -42,7 +42,7 @@ def test_execution(alembic_container):
             SuiteItemEntity(
                 test_suite_id=test_suite_id,
                 kind=SuiteItemKind.TEST.value,
-                code="test1_code",
+                description="test 1",
                 position=0,
                 on_failure=OnFailure.ABORT.value,
             )
@@ -51,7 +51,7 @@ def test_execution(alembic_container):
             session,
             SuiteItemOperationEntity(
                 suite_item_id=suite_item_id,
-                code="operation_1",
+                description="operation 1",
                 operation_type=OperationType.DATA.value,
                 configuration_json={
                     "operationType": "data",
@@ -64,7 +64,7 @@ def test_execution(alembic_container):
     _execute(TestSuiteExecutionInput(
         execution_id=str(uuid4()),
         test_suite_id=test_suite_id,
-        test_suite_code="suite_code",
+        test_suite_description="suite execution",
     ))
 
     with managed_session() as session:
@@ -104,14 +104,14 @@ def test_execution_with_assert_failure_marks_error_statuses(alembic_container):
     with managed_session() as session:
         test_suite_id = TestSuiteService().insert(
             session,
-            TestSuiteEntity(code="suite_assert_error"),
+            TestSuiteEntity(description="suite assert error"),
         )
         suite_item_id = SuiteItemService().insert(
             session,
             SuiteItemEntity(
                 test_suite_id=test_suite_id,
                 kind=SuiteItemKind.TEST.value,
-                code="test_assert_error",
+                description="test assert error",
                 position=0,
                 on_failure=OnFailure.ABORT.value,
             ),
@@ -120,7 +120,7 @@ def test_execution_with_assert_failure_marks_error_statuses(alembic_container):
             session,
             SuiteItemOperationEntity(
                 suite_item_id=suite_item_id,
-                code="assert_empty",
+                description="assert empty",
                 operation_type=OperationType.ASSERT.value,
                 configuration_json={
                     "operationType": "assert",
@@ -137,7 +137,7 @@ def test_execution_with_assert_failure_marks_error_statuses(alembic_container):
         TestSuiteExecutionInput(
             execution_id=str(uuid4()),
             test_suite_id=test_suite_id,
-            test_suite_code="suite_assert_error",
+            test_suite_description="suite assert error",
         )
     )
 

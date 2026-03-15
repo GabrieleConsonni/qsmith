@@ -16,7 +16,6 @@ class SuiteItemExecutionEntity(Base, BaseIdEntity):
     suite_item_id = Column(Text, nullable=True)
     item_kind = Column(Text, nullable=False)
     hook_phase = Column(Text, nullable=True)
-    item_code = Column(Text, nullable=False)
     item_description = Column(Text, nullable=True)
     position = Column(Numeric, nullable=False, default=0)
     status = Column(Text, nullable=False, default="running")

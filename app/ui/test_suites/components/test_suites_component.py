@@ -55,7 +55,6 @@ def _show_feedback():
 @st.dialog("New test suite", width="medium")
 def _create_test_suite_dialog():
     dialog_suffix = "test_suite_create"
-    st.text_input("Code", key=f"{dialog_suffix}_code")
     st.text_input("Description", key=f"{dialog_suffix}_description")
 
     action_cols = st.columns([1, 1], gap="small", vertical_alignment="center")
@@ -67,15 +66,13 @@ def _create_test_suite_dialog():
             type="secondary",
             use_container_width=True,
         ):
-            code = str(st.session_state.get(f"{dialog_suffix}_code") or "").strip()
             description = str(st.session_state.get(f"{dialog_suffix}_description") or "")
-            if not code:
-                st.error("Code is required.")
+            if not description.strip():
+                st.error("Description is required.")
                 return
             try:
                 response = create_test_suite(
                     {
-                        "code": code,
                         "description": description,
                         "hooks": [],
                         "tests": [],
@@ -110,11 +107,6 @@ def _edit_test_suite_dialog(suite_item: dict):
 
     dialog_suffix = f"test_suite_actions_{suite_id}"
     st.text_input(
-        "Code",
-        key=f"{dialog_suffix}_code",
-        value=str(suite_item.get("code") or ""),
-    )
-    st.text_input(
         "Description",
         key=f"{dialog_suffix}_description",
         value=str(suite_item.get("description") or ""),
@@ -129,16 +121,14 @@ def _edit_test_suite_dialog(suite_item: dict):
             type="secondary",
             use_container_width=True,
         ):
-            code = str(st.session_state.get(f"{dialog_suffix}_code") or "").strip()
             description = str(st.session_state.get(f"{dialog_suffix}_description") or "")
-            if not code:
-                st.error("Code is required.")
+            if not description.strip():
+                st.error("Description is required.")
                 return
             try:
                 suite_detail = get_test_suite_by_id(suite_id)
                 draft = build_test_suite_draft(suite_detail)
                 draft["id"] = suite_id
-                draft["code"] = code
                 draft["description"] = description
                 payload = draft_to_test_suite_payload(draft)
                 payload["id"] = suite_id
@@ -198,13 +188,11 @@ def render_test_suites_page():
     for idx, suite in enumerate(suites):
         suite_id = str(suite.get("id") or "").strip()
         description = str(suite.get("description") or "").strip() or "No description"
-        code = str(suite.get("code") or "").strip() or "-"
 
         with st.container(border=True):
             row = st.columns([9, 1, 1], gap="small", vertical_alignment="center")
             with row[0]:
                 st.write(description)
-                st.caption(code)
             with row[1]:
                 if st.button(
                     "",
@@ -219,7 +207,7 @@ def render_test_suites_page():
                     "",
                     key=f"test_suite_actions_{suite_id or idx}",
                     icon=":material/more_vert:",
-                    help="Edit code and description",
+                    help="Edit description",
                     use_container_width=True,
                 ):
                     _edit_test_suite_dialog(suite)

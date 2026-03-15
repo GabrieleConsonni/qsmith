@@ -23,7 +23,6 @@ def _serialize_operation(operation: dict) -> dict:
     )
     return {
         "order": int(operation.get("order") or 0),
-        "code": str(operation.get("code") or "").strip(),
         "description": str(operation.get("description") or ""),
         "cfg": configuration_json,
     }
@@ -50,7 +49,6 @@ def _serialize_api(api_entry: dict) -> dict:
     cfg = {**configuration_json, "method": method, "path": path}
     return {
         "order": int(api_entry.get("order") or 0),
-        "code": str(api_entry.get("code") or "").strip(),
         "description": str(api_entry.get("description") or ""),
         "cfg": cfg,
         "operations": [
@@ -69,7 +67,6 @@ def _serialize_queue(queue_entry: dict) -> dict:
     )
     return {
         "order": int(queue_entry.get("order") or 0),
-        "code": str(queue_entry.get("code") or "").strip(),
         "description": str(queue_entry.get("description") or ""),
         "queue_id": str(queue_entry.get("queue_id") or "").strip(),
         "cfg": configuration_json,
@@ -88,18 +85,16 @@ def _build_update_payload(
     endpoint: str,
 ) -> tuple[dict | None, str | None]:
     server_id = str(server_item.get("id") or "").strip()
-    code = str(server_item.get("code") or "").strip()
     normalized_endpoint = _normalize_endpoint(endpoint)
     if not server_id:
         return None, "Mock server non valido."
-    if not code:
-        return None, "Il campo Code e' obbligatorio."
     if not normalized_endpoint:
         return None, "Il campo Endpoint e' obbligatorio."
+    if not str(description or "").strip():
+        return None, "Il campo Description e' obbligatorio."
 
     payload = {
         "id": server_id,
-        "code": code,
         "description": description,
         "cfg": {"endpoint": normalized_endpoint},
         "apis": [
@@ -120,7 +115,6 @@ def _build_update_payload(
 @st.dialog("Add mock server", width="medium")
 def add_mock_server_dialog():
     dialog_suffix = "mock_server_create"
-    st.text_input("Code", key=f"{dialog_suffix}_code")
     st.text_input("Description", key=f"{dialog_suffix}_description")
     st.text_input(
         "Endpoint",
@@ -133,17 +127,15 @@ def add_mock_server_dialog():
         icon=":material/save:",
         use_container_width=True,
     ):
-        code = str(st.session_state.get(f"{dialog_suffix}_code") or "").strip()
         description = str(st.session_state.get(f"{dialog_suffix}_description") or "")
         endpoint = _normalize_endpoint(st.session_state.get(f"{dialog_suffix}_endpoint"))
-        if not code:
-            st.error("Il campo Code e' obbligatorio.")
+        if not description.strip():
+            st.error("Il campo Description e' obbligatorio.")
             return
         if not endpoint:
             st.error("Il campo Endpoint e' obbligatorio.")
             return
         payload = {
-            "code": code,
             "description": description,
             "cfg": {"endpoint": endpoint},
             "apis": [],
@@ -172,12 +164,6 @@ def mock_server_actions_dialog(server_item: dict):
         "Modifica disponibile solo se il server e' disattivato."
         if is_active
         else "Il server e' disattivato: puoi modificare descrizione e endpoint."
-    )
-    st.text_input(
-        "Code",
-        value=str(server_item.get("code") or ""),
-        key=f"{dialog_suffix}_code",
-        disabled=True,
     )
     st.text_input(
         "Description",
@@ -258,7 +244,7 @@ def render_mock_servers_component():
     for idx, server_item in enumerate(servers):
         server_id = str(server_item.get("id") or "")
         endpoint = _normalize_endpoint(server_item.get("endpoint")) or "-"
-        label = str(server_item.get("description") or server_item.get("code") or "-")
+        label = str(server_item.get("description") or server_id or "-")
         is_active = bool(server_item.get("is_active"))
         with st.container(border=True):
             row = st.columns([8, 1, 1, 1], gap="small", vertical_alignment="center")

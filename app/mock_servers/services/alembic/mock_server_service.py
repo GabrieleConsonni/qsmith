@@ -12,14 +12,18 @@ class MockServerService(BaseIdEntityService):
         return MockServerEntity
 
     def get_all_ordered(self, session: Session) -> list[MockServerEntity]:
-        return session.query(MockServerEntity).order_by(MockServerEntity.code.asc()).all()
+        return (
+            session.query(MockServerEntity)
+            .order_by(MockServerEntity.description.asc(), MockServerEntity.id.asc())
+            .all()
+        )
 
     def get_all_active(self, session: Session) -> list[MockServerEntity]:
         is_active_attr: InstrumentedAttribute = MockServerEntity.is_active
         return (
             session.query(MockServerEntity)
             .filter(is_active_attr == True)  # noqa: E712
-            .order_by(MockServerEntity.code.asc())
+            .order_by(MockServerEntity.description.asc(), MockServerEntity.id.asc())
             .all()
         )
 

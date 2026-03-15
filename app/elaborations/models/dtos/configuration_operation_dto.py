@@ -112,21 +112,16 @@ class SaveToExternalDBConfigurationOperationDto(ConfigurationOperationDto):
 
 class RunSuiteConfigurationOperationDto(ConfigurationOperationDto):
     operationType: str = OperationType.RUN_SUITE.value
-    suite_id: str | None = None
-    suite_code: str | None = None
+    suite_id: str
     init_vars: dict | None = None
     result_target: str | None = None
 
     @model_validator(mode="after")
     def validate_run_suite_configuration(self):
         suite_id = str(self.suite_id or "").strip()
-        suite_code = str(self.suite_code or "").strip()
-        if not suite_id and not suite_code:
-            raise ValueError(
-                "suite_id or suite_code is required for run-suite operation."
-            )
-        self.suite_id = suite_id or None
-        self.suite_code = suite_code or None
+        if not suite_id:
+            raise ValueError("suite_id is required for run-suite operation.")
+        self.suite_id = suite_id
         self.init_vars = self.init_vars if isinstance(self.init_vars, dict) else None
         self.result_target = _normalize_target_path(self.result_target)
         return self
@@ -371,13 +366,6 @@ def convert_to_config_operation_type(data: dict):
     if operation_type in {OperationType.RUN_SUITE.value, "run-suite"}:
         return RunSuiteConfigurationOperationDto(
             suite_id=_first_non_empty(data, "suite_id", "suiteId", "suite_id", "suiteId"),
-            suite_code=_first_non_empty(
-                data,
-                "suite_code",
-                "suiteCode",
-                "suite_code",
-                "suiteCode",
-            ),
             init_vars=_first_non_empty(data, "init_vars", "initVars"),
             result_target=_first_non_empty(
                 data, "result_target", "resultTarget", "outputTarget"

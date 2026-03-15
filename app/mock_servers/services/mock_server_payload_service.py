@@ -25,7 +25,6 @@ def _safe_cfg(value: dict | None) -> dict[str, Any]:
 
 def _build_mock_server_entity(dto: CreateMockServerDto | UpdateMockServerDto) -> MockServerEntity:
     entity = MockServerEntity()
-    entity.code = str(dto.code or "").strip()
     entity.description = str(dto.description or "")
     entity.endpoint = str(dto.cfg.endpoint or "").strip().lower()
     entity.configuration_json = dto.cfg.model_dump()
@@ -36,7 +35,6 @@ def _build_mock_server_entity(dto: CreateMockServerDto | UpdateMockServerDto) ->
 def _build_api_entity(mock_server_id: str, api_dto: MockServerApiDto) -> MockServerApiEntity:
     entity = MockServerApiEntity()
     entity.mock_server_id = mock_server_id
-    entity.code = str(api_dto.code or "").strip()
     entity.description = str(api_dto.description or "")
     entity.order = int(api_dto.order or 0)
     entity.method = str(api_dto.cfg.method or "").strip().upper()
@@ -52,7 +50,6 @@ def _build_queue_entity(
     entity = MockServerQueueEntity()
     entity.mock_server_id = mock_server_id
     entity.queue_id = str(queue_dto.queue_id or "").strip()
-    entity.code = str(queue_dto.code or "").strip()
     entity.description = str(queue_dto.description or "")
     entity.order = int(queue_dto.order or 0)
     entity.configuration_json = queue_dto.cfg.model_dump()
@@ -65,7 +62,6 @@ def _build_api_operation_entity(
 ) -> MsApiOperationEntity:
     entity = MsApiOperationEntity()
     entity.mock_server_api_id = mock_server_api_id
-    entity.code = str(op_dto.code or "").strip()
     entity.description = str(op_dto.description or "")
     entity.operation_type = str(op_dto.cfg.operationType or "").strip()
     entity.configuration_json = op_dto.cfg.model_dump()
@@ -79,7 +75,6 @@ def _build_queue_operation_entity(
 ) -> MsQueueOperationEntity:
     entity = MsQueueOperationEntity()
     entity.mock_server_queue_id = mock_server_queue_id
-    entity.code = str(op_dto.code or "").strip()
     entity.description = str(op_dto.description or "")
     entity.operation_type = str(op_dto.cfg.operationType or "").strip()
     entity.configuration_json = op_dto.cfg.model_dump()
@@ -142,7 +137,6 @@ def update_mock_server(session, dto: UpdateMockServerDto) -> MockServerEntity:
     mock_server_service.update(
         session,
         dto.id,
-        code=str(dto.code or "").strip(),
         description=str(dto.description or ""),
         endpoint=str(dto.cfg.endpoint or "").strip().lower(),
         configuration_json=dto.cfg.model_dump(),
@@ -161,7 +155,6 @@ def update_mock_server(session, dto: UpdateMockServerDto) -> MockServerEntity:
 def _serialize_operation(operation) -> dict:
     return {
         "id": operation.id,
-        "code": operation.code,
         "description": operation.description,
         "operation_type": operation.operation_type,
         "configuration_json": _safe_cfg(operation.configuration_json),
@@ -174,7 +167,6 @@ def _serialize_api(session, api_entity: MockServerApiEntity) -> dict:
     return {
         "id": api_entity.id,
         "mock_server_id": api_entity.mock_server_id,
-        "code": api_entity.code,
         "description": api_entity.description,
         "method": api_entity.method,
         "path": api_entity.path,
@@ -193,7 +185,6 @@ def _serialize_queue(session, queue_entity: MockServerQueueEntity) -> dict:
         "id": queue_entity.id,
         "mock_server_id": queue_entity.mock_server_id,
         "queue_id": queue_entity.queue_id,
-        "code": queue_entity.code,
         "description": queue_entity.description,
         "order": int(queue_entity.order or 0),
         "configuration_json": _safe_cfg(queue_entity.configuration_json),
@@ -206,7 +197,6 @@ def serialize_mock_server(session, entity: MockServerEntity) -> dict:
     queues = MockServerQueueService().get_all_by_server_id(session, entity.id)
     return {
         "id": entity.id,
-        "code": entity.code,
         "description": entity.description,
         "endpoint": entity.endpoint,
         "is_active": bool(entity.is_active),

@@ -1,6 +1,5 @@
 from sqlalchemy.orm import Session
 
-from elaborations.services.alembic.test_suite_service import TestSuiteService
 from elaborations.models.dtos.configuration_operation_dto import (
     RunSuiteConfigurationOperationDto,
 )
@@ -19,14 +18,7 @@ from elaborations.services.suite_runs.run_context_resolver import resolve_dynami
 class RunSuiteOperationExecutor(OperationExecutor):
     @staticmethod
     def _resolve_suite_id(session: Session, cfg: RunSuiteConfigurationOperationDto) -> str:
-        suite_id = str(cfg.suite_id or "").strip()
-        if suite_id:
-            return suite_id
-        suite_code = str(cfg.suite_code or "").strip()
-        suite_entity = TestSuiteService().get_by_code(session, suite_code)
-        if suite_entity is None:
-            raise ValueError(f"Test suite with code '{suite_code}' not found.")
-        return str(suite_entity.id)
+        return str(cfg.suite_id or "").strip()
 
     def execute(
         self,
@@ -61,7 +53,6 @@ class RunSuiteOperationExecutor(OperationExecutor):
             message=message,
             payload={
                 "suite_id": suite_id,
-                "suite_code": str(cfg.suite_code or "").strip() or None,
                 "execution_id": execution_id,
                 "init_vars": init_vars,
                 "invocation_id": run_context.invocation_id if run_context else None,

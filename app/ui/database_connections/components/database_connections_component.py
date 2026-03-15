@@ -15,7 +15,6 @@ def render_database_connections_component(connections: list[dict]):
         connection_id = str(connection_item.get("id") or "")
         connection_label = (
             connection_item.get("description")
-            or connection_item.get("code")
             or connection_id
             or "-"
         )
@@ -56,4 +55,3 @@ def render_database_connections_component(connections: list[dict]):
             use_container_width=True,
         ):
             add_database_connection_dialog()
-

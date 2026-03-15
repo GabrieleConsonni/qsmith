@@ -51,7 +51,7 @@ class TestExecutor(ABC):
         test_operations = cls.find_all_operations(session, test_id)
         with bind_execution_context(suite_test_id=test_id):
             execution_result = execute_operations(session, test_operations, data)
-        set_context_last(item_code=test_code, data=execution_result.data)
+        set_context_last(item_id=test_code, data=execution_result.data)
         return execution_result.result
 
     @classmethod

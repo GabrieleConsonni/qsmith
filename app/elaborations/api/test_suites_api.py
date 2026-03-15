@@ -47,7 +47,6 @@ def _build_suite_item_operation_entity(session, dto: CreateSuiteItemOperationDto
         source_operation = OperationService().get_by_id(session, operation_id)
         if not source_operation:
             raise QsmithAppException(f"No operation found with id [ {operation_id} ]")
-        entity.code = str(dto.code or source_operation.code or "").strip()
         entity.description = (
             str(dto.description)
             if dto.description is not None and str(dto.description).strip()
@@ -64,13 +63,10 @@ def _build_suite_item_operation_entity(session, dto: CreateSuiteItemOperationDto
             )
         )
     else:
-        entity.code = str(dto.code or "").strip()
         entity.description = str(dto.description or "")
         entity.operation_type = dto_type
         entity.configuration_json = dto_cfg if isinstance(dto_cfg, dict) else {}
 
-    if not entity.code:
-        raise QsmithAppException("Operation code is required.")
     if not entity.operation_type:
         raise QsmithAppException("Operation type is required.")
     return entity
@@ -81,7 +77,6 @@ def _build_suite_item_entity(test_suite_id: str, dto: CreateSuiteItemDto, positi
     entity.test_suite_id = test_suite_id
     entity.kind = str(dto.kind or SuiteItemKind.TEST.value)
     entity.hook_phase = str(dto.hook_phase or "").strip() or None
-    entity.code = str(dto.code or "").strip()
     entity.description = str(dto.description or "")
     entity.position = position
     entity.on_failure = _normalize_on_failure(dto.on_failure)
@@ -131,7 +126,6 @@ def _serialize_operation(operation: SuiteItemOperationEntity) -> dict:
     return {
         "id": operation.id,
         "suite_item_id": operation.suite_item_id,
-        "code": operation.code,
         "description": operation.description,
         "operation_type": operation.operation_type,
         "configuration_json": operation.configuration_json,
@@ -146,7 +140,6 @@ def _serialize_item(session, item: SuiteItemEntity) -> dict:
         "test_suite_id": item.test_suite_id,
         "kind": item.kind,
         "hook_phase": item.hook_phase,
-        "code": item.code,
         "description": item.description,
         "position": int(item.position),
         "on_failure": item.on_failure,
@@ -158,7 +151,6 @@ def _serialize_item(session, item: SuiteItemEntity) -> dict:
 async def insert_test_suite_api(dto: CreateTestSuiteDto):
     with managed_session() as session:
         entity = TestSuiteEntity()
-        entity.code = dto.code
         entity.description = dto.description
         test_suite_id = TestSuiteService().insert(session, entity)
         _insert_suite_items(session, test_suite_id, hooks=dto.hooks or [], tests=dto.tests or [])
@@ -168,7 +160,7 @@ async def insert_test_suite_api(dto: CreateTestSuiteDto):
 @router.put("/test-suite")
 async def update_test_suite_api(dto: UpdateTestSuiteDto):
     with managed_session() as session:
-        entity = TestSuiteService().update(session, dto.id, code=dto.code, description=dto.description)
+        entity = TestSuiteService().update(session, dto.id, description=dto.description)
         if not entity:
             raise QsmithAppException(f"No test suite found with id [ {dto.id} ]")
         SuiteItemService().delete_by_suite_id(session, dto.id)
@@ -180,7 +172,7 @@ async def update_test_suite_api(dto: UpdateTestSuiteDto):
 async def find_all_test_suites_api():
     with managed_session() as session:
         return [
-            {"id": suite.id, "code": suite.code, "description": suite.description}
+            {"id": suite.id, "description": suite.description}
             for suite in TestSuiteService().get_all(session)
         ]
 
@@ -202,7 +194,6 @@ async def find_test_suite_api(_id: str):
                 tests.append(serialized)
         return {
             "id": suite.id,
-            "code": suite.code,
             "description": suite.description,
             "hooks": hooks,
             "tests": tests,

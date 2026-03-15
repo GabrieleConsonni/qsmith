@@ -78,7 +78,6 @@ def _list_database_objects(connection, schema: str | None = None) -> dict:
 async def insert_database_connection_api(dto: CreateJsonPayloadDto):
     with managed_session() as session:
         entity = JsonPayloadEntity()
-        entity.code = dto.code
         entity.description = dto.description
         entity.json_type = JsonType.DATABASE_CONNECTION.value
         entity.payload = dto.payload
@@ -89,7 +88,6 @@ async def insert_database_connection_api(dto: CreateJsonPayloadDto):
 async def update_database_connection_api(dto: UpdateJsonPayloadDto):
     with managed_session() as session:
         _id = JsonFilesService().update(session, dto.id,
-                                        code=dto.code,
                                         description=dto.description,
                                         json_type=JsonType.DATABASE_CONNECTION.value,
                                         payload=dto.payload)
@@ -103,7 +101,6 @@ async def find_database_connections_api():
         for data in all:
             result.append({
                 "id": data.id,
-                "code": data.code,
                 "description": data.description,
                 "payload": data.payload
             })
@@ -117,7 +114,6 @@ async def find_database_connection_by_id_api(_id:str):
             raise QsmithAppException(f"No database connection found with id [ {_id} ]")
         return {
             "id": entity.id,
-            "code": entity.code,
             "description": entity.description,
             "payload": entity.payload
         }

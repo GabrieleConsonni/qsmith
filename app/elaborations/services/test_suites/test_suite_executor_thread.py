@@ -45,7 +45,6 @@ class TestSuiteExecutionInput:
 
     execution_id: str
     test_suite_id: str
-    test_suite_code: str
     test_suite_description: str = ""
     event: dict[str, Any] | None = None
     vars_init: dict[str, Any] | None = None
@@ -95,8 +94,8 @@ def _resolve_tests_to_execute(
 
 
 def _create_item_execution(
-    session,
-    item_execution_service: SuiteItemExecutionService,
+        session,
+        item_execution_service: SuiteItemExecutionService,
     *,
     test_suite_execution_id: str,
     suite_item: SuiteItemEntity,
@@ -109,7 +108,6 @@ def _create_item_execution(
             suite_item_id=suite_item.id,
             item_kind=str(suite_item.kind or ""),
             hook_phase=str(suite_item.hook_phase or "").strip() or None,
-            item_code=str(suite_item.code or suite_item.id),
             item_description=str(suite_item.description or ""),
             position=position,
             status="running",
@@ -144,7 +142,7 @@ def _execute_item(
             "suite_item_id": suite_item.id,
             "item_kind": suite_item.kind,
             "hook_phase": suite_item.hook_phase,
-            "item_code": suite_item.code,
+            "item_description": suite_item.description,
             "position": position,
         },
     )
@@ -177,7 +175,7 @@ def _execute_item(
                 "suite_item_id": suite_item.id,
                 "item_kind": suite_item.kind,
                 "hook_phase": suite_item.hook_phase,
-                "item_code": suite_item.code,
+                "item_description": suite_item.description,
                 "status": "success",
                 "result": results,
             },
@@ -200,7 +198,7 @@ def _execute_item(
                 "suite_item_id": suite_item.id,
                 "item_kind": suite_item.kind,
                 "hook_phase": suite_item.hook_phase,
-                "item_code": suite_item.code,
+                "item_description": suite_item.description,
                 "status": "error",
                 "error": str(exc),
             },
@@ -222,14 +220,12 @@ def _execute(execution_input: TestSuiteExecutionInput):
             session,
             TestSuiteExecutionEntity(
                 test_suite_id=execution_input.test_suite_id,
-                test_suite_code=execution_input.test_suite_code,
                 test_suite_description=execution_input.test_suite_description,
                 status="running",
                 invocation_id=str(execution_input.invocation_id or "").strip() or None,
                 vars_init_json=execution_input.vars_init if isinstance(execution_input.vars_init, dict) else {},
                 include_previous=bool(execution_input.include_previous),
                 requested_test_id=str(execution_input.target_suite_item_id or "").strip() or None,
-                requested_test_code=None,
             ),
         )
 
@@ -260,12 +256,6 @@ def _execute(execution_input: TestSuiteExecutionInput):
             ),
             None,
         )
-        if requested_test is not None:
-            test_suite_execution_service.update(
-                session,
-                test_suite_execution_id,
-                requested_test_code=str(requested_test.code or ""),
-            )
 
         total_tests = len(tests)
         executed_tests = 0
@@ -283,14 +273,14 @@ def _execute(execution_input: TestSuiteExecutionInput):
         ):
             publish_execution_event(
                 execution_input.execution_id,
-                "suite_started",
-                {
-                    "test_suite_execution_id": test_suite_execution_id,
-                    "test_suite_id": execution_input.test_suite_id,
-                    "test_suite_code": execution_input.test_suite_code,
-                    "target_test_id": execution_input.target_suite_item_id,
-                    "include_previous": execution_input.include_previous,
-                },
+                    "suite_started",
+                    {
+                        "test_suite_execution_id": test_suite_execution_id,
+                        "test_suite_id": execution_input.test_suite_id,
+                        "test_suite_description": execution_input.test_suite_description,
+                        "target_test_id": execution_input.target_suite_item_id,
+                        "include_previous": execution_input.include_previous,
+                    },
             )
             publish_execution_event(
                 execution_input.execution_id,
@@ -424,7 +414,7 @@ def _execute(execution_input: TestSuiteExecutionInput):
             )
             log(
                 execution_input.test_suite_id,
-                f"Finished execution of suite '{execution_input.test_suite_code}'",
+                f"Finished execution of suite '{execution_input.test_suite_description or execution_input.test_suite_id}'",
                 level=LogLevel.ERROR if any_error else LogLevel.INFO,
                 payload={"status": "error" if any_error else "success"},
             )
@@ -457,14 +447,12 @@ class TestSuiteExecutorThread(threading.Thread):
             suite_entity = TestSuiteService().get_by_id(session, self.test_suite_id)
             if not suite_entity:
                 raise QsmithAppException(f"No test suite found with id [ {self.test_suite_id} ]")
-            suite_code = str(suite_entity.code or "")
             suite_description = str(suite_entity.description or "")
 
         _execute(
             TestSuiteExecutionInput(
                 execution_id=self.execution_id,
                 test_suite_id=self.test_suite_id,
-                test_suite_code=suite_code,
                 test_suite_description=suite_description,
                 event=self.run_event,
                 vars_init=self.vars_init,

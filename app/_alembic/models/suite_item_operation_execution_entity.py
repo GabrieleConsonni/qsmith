@@ -20,7 +20,6 @@ class SuiteItemOperationExecutionEntity(Base, BaseIdEntity):
     )
     suite_item_id = Column(Text, nullable=True)
     suite_item_operation_id = Column(Text, nullable=True)
-    operation_code = Column(Text, nullable=False)
     operation_description = Column(Text, nullable=True)
     operation_order = Column(Numeric, nullable=False, default=0)
     status = Column(Text, nullable=False, default="running")

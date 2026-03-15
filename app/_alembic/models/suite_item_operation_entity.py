@@ -13,7 +13,6 @@ class SuiteItemOperationEntity(Base, BaseIdEntity):
         ForeignKey(f"{SCHEMA}.suite_items.id", ondelete="CASCADE"),
         nullable=False,
     )
-    code = Column(Text, nullable=False)
     description = Column(Text, nullable=True)
     operation_type = Column(Text, nullable=False)
     configuration_json = Column(JSON, nullable=False)

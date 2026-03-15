@@ -50,7 +50,6 @@ class MockQueueListenerThread(threading.Thread):
     def __init__(
         self,
         mock_server_id: str,
-        mock_server_code: str,
         queue_binding: MockQueueBinding,
     ):
         super().__init__(
@@ -59,7 +58,6 @@ class MockQueueListenerThread(threading.Thread):
         )
         self._stop_event = threading.Event()
         self.mock_server_id = mock_server_id
-        self.mock_server_code = mock_server_code
         self.queue_binding = queue_binding
 
         with managed_session() as session:
@@ -102,8 +100,9 @@ class MockQueueListenerThread(threading.Thread):
             trigger_id = str(uuid4())
             payload = _extract_payload_from_messages(messages)
             event = build_queue_event_envelope(
-                mock_server_code=self.mock_server_code,
-                queue_code=self.queue_binding.code,
+                mock_server_id=self.mock_server_id,
+                queue_id=self.queue_binding.queue_id,
+                queue_code=queue_id,
                 payload=payload,
                 messages=messages,
             )
@@ -112,9 +111,7 @@ class MockQueueListenerThread(threading.Thread):
                     session,
                     MockServerInvocationEntity(
                         mock_server_id=self.mock_server_id,
-                        mock_server_code=self.mock_server_code,
                         trigger_type="queue",
-                        trigger_code=self.queue_binding.code,
                         event_json=event,
                     ),
                 )
@@ -122,7 +119,7 @@ class MockQueueListenerThread(threading.Thread):
                 mock_server_id=self.mock_server_id,
                 trigger_id=trigger_id,
                 source_type="queue",
-                source_ref=self.queue_binding.code,
+                source_ref=self.queue_binding.id,
                 operations=self.queue_binding.operations,
                 data=payload,
                 run_context=create_run_context(

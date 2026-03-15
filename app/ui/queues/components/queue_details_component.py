@@ -218,19 +218,18 @@ def open_save_json_array_dialog(queue_id: str):
         st.error(error)
         return
 
-    code = st.text_input("Code", key=f"queue_save_array_code_{queue_id}")
     description = st.text_input("Description", key=f"queue_save_array_description_{queue_id}")
     st.caption("Preview")
     st.json(payload, expanded=False)
 
     if not st.button("Save", key=f"queue_save_array_submit_{queue_id}"):
         return
-    if not code:
-        st.error("The Code field is required.")
+    if not description.strip():
+        st.error("The Description field is required.")
         return
 
     try:
-        save_json_array(code=code, description=description, payload=payload or [])
+        save_json_array(description=description, payload=payload or [])
     except Exception as exc:
         st.error(f"Error saving json-array: {str(exc)}")
         return
@@ -247,19 +246,18 @@ def queue_extract_json_array_dialog(queue_id: str):
         st.error(error)
         return
 
-    code = st.text_input("Code", key=f"queue_extract_array_code_{queue_id}")
     description = st.text_input("Description", key=f"queue_extract_array_description_{queue_id}")
     st.caption("Preview")
     st.json(extracted_payload or [], expanded=False)
 
     if not st.button("Save", key=f"queue_extract_array_submit_{queue_id}"):
         return
-    if not code:
-        st.error("The Code field is required.")
+    if not description.strip():
+        st.error("The Description field is required.")
         return
 
     try:
-        save_json_array(code=code, description=description, payload=extracted_payload or [])
+        save_json_array(description=description, payload=extracted_payload or [])
     except Exception as exc:
         st.error(f"Error saving json-array: {str(exc)}")
         return

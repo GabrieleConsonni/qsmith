@@ -119,9 +119,7 @@ def _find_matching_api_route(
 def _persist_mock_invocation(
     *,
     mock_server_id: str,
-    mock_server_code: str,
     trigger_type: str,
-    trigger_code: str,
     event: dict,
 ) -> str:
     with managed_session() as session:
@@ -129,9 +127,7 @@ def _persist_mock_invocation(
             session,
             MockServerInvocationEntity(
                 mock_server_id=mock_server_id,
-                mock_server_code=mock_server_code,
                 trigger_type=trigger_type,
-                trigger_code=trigger_code,
                 event_json=event if isinstance(event, dict) else {},
             ),
         )
@@ -166,8 +162,9 @@ def dispatch_mock_runtime_request(
     trigger_id = str(uuid4())
     event_payload = body_json if body_json is not None else (body_raw or None)
     event = build_api_event_envelope(
-        mock_server_code=runtime_server.code,
-        trigger_code=route.code,
+        mock_server_id=runtime_server.id,
+        trigger_id=route.id,
+        trigger_description=route.description,
         method=method,
         payload=event_payload,
         headers=headers,
@@ -176,9 +173,7 @@ def dispatch_mock_runtime_request(
     )
     invocation_id = _persist_mock_invocation(
         mock_server_id=runtime_server.id,
-        mock_server_code=runtime_server.code,
         trigger_type="api",
-        trigger_code=route.code,
         event=event,
     )
     run_context = create_run_context(
@@ -242,7 +237,7 @@ def dispatch_mock_runtime_request(
             "method": method.upper(),
             "path": path,
             "api_route_id": route.id,
-            "api_route_code": route.code,
+            "api_route_description": route.description,
         },
     )
     response_headers = dict(response_headers or {})

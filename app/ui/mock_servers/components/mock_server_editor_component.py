@@ -416,7 +416,6 @@ def _operation_payload(operation: dict) -> dict:
     cfg = operation.get("configuration_json") if isinstance(operation.get("configuration_json"), dict) else {}
     return {
         "order": _safe_int(operation.get("order"), 0),
-        "code": str(operation.get("code") or "").strip(),
         "description": str(operation.get("description") or ""),
         "cfg": cfg,
     }
@@ -465,7 +464,6 @@ def _api_payload(api_entry: dict) -> dict:
     }
     return {
         "order": _safe_int(api_entry.get("order"), 0),
-        "code": str(api_entry.get("code") or "").strip(),
         "description": str(api_entry.get("description") or ""),
         "cfg": cfg,
         "operations": post_response_operations_payload,
@@ -476,7 +474,6 @@ def _queue_payload(queue_entry: dict) -> dict:
     cfg = queue_entry.get("configuration_json") if isinstance(queue_entry.get("configuration_json"), dict) else {}
     return {
         "order": _safe_int(queue_entry.get("order"), 0),
-        "code": str(queue_entry.get("code") or "").strip(),
         "description": str(queue_entry.get("description") or ""),
         "queue_id": str(queue_entry.get("queue_id") or "").strip(),
         "cfg": cfg,
@@ -491,14 +488,14 @@ def _queue_payload(queue_entry: dict) -> dict:
 def _validate_draft(draft: dict) -> str | None:
     if not str(draft.get("id") or "").strip():
         return "Mock server non valido."
-    if not str(draft.get("code") or "").strip():
-        return "Il campo Code e' obbligatorio."
+    if not str(draft.get("description") or "").strip():
+        return "Il campo Description e' obbligatorio."
     if not _normalize_endpoint(draft.get("endpoint")):
         return "Il campo Endpoint e' obbligatorio."
 
     for idx, api_entry in enumerate(draft.get("apis") or []):
-        if not str(api_entry.get("code") or "").strip():
-            return f"API #{idx + 1}: code obbligatorio."
+        if not str(api_entry.get("description") or "").strip():
+            return f"API #{idx + 1}: description obbligatoria."
         cfg = api_entry.get("configuration_json") if isinstance(api_entry.get("configuration_json"), dict) else {}
         method = str(cfg.get("method") or "").strip().upper()
         if method not in HTTP_METHOD_OPTIONS:
@@ -509,8 +506,8 @@ def _validate_draft(draft: dict) -> str | None:
         response_operations = _api_operations_list(api_entry, API_RESPONSE_OPERATIONS_KEY)
         post_operations = _api_operations_list(api_entry, API_POST_RESPONSE_OPERATIONS_KEY)
         for op_idx, operation in enumerate(pre_operations):
-            if not str(operation.get("code") or "").strip():
-                return f"API #{idx + 1}, pre-operation #{op_idx + 1}: code obbligatorio."
+            if not str(operation.get("description") or "").strip():
+                return f"API #{idx + 1}, pre-operation #{op_idx + 1}: description obbligatoria."
             operation_cfg = (
                 operation.get("configuration_json")
                 if isinstance(operation.get("configuration_json"), dict)
@@ -520,8 +517,8 @@ def _validate_draft(draft: dict) -> str | None:
                 return f"API #{idx + 1}, pre-operation #{op_idx + 1}: operationType obbligatorio."
 
         for op_idx, operation in enumerate(response_operations):
-            if not str(operation.get("code") or "").strip():
-                return f"API #{idx + 1}, response-operation #{op_idx + 1}: code obbligatorio."
+            if not str(operation.get("description") or "").strip():
+                return f"API #{idx + 1}, response-operation #{op_idx + 1}: description obbligatoria."
             operation_cfg = (
                 operation.get("configuration_json")
                 if isinstance(operation.get("configuration_json"), dict)
@@ -531,8 +528,8 @@ def _validate_draft(draft: dict) -> str | None:
                 return f"API #{idx + 1}, response-operation #{op_idx + 1}: operationType obbligatorio."
 
         for op_idx, operation in enumerate(post_operations):
-            if not str(operation.get("code") or "").strip():
-                return f"API #{idx + 1}, post-operation #{op_idx + 1}: code obbligatorio."
+            if not str(operation.get("description") or "").strip():
+                return f"API #{idx + 1}, post-operation #{op_idx + 1}: description obbligatoria."
             operation_cfg = (
                 operation.get("configuration_json")
                 if isinstance(operation.get("configuration_json"), dict)
@@ -542,13 +539,13 @@ def _validate_draft(draft: dict) -> str | None:
                 return f"API #{idx + 1}, post-operation #{op_idx + 1}: operationType obbligatorio."
 
     for idx, queue_entry in enumerate(draft.get("queues") or []):
-        if not str(queue_entry.get("code") or "").strip():
-            return f"Queue #{idx + 1}: code obbligatorio."
+        if not str(queue_entry.get("description") or "").strip():
+            return f"Queue #{idx + 1}: description obbligatoria."
         if not str(queue_entry.get("queue_id") or "").strip():
             return f"Queue #{idx + 1}: queue obbligatoria."
         for op_idx, operation in enumerate(queue_entry.get("operations") or []):
-            if not str(operation.get("code") or "").strip():
-                return f"Queue #{idx + 1}, operation #{op_idx + 1}: code obbligatorio."
+            if not str(operation.get("description") or "").strip():
+                return f"Queue #{idx + 1}, operation #{op_idx + 1}: description obbligatoria."
             operation_cfg = (
                 operation.get("configuration_json")
                 if isinstance(operation.get("configuration_json"), dict)
@@ -562,7 +559,6 @@ def _validate_draft(draft: dict) -> str | None:
 def _server_payload(draft: dict) -> dict:
     return {
         "id": str(draft.get("id") or "").strip(),
-        "code": str(draft.get("code") or "").strip(),
         "description": str(draft.get("description") or ""),
         "cfg": {"endpoint": _normalize_endpoint(draft.get("endpoint"))},
         "apis": [
@@ -592,7 +588,6 @@ def _operation_from_api_payload(operation: dict, op_idx: int) -> dict:
     return {
         "id": operation.get("id"),
         "order": _safe_int(operation.get("order"), op_idx + 1),
-        "code": str(operation.get("code") or ""),
         "description": str(operation.get("description") or ""),
         "operation_type": str(operation.get("operation_type") or cfg.get("operationType") or ""),
         "configuration_json": cfg,
@@ -630,7 +625,6 @@ def _api_from_server_payload(api_entry: dict, api_idx: int) -> dict:
     return {
         "id": api_entry.get("id"),
         "order": _safe_int(api_entry.get("order"), api_idx + 1),
-        "code": str(api_entry.get("code") or ""),
         "description": str(api_entry.get("description") or ""),
         "method": method,
         "path": path,
@@ -653,7 +647,6 @@ def _queue_from_server_payload(queue_entry: dict, queue_idx: int) -> dict:
     return {
         "id": queue_entry.get("id"),
         "order": _safe_int(queue_entry.get("order"), queue_idx + 1),
-        "code": str(queue_entry.get("code") or ""),
         "description": str(queue_entry.get("description") or ""),
         "queue_id": str(queue_entry.get("queue_id") or ""),
         "configuration_json": cfg,
@@ -677,7 +670,6 @@ def _build_server_draft(server_item: dict) -> dict:
     queues.sort(key=lambda item: _safe_int(item.get("order"), 0))
     return {
         "id": str(server_item.get("id") or ""),
-        "code": str(server_item.get("code") or ""),
         "description": str(server_item.get("description") or ""),
         "endpoint": _normalize_endpoint(server_item.get("endpoint")),
         "is_active": bool(server_item.get("is_active")),
@@ -788,7 +780,7 @@ def _load_queue_options() -> tuple[list[dict], dict[str, dict]]:
         broker_id = str(broker.get("id") or "").strip()
         if not broker_id:
             continue
-        broker_label = str(broker.get("description") or broker.get("code") or broker_id)
+        broker_label = str(broker.get("description") or broker_id)
         queues = load_test_editor_queues_for_broker(broker_id, force=False)
         if not isinstance(queues, list):
             continue
@@ -798,7 +790,7 @@ def _load_queue_options() -> tuple[list[dict], dict[str, dict]]:
             queue_id = str(queue.get("id") or "").strip()
             if not queue_id:
                 continue
-            queue_label = str(queue.get("description") or queue.get("code") or queue_id)
+            queue_label = str(queue.get("description") or queue_id)
             option = {
                 "broker_id": broker_id,
                 "broker_label": broker_label,
@@ -1007,10 +999,10 @@ def _response_resolver_help_dialog():
         st.markdown("You can also configure pre-response operations to fetch additional data, store it in the context, and use it later to build a more complex response body.")
     
     st.markdown("**Context schema**")
-    st.json('{"run_id": "uuid","event": {},"global": {},"local": {},"last": {"item_code": "","data": []},"artifacts": {}}', expanded=True)
+    st.json('{"run_id": "uuid","event": {},"global": {},"local": {},"last": {"item_id": "","data": []},"artifacts": {}}', expanded=True)
     
     st.markdown("**Event Envelope (API / Queue)**")
-    st.json('{ "source": "api|queue","mock_server_code": "","trigger": {"code": "","method": "","queue_code": ""},"timestamp": "","payload": {},"meta": {}}',   expanded=True)
+    st.json('{ "source": "api|queue","mock_server_id": "","trigger": {"id": "","description": "","method": "","queue_code": ""},"timestamp": "","payload": {},"meta": {}}',   expanded=True)
 
     with st.expander("**Resolver examples**"):
         st.code(
@@ -1031,7 +1023,6 @@ def _add_api_dialog():
         return
 
     dialog_key = str(draft.get("id") or _new_ui_key())
-    st.text_input("Code", key=f"mock_server_add_api_code_{dialog_key}")
     st.text_input("Description", key=f"mock_server_add_api_desc_{dialog_key}")
     method = st.selectbox(
         "Method",
@@ -1049,15 +1040,14 @@ def _add_api_dialog():
         icon=":material/add:",
         use_container_width=True,
     ):
-        code = str(st.session_state.get(f"mock_server_add_api_code_{dialog_key}") or "").strip()
-        if not code:
-            st.error("Il campo Code e' obbligatorio.")
+        description = str(st.session_state.get(f"mock_server_add_api_desc_{dialog_key}") or "")
+        if not description.strip():
+            st.error("Il campo Description e' obbligatorio.")
             return
         new_api = {
             "id": None,
             "order": len(draft.get("apis") or []) + 1,
-            "code": code,
-            "description": str(st.session_state.get(f"mock_server_add_api_desc_{dialog_key}") or ""),
+            "description": description,
             "method": str(method or "GET"),
             "path": _normalize_path(path),
             "configuration_json": {
@@ -1103,11 +1093,6 @@ def _edit_api_dialog(api_entry: dict, api_idx: int):
         value=max(_safe_int(api_entry.get("order"), api_idx + 1), 1),
     )
     st.text_input(
-        "Code",
-        key=f"mock_server_edit_api_code_{api_ui_key}",
-        value=str(api_entry.get("code") or ""),
-    )
-    st.text_input(
         "Description",
         key=f"mock_server_edit_api_desc_{api_ui_key}",
         value=str(api_entry.get("description") or ""),
@@ -1123,9 +1108,6 @@ def _edit_api_dialog(api_entry: dict, api_idx: int):
             api_entry["order"] = int(
                 st.session_state.get(f"mock_server_edit_api_order_{api_ui_key}") or api_idx + 1
             )
-            api_entry["code"] = str(
-                st.session_state.get(f"mock_server_edit_api_code_{api_ui_key}") or ""
-            ).strip()
             api_entry["description"] = str(
                 st.session_state.get(f"mock_server_edit_api_desc_{api_ui_key}") or ""
             )
@@ -1158,23 +1140,17 @@ def _copy_api_dialog(
         return
 
     source_ui_key = str(source_api.get("_ui_key") or _new_ui_key())
-    source_code = str(source_api.get("code") or "").strip()
     source_description = str(source_api.get("description") or "")
-    default_code = f"{source_code}-copy" if source_code else "api-copy"
     default_description = (
         f"{source_description} copy"
         if source_description
-        else default_code
+        else "API copy"
     )
 
-    code_key = f"mock_server_copy_api_code_{source_ui_key}"
     description_key = f"mock_server_copy_api_desc_{source_ui_key}"
-    if code_key not in st.session_state:
-        st.session_state[code_key] = default_code
     if description_key not in st.session_state:
         st.session_state[description_key] = default_description
 
-    st.text_input("Code", key=code_key)
     st.text_input("Description", key=description_key)
 
     if st.button(
@@ -1183,10 +1159,9 @@ def _copy_api_dialog(
         icon=":material/content_copy:",
         use_container_width=True,
     ):
-        new_code = str(st.session_state.get(code_key) or "").strip()
         new_description = str(st.session_state.get(description_key) or "")
-        if not new_code:
-            st.error("Il campo Code e' obbligatorio.")
+        if not new_description.strip():
+            st.error("Il campo Description e' obbligatorio.")
             return
 
         def _copy_operations(source_operations: list[dict]) -> list[dict]:
@@ -1198,7 +1173,6 @@ def _copy_api_dialog(
                     {
                         "id": None,
                         "order": _safe_int(operation.get("order"), op_idx + 1),
-                        "code": str(operation.get("code") or ""),
                         "description": str(operation.get("description") or ""),
                         "operation_type": str(operation.get("operation_type") or ""),
                         "configuration_json": deepcopy(
@@ -1242,7 +1216,6 @@ def _copy_api_dialog(
             {
                 "id": None,
                 "order": len(apis) + 1,
-                "code": new_code,
                 "description": new_description,
                 "method": str(copied_cfg.get("method") or "GET"),
                 "path": _normalize_path(copied_cfg.get("path")),
@@ -1268,7 +1241,6 @@ def _add_queue_dialog():
     option_by_id = {str(item.get("queue_id")): item for item in queue_options if item.get("queue_id")}
 
     dialog_key = str(draft.get("id") or _new_ui_key())
-    st.text_input("Code", key=f"mock_server_add_queue_code_{dialog_key}")
     st.text_input("Description", key=f"mock_server_add_queue_desc_{dialog_key}")
     selected_queue_id = st.selectbox(
         "Queue",
@@ -1286,9 +1258,9 @@ def _add_queue_dialog():
         icon=":material/add:",
         use_container_width=True,
     ):
-        code = str(st.session_state.get(f"mock_server_add_queue_code_{dialog_key}") or "").strip()
-        if not code:
-            st.error("Il campo Code e' obbligatorio.")
+        description = str(st.session_state.get(f"mock_server_add_queue_desc_{dialog_key}") or "")
+        if not description.strip():
+            st.error("Il campo Description e' obbligatorio.")
             return
         if not str(selected_queue_id or "").strip():
             st.error("Seleziona una queue.")
@@ -1297,8 +1269,7 @@ def _add_queue_dialog():
             {
                 "id": None,
                 "order": len(draft.get("queues") or []) + 1,
-                "code": code,
-                "description": str(st.session_state.get(f"mock_server_add_queue_desc_{dialog_key}") or ""),
+                "description": description,
                 "queue_id": str(selected_queue_id),
                 "configuration_json": {
                     "polling_interval_seconds": 1,
@@ -1330,11 +1301,6 @@ def _edit_queue_dialog(queue_entry: dict, queue_idx: int):
         value=max(_safe_int(queue_entry.get("order"), queue_idx + 1), 1),
     )
     st.text_input(
-        "Code",
-        key=f"mock_server_edit_queue_code_{queue_ui_key}",
-        value=str(queue_entry.get("code") or ""),
-    )
-    st.text_input(
         "Description",
         key=f"mock_server_edit_queue_desc_{queue_ui_key}",
         value=str(queue_entry.get("description") or ""),
@@ -1364,9 +1330,6 @@ def _edit_queue_dialog(queue_entry: dict, queue_idx: int):
             queue_entry["order"] = int(
                 st.session_state.get(f"mock_server_edit_queue_order_{queue_ui_key}") or queue_idx + 1
             )
-            queue_entry["code"] = str(
-                st.session_state.get(f"mock_server_edit_queue_code_{queue_ui_key}") or ""
-            ).strip()
             queue_entry["description"] = str(
                 st.session_state.get(f"mock_server_edit_queue_desc_{queue_ui_key}") or ""
             )
@@ -1393,13 +1356,8 @@ def _render_api_editor(api_entry: dict, api_idx: int, nonce: int):
     api_ui_key = str(api_entry.get("_ui_key") or _new_ui_key())
     api_entry["_ui_key"] = api_ui_key
 
-    code = str(api_entry.get("code") or "").strip()
     description = str(api_entry.get("description") or "").strip()
-    label = (
-        f"{description} [{code}]"
-        if description and code and description != code
-        else (description or code or f"API {api_idx + 1}")
-    )
+    label = description or f"API {api_idx + 1}"
 
     wrapper_cols = st.columns([18, 1], gap="small", vertical_alignment="top")
     with wrapper_cols[0]:
@@ -1785,13 +1743,8 @@ def _render_queue_editor(
     queue_ui_key = str(queue_entry.get("_ui_key") or _new_ui_key())
     queue_entry["_ui_key"] = queue_ui_key
 
-    code = str(queue_entry.get("code") or "").strip()
     description = str(queue_entry.get("description") or "").strip()
-    label = (
-        f"{description} [{code}]"
-        if description and code and description != code
-        else (description or code or f"Queue {queue_idx + 1}")
-    )
+    label = description or f"Queue {queue_idx + 1}"
 
     queue_id = str(queue_entry.get("queue_id") or "").strip()
     queue_item = queue_by_id.get(queue_id) or {}
@@ -1863,7 +1816,7 @@ def _render_editor():
         operation_catalog = []
     operation_labels_by_id = {
         str(item.get("id")): (
-            f"{item.get('code') or '-'} ({item.get('description') or '-'})"
+            str(item.get("description") or item.get("id") or "-")
         )
         for item in operation_catalog
         if isinstance(item, dict) and item.get("id")
@@ -1881,7 +1834,7 @@ def _render_editor():
         ):
             st.switch_page(MOCK_SERVERS_PAGE_PATH)
 
-    description = str(draft.get("description") or draft.get("code") or "-")
+    description = str(draft.get("description") or draft.get("id") or "-")
     endpoint = _normalize_endpoint(draft.get("endpoint"))
     st.title(description)
     st.subheader(f"/mock/{endpoint or '-'}")

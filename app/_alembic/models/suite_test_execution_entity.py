@@ -23,7 +23,6 @@ class SuiteTestExecutionEntity(Base, BaseIdEntity):
         nullable=False,
     )
     suite_test_id = Column(SUITE_TEST_FK, Text, nullable=True)
-    test_code = Column(TEST_CODE_COL, Text, nullable=False)
     test_description = Column(TEST_DESC_COL, Text, nullable=True)
     test_order = Column(TEST_ORDER_COL, Numeric, nullable=False, default=0)
     status = Column(Text, nullable=False, default="running")

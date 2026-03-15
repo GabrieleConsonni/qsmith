@@ -9,8 +9,9 @@ def _utc_timestamp() -> str:
 
 def build_api_event_envelope(
     *,
-    mock_server_code: str,
-    trigger_code: str,
+    mock_server_id: str,
+    trigger_id: str,
+    trigger_description: str,
     method: str,
     payload: Any,
     headers: dict[str, Any] | None = None,
@@ -20,9 +21,10 @@ def build_api_event_envelope(
     return {
         "id": str(uuid4()),
         "source": "api",
-        "mock_server_code": str(mock_server_code or "").strip(),
+        "mock_server_id": str(mock_server_id or "").strip(),
         "trigger": {
-            "code": str(trigger_code or "").strip(),
+            "id": str(trigger_id or "").strip(),
+            "description": str(trigger_description or "").strip(),
             "method": str(method or "").strip().upper(),
             "queue_code": "",
         },
@@ -38,7 +40,8 @@ def build_api_event_envelope(
 
 def build_queue_event_envelope(
     *,
-    mock_server_code: str,
+    mock_server_id: str,
+    queue_id: str,
     queue_code: str,
     payload: Any,
     messages: list[dict] | None = None,
@@ -58,9 +61,10 @@ def build_queue_event_envelope(
     return {
         "id": str(uuid4()),
         "source": "queue",
-        "mock_server_code": str(mock_server_code or "").strip(),
+        "mock_server_id": str(mock_server_id or "").strip(),
         "trigger": {
-            "code": "",
+            "id": str(queue_id or "").strip(),
+            "description": "",
             "method": "",
             "queue_code": str(queue_code or "").strip(),
         },

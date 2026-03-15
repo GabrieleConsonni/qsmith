@@ -32,7 +32,6 @@ class MockServerConfigurationDto(BaseModel):
 
 class MockServerOperationDto(BaseModel):
     order: int = 0
-    code: str
     description: str = ""
     cfg: ConfigurationOperationTypes
 
@@ -79,7 +78,6 @@ class MockServerApiConfigurationDto(BaseModel):
 class MockServerApiDto(BaseModel):
     id: str | None = None
     order: int = 0
-    code: str
     description: str = ""
     cfg: MockServerApiConfigurationDto
     operations: list[MockServerOperationDto] = Field(default_factory=list)
@@ -99,7 +97,6 @@ class MockServerQueueConfigurationDto(BaseModel):
 class MockServerQueueDto(BaseModel):
     id: str | None = None
     order: int = 0
-    code: str
     description: str = ""
     queue_id: str
     cfg: MockServerQueueConfigurationDto = Field(
@@ -109,7 +106,6 @@ class MockServerQueueDto(BaseModel):
 
 
 class CreateMockServerDto(BaseModel):
-    code: str
     description: str = ""
     cfg: MockServerConfigurationDto
     apis: list[MockServerApiDto] = Field(default_factory=list)

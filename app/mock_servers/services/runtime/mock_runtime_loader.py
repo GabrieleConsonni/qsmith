@@ -36,7 +36,6 @@ def _normalize_endpoint(endpoint: object) -> str:
 def _build_operation_snapshot(entity) -> MockOperationSnapshot:
     return MockOperationSnapshot(
         id=str(entity.id or ""),
-        code=str(entity.code or ""),
         description=str(entity.description or ""),
         operation_type=str(entity.operation_type or ""),
         configuration_json=_safe_cfg(entity.configuration_json),
@@ -73,7 +72,6 @@ def _build_inline_operation_snapshot(
     operation_type = _normalize_operation_type(cfg.get("operationType"))
     return MockOperationSnapshot(
         id=str(raw_operation.get("id") or uuid4()),
-        code=str(raw_operation.get("code") or operation_type or f"operation_{order}"),
         description=str(raw_operation.get("description") or ""),
         operation_type=operation_type,
         configuration_json=cfg,
@@ -146,7 +144,6 @@ def load_runtime_server(session, entity: MockServerEntity) -> MockRuntimeServer:
         api_routes.append(
             MockApiRoute(
                 id=str(api_entity.id or ""),
-                code=str(api_entity.code or ""),
                 description=str(api_entity.description or ""),
                 order=int(api_entity.order or 0),
                 method=str(api_entity.method or api_cfg.get("method") or "GET").strip().upper(),
@@ -178,7 +175,6 @@ def load_runtime_server(session, entity: MockServerEntity) -> MockRuntimeServer:
         queue_bindings.append(
             MockQueueBinding(
                 id=str(queue_entity.id or ""),
-                code=str(queue_entity.code or ""),
                 description=str(queue_entity.description or ""),
                 order=int(queue_entity.order or 0),
                 queue_id=str(queue_entity.queue_id or ""),
@@ -199,7 +195,6 @@ def load_runtime_server(session, entity: MockServerEntity) -> MockRuntimeServer:
 
     return MockRuntimeServer(
         id=str(entity.id or ""),
-        code=str(entity.code or ""),
         description=str(entity.description or ""),
         endpoint=endpoint,
         is_active=bool(entity.is_active),

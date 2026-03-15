@@ -18,7 +18,7 @@ class SuiteItemService(BaseIdEntityService):
         return (
             session.query(SuiteItemEntity)
             .filter(test_suite_id_attr == test_suite_id)
-            .order_by(SuiteItemEntity.position, SuiteItemEntity.code)
+            .order_by(SuiteItemEntity.position, SuiteItemEntity.id)
             .all()
         )
 

@@ -44,5 +44,5 @@ def execute_suite_item(session: Session, suite_item: SuiteItemEntity) -> list[di
             [],
             execution_scope=execution_scope,
         )
-    set_context_last(str(suite_item.code or suite_item.id), execution_result.data)
+    set_context_last(str(suite_item.id or ""), execution_result.data)
     return execution_result.result

@@ -59,7 +59,6 @@ class MockServerRuntimeRegistry:
             for queue_binding in runtime_server.queues:
                 queue_thread = MockQueueListenerThread(
                     mock_server_id,
-                    runtime_server.code,
                     queue_binding,
                 )
                 queue_thread.start()
@@ -68,7 +67,7 @@ class MockServerRuntimeRegistry:
         log_mock_server_event(
             mock_server_id,
             (
-                f"Mock server '{runtime_server.code}' started. "
+                f"Mock server '{runtime_server.description or runtime_server.id}' started. "
                 f"Endpoint '/mock/{runtime_server.endpoint}', queue listeners={len(runtime_server.queues)}"
             ),
         )

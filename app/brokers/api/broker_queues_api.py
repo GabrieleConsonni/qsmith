@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from _alembic.models.queue_entity import QueueEntity
 from _alembic.services.session_context_manager import managed_session
@@ -7,29 +7,48 @@ from brokers.models.dto.configurations.queue_configuration_types import convert_
 from brokers.models.dto.create_queue_dto import CreateQueueDto
 from brokers.models.dto.find_all_messages_dto import FindAllMessagesDto
 from brokers.models.dto.queue_messages_dto import QueueMessagesDto
+from brokers.models.dto.update_queue_dto import UpdateQueueDto
 from brokers.services.alembic.broker_connection_service import load_broker_connection
 from brokers.services.alembic.queue_service import QueueService
 from brokers.services.connections.broker_connection_service_factory import BrokerConnectionServiceFactory
 from brokers.services.connections.queue.queue_connection_service_factory import QueueConnectionServiceFactory
 from brokers.services.elaborations.async_queue_service import AsyncQueueService
 from exceptions.app_exception import QsmithAppException
-from brokers.models.dto.configurations.queue_configuration_types import QueueConfigurationTypes
 router = APIRouter(prefix="/broker")
+
+
+def _queue_stats(connection_config: BrokerConnectionConfigTypes, queue_id: str) -> dict:
+    try:
+        service = QueueConnectionServiceFactory.get_service(connection_config)
+        return service.get_queue_metrics(connection_config, queue_id)
+    except Exception:
+        return {
+            "messages_sent": None,
+            "messages_received": None,
+            "last_update": None,
+        }
 
 
 @router.get("/{broker_id}/queue")
 async def find_all_queues_api(broker_id: str) -> list[dict]:
     with managed_session() as session:
         queues: list[QueueEntity] = QueueService().get_all_by_broker_id(session, broker_id)
+        connection_config = load_broker_connection(broker_id)
         results: list[dict] = []
         for queue in queues:
             cfg = convert_queue_configuration_types(queue.configuration_json)
-            results.append({
-            "id": queue.id,
-            "code": queue.code,
-            "description": queue.description,
-            "configurationQueue": cfg.model_dump()
-        })
+            stats = _queue_stats(connection_config, queue.id)
+            results.append(
+                {
+                    "id": queue.id,
+                    "code": queue.code,
+                    "description": queue.description,
+                    "configurationQueue": cfg.model_dump(),
+                    "messages_sent": stats.get("messages_sent"),
+                    "messages_received": stats.get("messages_received"),
+                    "last_update": stats.get("last_update"),
+                }
+            )
         return results
 
 
@@ -68,6 +87,31 @@ async def delete_queue_api(broker_id: str, queue_id: str):
         raise  QsmithAppException(f"Could not delete queue '{queue_id}': {str(e)}")
 
 
+@router.put("/{broker_id}/queue/{queue_id}")
+async def update_queue_api(broker_id: str, queue_id: str, d: UpdateQueueDto):
+    with managed_session() as session:
+        queue_entity: QueueEntity | None = QueueService().get_by_id(session, queue_id)
+        if queue_entity is None:
+            raise QsmithAppException(f"Queue with id '{queue_id}' not found")
+        if str(queue_entity.broker_id) != str(broker_id):
+            raise QsmithAppException(
+                f"Queue '{queue_id}' does not belong to broker '{broker_id}'"
+            )
+        updated_queue: QueueEntity | None = QueueService().update(
+            session,
+            queue_id,
+            code=d.code,
+            description=d.description,
+        )
+        if updated_queue is None:
+            raise QsmithAppException(f"Queue with id '{queue_id}' not found")
+        return {
+            "id": updated_queue.id,
+            "code": updated_queue.code,
+            "description": updated_queue.description,
+        }
+
+
 @router.post("/{broker_id}/queue/{queue_id}/messages")
 async def publish_messages_api(broker_id: str, queue_id: str, p: QueueMessagesDto):
     connection_config: BrokerConnectionConfigTypes = load_broker_connection(broker_id)
@@ -87,15 +131,21 @@ async def test_queue_connection_api(broker_id: str, queue_id: str):
 
 
 @router.get("/{broker_id}/queue/{queue_id}/messages")
-async def receive_messages_api(broker_id: str, queue_id: str, f: FindAllMessagesDto):
+async def receive_messages_api(
+    broker_id: str,
+    queue_id: str,
+    f: FindAllMessagesDto = Depends(),
+):
     connection_config: BrokerConnectionConfigTypes = load_broker_connection(broker_id)
     service = QueueConnectionServiceFactory.get_service(connection_config)
     msgs = service.receive_messages(connection_config, queue_id=queue_id, max_messages=f.count)
     return msgs
 
 
-@router.delete("/{broker_id}/queue/{queue_id}/messages")
-async def ack_messages_api(broker_id: str, queue_id: str, d: QueueMessagesDto):
+@router.put("/{broker_id}/queue/{queue_id}/messages")
+async def ack_messages_api(broker_id: str, 
+                           queue_id: str, 
+                           d: QueueMessagesDto):
     connection_config: BrokerConnectionConfigTypes = load_broker_connection(broker_id)
     service = QueueConnectionServiceFactory.get_service(connection_config)
     return service.ack_messages(connection_config, queue_id=queue_id, messages=d.messages)

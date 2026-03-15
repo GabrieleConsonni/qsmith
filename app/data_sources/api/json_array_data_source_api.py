@@ -15,24 +15,22 @@ router = APIRouter(prefix="/data-source")
 async def insert_json_array_api(dto: CreateJsonPayloadDto):
     with managed_session() as session:
         entity = JsonPayloadEntity()
-        entity.code = dto.code
         entity.description = dto.description
         entity.json_type = JsonType.JSON_ARRAY.value
         entity.payload = dto.payload
         _id = JsonFilesService().insert(session, entity)
-        return {"id": _id, "message": f"Json array [ {dto.code} ] added"}
+        return {"id": _id, "message": "Json array added"}
 
 
 @router.put("/json-array")
 async def update_json_array_api(dto: UpdateJsonPayloadDto):
     with managed_session() as session:
         _id = JsonFilesService().update(session, dto.id,
-                                        code=dto.code,
                                         description=dto.description,
                                         json_type=JsonType.JSON_ARRAY.value,
                                         payload=dto.payload
                                         )
-        return {"message": f"Json array [ {dto.code} ] updated"}
+        return {"message": "Json array updated"}
 
 
 @router.get("/json-array")
@@ -43,7 +41,6 @@ async def find_all_json_array_api():
         for data in all:
             result.append({
                 "id": data.id,
-                "code": data.code,
                 "description": data.description,
                 "payload": data.payload
             })
@@ -58,7 +55,6 @@ async def find_json_array_api(_id: str):
             raise QsmithAppException(f"No data found with id [ {_id} ]")
         return {
             "id": entity.id,
-            "code": entity.code,
             "description": entity.description,
             "payload": entity.payload
         }

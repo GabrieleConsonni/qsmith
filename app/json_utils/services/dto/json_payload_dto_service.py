@@ -5,7 +5,6 @@ from json_utils.models.enums.json_type import JsonType
 def convertEntityToDto(entity:JsonPayloadEntity)->dict:
     dto = {
         "id": entity.id,
-        "code": entity.code,
         "description": entity.description,
         "payload": entity.payload,
         "created_date": entity.created_date if entity.created_date else None,
@@ -16,7 +15,6 @@ def convertEntityToDto(entity:JsonPayloadEntity)->dict:
 def convertDtoToEntity(dto:dict,json_type:JsonType)->JsonPayloadEntity:
     entity = JsonPayloadEntity()
     entity.id = dto.get("id", None)
-    entity.code = dto["code"]
     entity.description = dto.get("description", None)
     entity.json_type = json_type.value
     entity.payload = dto["payload"]

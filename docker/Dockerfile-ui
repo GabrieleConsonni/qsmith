@@ -1,0 +1,17 @@
+FROM python:3.13-slim-bookworm
+
+ENV PYTHONPATH=/qsmith/app \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /qsmith
+
+COPY docker/ui-requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+WORKDIR /qsmith/app/ui
+
+COPY app/ui /qsmith/app/ui
+
+EXPOSE 8501
+
+ENTRYPOINT ["streamlit", "run", "Qsmith.py", "--server.address=0.0.0.0", "--server.port=8501"]

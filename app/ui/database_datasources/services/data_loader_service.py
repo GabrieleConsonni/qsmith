@@ -1,0 +1,71 @@
+import streamlit as st
+
+from api_client import api_get
+
+DATABASE_DATASOURCES_KEY = "database_datasources"
+DATABASE_CONNECTIONS_KEY = "database_connections"
+DATABASE_OBJECTS_CACHE_KEY = "database_connection_objects_cache"
+DATABASE_DATASOURCE_PREVIEW_CACHE_KEY = "database_datasource_preview_cache"
+
+
+def load_database_datasources(force: bool = False):
+    if force or DATABASE_DATASOURCES_KEY not in st.session_state:
+        try:
+            result = api_get("/data-source/database")
+            st.session_state[DATABASE_DATASOURCES_KEY] = (
+                result if isinstance(result, list) else []
+            )
+        except Exception:
+            st.session_state[DATABASE_DATASOURCES_KEY] = []
+            st.error("Errore caricamento database datasources.")
+
+
+def load_database_connections(force: bool = False):
+    if force or DATABASE_CONNECTIONS_KEY not in st.session_state:
+        try:
+            result = api_get("/database/connection")
+            st.session_state[DATABASE_CONNECTIONS_KEY] = (
+                result if isinstance(result, list) else []
+            )
+        except Exception:
+            st.session_state[DATABASE_CONNECTIONS_KEY] = []
+            st.error("Errore caricamento connessioni database.")
+
+
+def load_database_connection_objects(connection_id: str, force: bool = False) -> dict:
+    cache = st.session_state.setdefault(DATABASE_OBJECTS_CACHE_KEY, {})
+    cache_key = str(connection_id or "")
+    if not cache_key:
+        return {"tables": [], "views": [], "items": [], "schema": None}
+
+    if force or cache_key not in cache:
+        try:
+            result = api_get(f"/database/connection/{cache_key}/objects")
+            cache[cache_key] = result if isinstance(result, dict) else {}
+        except Exception as exc:
+            st.error(f"Errore caricamento tabelle/views: {str(exc)}")
+            cache[cache_key] = {"tables": [], "views": [], "items": [], "schema": None}
+    return cache.get(cache_key) or {"tables": [], "views": [], "items": [], "schema": None}
+
+
+def load_database_datasource_preview(datasource_id: str, force: bool = False) -> dict | None:
+    cache = st.session_state.setdefault(DATABASE_DATASOURCE_PREVIEW_CACHE_KEY, {})
+    cache_key = str(datasource_id or "")
+    if not cache_key:
+        return None
+    if force or cache_key not in cache:
+        try:
+            result = api_get(f"/data-source/database/{cache_key}/preview")
+            cache[cache_key] = result if isinstance(result, dict) else None
+        except Exception as exc:
+            cache[cache_key] = {"error": str(exc), "rows": []}
+    return cache.get(cache_key)
+
+
+def invalidate_database_datasource_preview(datasource_id: str | None = None):
+    cache = st.session_state.setdefault(DATABASE_DATASOURCE_PREVIEW_CACHE_KEY, {})
+    if datasource_id is None:
+        cache.clear()
+        return
+    cache.pop(str(datasource_id), None)
+

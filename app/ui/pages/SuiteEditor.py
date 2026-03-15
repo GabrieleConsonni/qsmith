@@ -1,0 +1,4 @@
+from test_suites.components.suite_editor_component import render_suite_editor_page
+
+
+render_suite_editor_page()

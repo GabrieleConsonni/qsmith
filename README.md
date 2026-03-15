@@ -1,61 +1,92 @@
-### SETUP INIZIALE
+# Qsmith
+Qsmith e un queue manager con backend FastAPI e UI Streamlit.
 
-## APPSMITH
-    - Copiare il file appsmith/docker-compose.yml nella cartella di destinazione
-    - Eseguire il comando docker-compose up -d nella cartella di destinazione
-    - Caricare il file appsmith/Qsmith.json tramite l'interfaccia web di appsmith
+## Prerequisiti
+- Docker Desktop
+- Python 3.13 (solo se vuoi eseguire tool/test fuori dai container)
+- ElasticMQ
 
-## ELASTIMQ
-    - Copiare la cartella elasticmq nella cartella di destinazione
-    - Eseguire il comando docker-compose up -d nella cartella di destinazione
+## ElasticMQ locale (opzionale)
+Per avviare solo ElasticMQ in locale:
+```bash
+cd elasticmq
+docker compose up -d
+```
 
-## COMPILAZIONE AMBIENTE DI SVILUPPO LOCALE
-    1. Creazione VENV
-    - python -m venv venv   
+- SQS endpoint: `http://localhost:9324`
+- Console web: `http://localhost:9325`
 
-    2. Attivazione VENV
-    - venv\Scripts\activate ### ATTIVAZIONE VENV
+## Avvio (docker-compose)
+Avvio stack API + UI:
+```bash
+docker compose -f docker-compose.yml up --build -d
+```
 
-    3. Configurazione del gestione del packging manager pyton
-    - pip install pip-tools
-    
-    4. Installazione delle dipendenze 
-    - pip install -r requirements.txt
-    - docker compose -f .\docker-compose-compile-requirements.yml run --rm compiler
+Stop stack:
+```bash
+docker compose -f docker-compose.yml down
+```
 
-### RUN LOCALE
-    1. Assicurarsi di aver attivato il VENV 
-        - venv\Scripts\activate 
-    2. Avvio server fastapi
-        - cd src
-        - python -m fastapi dev --port xxxx 
+Script alternativo Windows:
+```bat
+docker-run-dev.bat
+```
 
-### DOCKER
-    CREAZIONE E AVVIO AMBIENTE DOCKER CONTAINER
-    - docker-compose up -d --build
-    - docker-compose down
+## Repository Map
+- `app/`: backend FastAPI e codice UI Streamlit
+- `app/main.py`: entrypoint API
+- `app/ui/Qsmith.py`: entrypoint UI Streamlit
+- `alembic/`: migrazioni database
+- `docker/`: Dockerfile API/UI
+- `elasticmq/`: compose e configurazione ElasticMQ locale
+- `docs/`: documentazione funzionale e operativa
 
-### SWAGGER
-    http://host:port/docs
+## Endpoint utili
+- UI Streamlit: `http://localhost:8501`
+- API FastAPI: `http://localhost:9082`
+- Swagger: `http://localhost:9082/docs`
+- OpenAPI JSON: `http://localhost:9082/openapi.json`
+- Debugpy: `localhost:5678` (container `qsmith`)
 
-### OPENAPI JSON
-    http://host:port/openapi.json
+### Installazione in locale
 
-### POSTMAN
-    - importare il file postman/collection.json
+## Environment Python
+```bash
+python -m venv .venv
+```
+```bash
+.\.venv\Scripts\Activate.ps1
+```
 
-### ELASTICMQ
-    Contenitore delle code SQS in locale, per visualizzare la console web:
-    - http://localhost:9325
+## Dipendenze
+Installazione dipendenze ambiente Python locale:
+```bash
+pip install -r requirements.txt
+```
 
-### ALEMBIC
-    - alembic revision --autogenerate -m "YYYYMMDDHH_NAU_XXX"
-    - alembic [-x tenant=<tenant_name>] upgrade head
-    - alembic [-x tenant=<tenant_name>] downgrade -1
-    - alembic current
-    - alembic history
-    - alembic heads
-    - alembic branches
-    - alembic show <revision>
+Rigenerazione `docker-requirements.txt` da `requirements.in`:
+```bash
+docker compose -f docker-compose-compile-requirements.yml run --rm compiler
+```
+
+## Test
+```bash
+pytest test
+```
+
+Nota: i test usano Testcontainers (Docker richiesto).
+
+## Alembic
+Esempi comandi:
+```bash
+alembic revision --autogenerate -m "YYYYMMDDHH_desc"
+alembic upgrade head
+alembic downgrade -1
+alembic current
+alembic history
+alembic heads
+alembic branches
+alembic show <revision>
+```
 
 

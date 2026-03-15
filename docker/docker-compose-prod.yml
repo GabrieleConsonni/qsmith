@@ -1,0 +1,50 @@
+networks:
+  net:
+    name: ${NETWORK}
+    external: true
+
+services:
+
+  elasticmq:
+    image: softwaremill/elasticmq-native
+    container_name: elasticmq
+    ports:
+      - "9324:9324"
+      - "9325:9325"
+    volumes:
+      - ./elasticmq/elasticmq.conf:/opt/elasticmq.conf
+    restart: unless-stopped
+    networks:
+      - net
+
+  qsmith:
+    image: aknregistry.azurecr.io/akeron-qsmith:${VERSIONIMAGE}
+    container_name: qsmith
+    #working_dir: /app
+    #volumes:
+    #  - ./app:/qsmith/app
+    #  - ./alembic:/qsmith/alembic
+    #  - ./.env:/qsmith/.env
+    ports:
+      - "9082:9082"
+    networks:
+      - net
+    environment:
+      - DATABASE_URL=postgresql://${USER_DB}:${PASS_DB}@${URL_DB}:${PORT_DB}/${DB_NAME}
+      - HOST_IP=elasticmq
+    restart: unless-stopped
+
+  qsmith-ui:
+    image: aknregistry.azurecr.io/akeron-qsmith-ui:${VERSIONIMAGE}
+    environment:
+      - QSMITH_API_BASE_URL=http://qsmith:9082
+      - STREAMLIT_SERVER_RUN_ON_SAVE=true
+      - STREAMLIT_SERVER_FILE_WATCHER_TYPE=poll
+    depends_on:
+      - qsmith
+    ports:
+      - "8501:8501"
+    #volumes:
+    #  - ./app/ui:/qsmith/app/ui
+    networks:
+      - net

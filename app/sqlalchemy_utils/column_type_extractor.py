@@ -55,13 +55,13 @@ class StringColumnTypeExtractor(ColumnTypeExtractor):
     def can_extract(self, value):
         return isinstance(value, str)
     def get_column_type(self):
-            return String()
+            return String(1024)
 
 class FallbackColumnTypeExtractor(ColumnTypeExtractor):
     def can_extract(self, value):
         return True
     def get_column_type(self):
-            return String()  # fallback
+            return String(1024)  # fallback
 
 COLUMN_TYPE_EXTRACTORS: list[ColumnTypeExtractor] = [
     DatetimeColumnTypeExtractor(),
@@ -78,4 +78,4 @@ def extract_column_type(value):
     for extractor in COLUMN_TYPE_EXTRACTORS:
         if extractor.can_extract(value):
             return extractor.get_column_type()
-    return String()  # fallback
+    return String(1024)  # fallback

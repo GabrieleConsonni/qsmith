@@ -45,3 +45,11 @@ class QueueConnectionService(ABC):
     ) -> list[dict]:
         pass
 
+    @abstractmethod
+    def get_queue_metrics(
+            self,
+            broker_connection_config:BrokerConnectionConfigTypes,
+            queue_id: str,
+    ) -> dict[str, Any]:
+        pass
+

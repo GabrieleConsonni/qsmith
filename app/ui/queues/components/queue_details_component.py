@@ -1,7 +1,5 @@
-import json
-
 import streamlit as st
-import streamlit.components.v1 as components
+import json
 
 from brokers.components.common import format_count
 from queues.services.queue_service import (
@@ -36,31 +34,6 @@ def _receive_messages_key(queue_id: str) -> str:
 
 def _receive_messages_acked_key(queue_id: str) -> str:
     return f"queue_receive_messages_acked_{queue_id}"
-
-
-def _copy_queue_url_button(queue_url: str, queue_id: str):
-    escaped_url = json.dumps(str(queue_url or ""))
-    components.html(
-        f"""
-        <button
-          id="copy-queue-url-{queue_id}"
-          style="
-            width: 100%;
-            border: 1px solid #cfd4da;
-            border-radius: 8px;
-            background: #ffffff;
-            color: #111827;
-            padding: 8px 10px;
-            cursor: pointer;
-            font-size: 13px;
-          "
-          onclick="navigator.clipboard.writeText({escaped_url}); this.innerText='Copied';"
-        >
-          Copy URL
-        </button>
-        """,
-        height=40,
-    )
 
 
 def _apply_tab_label_style():
@@ -298,14 +271,7 @@ def render_queue_details_component(queue_data: dict, broker_id: str, queue_id: s
     
     queue_label = queue_data.get("description") or queue_data.get("code") or queue_id
     queue_cfg = queue_data.get("configurationQueue") or {}
-    queue_url = str(queue_cfg.get("url") or "").strip()
     st.header(f"Queue [{queue_label}]")
-    if queue_url:
-        queue_url_cols = st.columns([9, 2], gap="small", vertical_alignment="center")
-        with queue_url_cols[0]:
-            st.markdown(f"`{queue_url}`")
-        with queue_url_cols[1]:
-            _copy_queue_url_button(queue_url, queue_id)
     st.caption("Send and receive messages, test connection and manage json-array datasources.")
 
     with st.container(border=True):

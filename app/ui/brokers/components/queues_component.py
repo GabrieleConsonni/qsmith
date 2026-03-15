@@ -57,7 +57,7 @@ def render_queues_component(broker: dict):
                         key=f"queue_more_actions_{queue_item.get('id')}",
                         type="secondary",
                         use_container_width=True,
-                        help="Actions",
+                        help="Edit queue",
                         icon=":material/more_vert:",
                     ):
                         queue_actions_dialog(broker_id, queue_item)

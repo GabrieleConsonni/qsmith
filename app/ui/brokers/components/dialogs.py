@@ -1,4 +1,7 @@
+import json
+
 import streamlit as st
+import streamlit.components.v1 as components
 
 from api_client import api_delete, api_get, api_post, api_put
 from brokers.components.common import BROKER_TYPE_OPTIONS, pick_broker_type_label
@@ -339,7 +342,7 @@ def queue_settings_dialog(broker_id: str, queue_id: str):
         )
 
 
-@st.dialog("Queue actions")
+@st.dialog("Modifica queue")
 def queue_actions_dialog(broker_id: str, queue_item: dict):
     queue_id = str(queue_item.get("id") or "").strip()
     if not queue_id:
@@ -347,6 +350,9 @@ def queue_actions_dialog(broker_id: str, queue_item: dict):
         return
 
     dialog_suffix = f"queue_actions_{queue_id}"
+    queue_cfg = queue_item.get("configurationQueue") or {}
+    queue_url = str(queue_cfg.get("url") or "").strip()
+    queue_url_formatted = queue_url.replace("localhost", "[hostname]")
     st.text_input(
         "Code",
         key=f"{dialog_suffix}_code",
@@ -358,6 +364,19 @@ def queue_actions_dialog(broker_id: str, queue_item: dict):
         value=str(queue_item.get("description") or ""),
     )
 
+    if queue_url:
+        st.warning(
+            "Copy-paste URL in your application, replacing [hostname] with the actual hostname or IP address of the server running this application.",
+            icon=":material/warning:",
+        )
+        st.text_input(
+                "URL",
+                key=f"{dialog_suffix}_url",
+                value=queue_url_formatted,
+                disabled=True,
+            )
+
+    st.divider()
     action_cols = st.columns([1, 1], gap="small", vertical_alignment="center")
     with action_cols[0]:
         if st.button(

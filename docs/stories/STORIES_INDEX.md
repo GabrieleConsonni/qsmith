@@ -26,3 +26,4 @@
 | [QSM-033](stories/QSM-033-SUITE-CONTEXT.md) | Contesto mock server | In corso | Backend core completato, UI pending |
 | [QSM-034](stories/QSM-034-SUITE-DI-TEST.md) | Suite di test | In corso | Backend+UI core implementati, test/docs mirati aggiornati |
 | [QSM-035](stories/QSM-035-OPERATIONS.md) | Operations (suite+mock) | In corso | Contratto/policy runtime + mock-response family in avanzamento |
+| [QSM-036](stories/QSM-036-COMMANDS-E-CONSTANTS.md) | Commands e constants | In corso | Hard cut commands + runtime/UI/backend in corso |

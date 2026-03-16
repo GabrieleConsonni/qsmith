@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Query
 
 from _alembic.models.suite_item_execution_entity import SuiteItemExecutionEntity
-from _alembic.models.suite_item_operation_execution_entity import (
+from _alembic.models.suite_item_command_execution_entity import (
     SuiteItemOperationExecutionEntity,
 )
 from _alembic.models.test_suite_execution_entity import TestSuiteExecutionEntity
@@ -9,7 +9,7 @@ from _alembic.services.session_context_manager import managed_session
 from elaborations.services.alembic.suite_item_execution_service import (
     SuiteItemExecutionService,
 )
-from elaborations.services.alembic.suite_item_operation_execution_service import (
+from elaborations.services.alembic.suite_item_command_execution_service import (
     SuiteItemOperationExecutionService,
 )
 from elaborations.services.alembic.test_suite_execution_service import (
@@ -26,9 +26,9 @@ def _serialize_operation_execution(entity: SuiteItemOperationExecutionEntity) ->
         "test_suite_execution_id": entity.test_suite_execution_id,
         "suite_item_execution_id": entity.suite_item_execution_id,
         "suite_item_id": entity.suite_item_id,
-        "suite_item_operation_id": entity.suite_item_operation_id,
-        "operation_description": entity.operation_description,
-        "operation_order": int(entity.operation_order),
+        "suite_item_command_id": entity.suite_item_operation_id,
+        "command_description": entity.operation_description,
+        "command_order": int(entity.operation_order),
         "status": entity.status,
         "error_message": entity.error_message,
         "started_at": entity.started_at,
@@ -50,7 +50,7 @@ def _serialize_item_execution(session, entity: SuiteItemExecutionEntity, operati
         "error_message": entity.error_message,
         "started_at": entity.started_at,
         "finished_at": entity.finished_at,
-        "operations": [_serialize_operation_execution(operation) for operation in operations],
+        "commands": [_serialize_operation_execution(operation) for operation in operations],
     }
 
 
@@ -130,3 +130,4 @@ async def delete_test_suite_execution_by_id_api(execution_id: str):
         if deleted == 0:
             raise QsmithAppException(f"No test suite execution found with id [ {execution_id} ]")
         return {"message": f"{deleted} test suite execution(s) deleted"}
+

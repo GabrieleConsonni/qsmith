@@ -12,48 +12,40 @@ from testcontainers.postgres import PostgresContainer
 from app._alembic.models.json_payload_entity import JsonPayloadEntity
 from app._alembic.services.alembic_config_service import url_from_env
 from app._alembic.services.session_context_manager import managed_session
-from app.elaborations.models.dtos.configuration_operation_dto import (
-    AssertConfigurationOperationDto,
-    PublishConfigurationOperationDto,
-    RunSuiteConfigurationOperationDto,
-    SaveInternalDBConfigurationOperationDto,
-    SaveToExternalDBConfigurationOperationDto,
-    SetVarConfigurationOperationDto,
-)
-from app.elaborations.services.operations.operation_executor_composite import (
-    execute_operations,
-)
-from app.elaborations.services.operations.assert_operation_executor import (
-    AssertOperationExecutor,
-)
-from app.elaborations.services.operations.publish_to_queue_operation_executor import (
-    PublishToQueueOperationExecutor,
-)
-from app.elaborations.services.operations.save_to_external_db_operation_executor import (
-    SaveToExternalDbOperationExecutor,
-)
-from app.elaborations.services.operations.save_to_internal_db_operation_executor import (
-    SaveInternalDbOperationExecutor,
-)
-from app.elaborations.services.operations.set_var_operation_executor import (
-    SetVarOperationExecutor,
-)
-from app.elaborations.services.operations.run_suite_operation_executor import (
-    RunSuiteOperationExecutor,
-)
-from elaborations.services.suite_runs.run_context import (
-    bind_run_context,
-    create_run_context,
-    get_run_context,
-)
 from app.data_sources.models.database_connection_config_types import (
     convert_database_connection_config,
+)
+from app.elaborations.models.dtos.configuration_command_dto import (
+    AssertConfigurationCommandDto,
+    ExportDatasetConfigurationCommandDto,
+    RunSuiteConfigurationCommandDto,
+    SaveTableConfigurationCommandDto,
+    SendMessageQueueConfigurationCommandDto,
+)
+from app.elaborations.services.operations.assert_command_executor import (
+    AssertOperationExecutor,
+)
+from app.elaborations.services.operations.command_executor_composite import (
+    execute_operations,
+)
+from app.elaborations.services.operations.export_dataset_command_executor import (
+    SaveToExternalDbOperationExecutor,
+)
+from app.elaborations.services.operations.run_suite_command_executor import (
+    RunSuiteOperationExecutor,
+)
+from app.elaborations.services.operations.save_table_command_executor import (
+    SaveInternalDbOperationExecutor,
+)
+from app.elaborations.services.operations.send_message_queue_command_executor import (
+    PublishToQueueOperationExecutor,
 )
 from app.json_utils.models.enums.json_type import JsonType
 from app.json_utils.services.alembic.json_files_service import JsonFilesService
 from app.sqlalchemy_utils.engine_factory.sqlalchemy_engine_factory_composite import (
     create_sqlalchemy_engine,
 )
+from elaborations.services.suite_runs.run_context import bind_run_context, create_run_context
 
 
 def _start_container_or_skip(container, name: str):
@@ -109,15 +101,6 @@ def _insert_database_connection_payload(session, payload: dict) -> str:
     return JsonFilesService().insert(session, entity)
 
 
-def _insert_database_datasource_payload(session, payload: dict) -> str:
-    entity = JsonPayloadEntity(
-        description="test database datasource",
-        json_type=JsonType.DATABASE_TABLE.value,
-        payload=payload,
-    )
-    return JsonFilesService().insert(session, entity)
-
-
 def _insert_json_array_payload(session, payload: list[dict] | dict) -> str:
     entity = JsonPayloadEntity(
         description="test json array",
@@ -147,8 +130,8 @@ def _count_rows_from_connection_payload(payload: dict, table_name: str) -> int:
         engine.dispose()
 
 
-def test_publish_operation_executor_sends_flat_messages(monkeypatch, alembic_container):
-    import app.elaborations.services.operations.publish_to_queue_operation_executor as publish_module
+def test_send_message_queue_command_executor_sends_flat_messages(monkeypatch, alembic_container):
+    import app.elaborations.services.operations.send_message_queue_command_executor as publish_module
 
     published_calls: list[dict] = []
 
@@ -183,12 +166,16 @@ def test_publish_operation_executor_sends_flat_messages(monkeypatch, alembic_con
     )
 
     data = [{"id": 1, "value": "a"}, {"id": 2, "value": "b"}]
-    cfg = PublishConfigurationOperationDto(queue_id="queue-1")
+    cfg = SendMessageQueueConfigurationCommandDto(
+        commandCode="sendMessageQueue",
+        commandType="action",
+        queue_id="queue-1",
+    )
 
     with managed_session() as session:
         result = PublishToQueueOperationExecutor().execute(
             session,
-            "op-publish",
+            "cmd-publish",
             cfg,
             data,
         )
@@ -199,18 +186,22 @@ def test_publish_operation_executor_sends_flat_messages(monkeypatch, alembic_con
     assert result.result == [{"message": "Published 2 message(s) to queue 'orders'"}]
 
 
-def test_save_internal_db_operation_executor_inserts_rows(alembic_container):
-    table_name = _new_name("internal_op")
+def test_save_table_command_executor_inserts_rows(alembic_container):
+    table_name = _new_name("internal_cmd")
     data = [
         {"id": 1, "name": "first"},
         {"id": 2, "name": "second"},
     ]
-    cfg = SaveInternalDBConfigurationOperationDto(table_name=table_name)
+    cfg = SaveTableConfigurationCommandDto(
+        commandCode="saveTable",
+        commandType="action",
+        table_name=table_name,
+    )
 
     with managed_session() as session:
         result = SaveInternalDbOperationExecutor().execute(
             session,
-            "op-internal",
+            "cmd-internal",
             cfg,
             data,
         )
@@ -221,7 +212,7 @@ def test_save_internal_db_operation_executor_inserts_rows(alembic_container):
     assert result.result == [{"message": f"Created 2 rows in {table_name} table"}]
 
 
-def test_save_external_db_operation_executor_postgres(alembic_container, external_postgres_container):
+def test_export_dataset_command_executor_postgres(alembic_container, external_postgres_container):
     table_name = _new_name("ext_pg")
     data = [
         {"id": 10, "name": "pg-row-1"},
@@ -240,13 +231,15 @@ def test_save_external_db_operation_executor_postgres(alembic_container, externa
 
     with managed_session() as session:
         connection_id = _insert_database_connection_payload(session, connection_payload)
-        cfg = SaveToExternalDBConfigurationOperationDto(
+        cfg = ExportDatasetConfigurationCommandDto(
+            commandCode="exportDataset",
+            commandType="action",
             connection_id=connection_id,
             table_name=table_name,
         )
         result = SaveToExternalDbOperationExecutor().execute(
             session,
-            "op-external-postgres",
+            "cmd-external-postgres",
             cfg,
             data,
         )
@@ -257,7 +250,7 @@ def test_save_external_db_operation_executor_postgres(alembic_container, externa
     assert result.result == [{"message": f"Created 2 rows in {table_name} table"}]
 
 
-def test_save_external_db_operation_executor_sqlserver(alembic_container, external_sqlserver_container):
+def test_export_dataset_command_executor_sqlserver(alembic_container, external_sqlserver_container):
     table_name = _new_name("ext_sqls")
     data = [
         {"id": 20, "name": "sql-row-1"},
@@ -276,13 +269,15 @@ def test_save_external_db_operation_executor_sqlserver(alembic_container, extern
 
     with managed_session() as session:
         connection_id = _insert_database_connection_payload(session, connection_payload)
-        cfg = SaveToExternalDBConfigurationOperationDto(
+        cfg = ExportDatasetConfigurationCommandDto(
+            commandCode="exportDataset",
+            commandType="action",
             connection_id=connection_id,
             table_name=table_name,
         )
         result = SaveToExternalDbOperationExecutor().execute(
             session,
-            "op-external-sqlserver",
+            "cmd-external-sqlserver",
             cfg,
             data,
         )
@@ -293,10 +288,10 @@ def test_save_external_db_operation_executor_sqlserver(alembic_container, extern
     assert result.result == [{"message": f"Created 2 rows in {table_name} table"}]
 
 
-def test_run_suite_operation_executor_starts_execution(monkeypatch, alembic_container):
+def test_run_suite_command_executor_starts_execution(monkeypatch, alembic_container):
     import elaborations.services.test_suites.test_suite_executor_service as suite_service_module
 
-    captured: dict[str, str] = {}
+    captured: dict[str, object] = {}
 
     def _fake_execute_test_suite_by_id(test_suite_id: str, **kwargs):
         captured["suite_id"] = test_suite_id
@@ -309,9 +304,11 @@ def test_run_suite_operation_executor_starts_execution(monkeypatch, alembic_cont
         _fake_execute_test_suite_by_id,
     )
 
-    cfg = RunSuiteConfigurationOperationDto(
+    cfg = RunSuiteConfigurationCommandDto(
+        commandCode="runSuite",
+        commandType="action",
         suite_id="suite-123",
-        init_vars={"order_id": {"$ref": "$.event.payload.orderId"}},
+        constants=["order_id"],
     )
     run_context = create_run_context(
         run_id="run-1",
@@ -319,12 +316,13 @@ def test_run_suite_operation_executor_starts_execution(monkeypatch, alembic_cont
         initial_vars={},
         invocation_id="inv-1",
     )
+    run_context.local_scope["constants"]["order_id"] = "ORD-100"
 
     with managed_session() as session:
         with bind_run_context(run_context):
             result = RunSuiteOperationExecutor().execute(
                 session,
-                "op-run-suite",
+                "cmd-run-suite",
                 cfg,
                 [{"id": 1}],
             )
@@ -335,39 +333,10 @@ def test_run_suite_operation_executor_starts_execution(monkeypatch, alembic_cont
     assert captured["kwargs"]["vars_init"] == {"order_id": "ORD-100"}
     assert result.result[0]["suite_id"] == "suite-123"
     assert result.result[0]["execution_id"] == "exec-run-suite-1"
-    assert result.result[0]["init_vars"] == {"order_id": "ORD-100"}
+    assert result.result[0]["constants"] == {"order_id": "ORD-100"}
 
 
-def test_set_var_operation_executor_resolves_ref(monkeypatch, alembic_container):
-    del monkeypatch
-    cfg = SetVarConfigurationOperationDto(
-        key="customer_id",
-        value={"$ref": "$.event.payload.customer.id"},
-    )
-    run_context = create_run_context(
-        run_id="run-set-var",
-        event={"payload": {"customer": {"id": "C-001"}}},
-        initial_vars={},
-        invocation_id=None,
-    )
-
-    with managed_session() as session:
-        with bind_run_context(run_context):
-            result = SetVarOperationExecutor().execute(
-                session,
-                "op-set-var",
-                cfg,
-                [{"id": 1}],
-            )
-
-    current_context = get_run_context()
-    assert current_context is None
-    assert run_context.vars["customer_id"] == "C-001"
-    assert result.result[0]["key"] == "customer_id"
-    assert result.result[0]["value"] == "C-001"
-
-
-def test_save_external_db_operation_executor_oracle(alembic_container, external_oracle_container):
+def test_export_dataset_command_executor_oracle(alembic_container, external_oracle_container):
     table_name = _new_name("ext_orcl")
     data = [
         {"id": 30, "name": "ora-row-1"},
@@ -387,13 +356,15 @@ def test_save_external_db_operation_executor_oracle(alembic_container, external_
 
     with managed_session() as session:
         connection_id = _insert_database_connection_payload(session, connection_payload)
-        cfg = SaveToExternalDBConfigurationOperationDto(
+        cfg = ExportDatasetConfigurationCommandDto(
+            commandCode="exportDataset",
+            commandType="action",
             connection_id=connection_id,
             table_name=table_name,
         )
         result = SaveToExternalDbOperationExecutor().execute(
             session,
-            "op-external-oracle",
+            "cmd-external-oracle",
             cfg,
             data,
         )
@@ -404,29 +375,30 @@ def test_save_external_db_operation_executor_oracle(alembic_container, external_
     assert result.result == [{"message": f"Created 2 rows in {table_name} table"}]
 
 
-def test_assert_not_empty_operation_executor_passes(alembic_container):
-    cfg = AssertConfigurationOperationDto(
+def test_assert_json_not_empty_command_executor_passes(alembic_container):
+    cfg = AssertConfigurationCommandDto(
+        commandCode="jsonNotEmpty",
+        commandType="assert",
         evaluated_object_type="json-data",
-        assert_type="not-empty",
     )
     data = [{"id": 1, "name": "first"}]
 
     with managed_session() as session:
         result = AssertOperationExecutor().execute(
             session,
-            "op-assert-not-empty",
+            "cmd-assert-not-empty",
             cfg,
             data,
         )
 
     assert result.data == data
-    assert result.result == [{"message": "Assert 'not-empty' passed for 'json-data' data."}]
+    assert result.result == [{"message": "Assert 'jsonNotEmpty' passed for 'json-data' data."}]
 
 
-def test_assert_empty_operation_executor_fails_with_custom_message(alembic_container):
-    cfg = AssertConfigurationOperationDto(
-        evaluated_object_type="json-data",
-        assert_type="empty",
+def test_assert_json_empty_command_executor_fails_with_custom_message(alembic_container):
+    cfg = AssertConfigurationCommandDto(
+        commandCode="jsonEmpty",
+        commandType="assert",
         error_message="Expected no rows.",
     )
 
@@ -434,48 +406,13 @@ def test_assert_empty_operation_executor_fails_with_custom_message(alembic_conta
         with pytest.raises(ValueError, match="Expected no rows."):
             AssertOperationExecutor().execute(
                 session,
-                "op-assert-empty",
+                "cmd-assert-empty",
                 cfg,
                 [{"id": 1}],
             )
 
 
-def test_assert_schema_validation_operation_executor_validates_rows(alembic_container):
-    cfg = AssertConfigurationOperationDto(
-        evaluated_object_type="json-data",
-        assert_type="schema-validation",
-        json_schema={
-            "type": "object",
-            "required": ["id", "name"],
-            "properties": {
-                "id": {"type": "integer"},
-                "name": {"type": "string"},
-            },
-            "additionalProperties": True,
-        },
-    )
-
-    with managed_session() as session:
-        ok_result = AssertOperationExecutor().execute(
-            session,
-            "op-assert-schema-ok",
-            cfg,
-            [{"id": 1, "name": "a"}, {"id": 2, "name": "b"}],
-        )
-        assert ok_result.result == [
-            {"message": "Assert 'schema-validation' passed for 'json-data' data."}
-        ]
-
-        with pytest.raises(ValueError, match="does not match json schema"):
-            AssertOperationExecutor().execute(
-                session,
-                "op-assert-schema-ko",
-                cfg,
-                [{"id": "wrong", "name": "a"}],
-            )
-
-
-def test_assert_contains_operation_executor_uses_expected_json_array(alembic_container):
+def test_assert_json_array_contains_command_executor_uses_expected_json_array(alembic_container):
     with managed_session() as session:
         expected_json_array_id = _insert_json_array_payload(
             session,
@@ -484,33 +421,34 @@ def test_assert_contains_operation_executor_uses_expected_json_array(alembic_con
                 {"id": 2, "code": "B"},
             ],
         )
-        cfg = AssertConfigurationOperationDto(
+        cfg = AssertConfigurationCommandDto(
+            commandCode="jsonArrayContains",
+            commandType="assert",
             evaluated_object_type="json-data",
-            assert_type="contains",
             expected_json_array_id=expected_json_array_id,
             compare_keys=["id", "code"],
         )
 
         ok_result = AssertOperationExecutor().execute(
             session,
-            "op-assert-contains-ok",
+            "cmd-assert-contains-ok",
             cfg,
             [{"id": 2, "code": "B"}],
         )
         assert ok_result.result == [
-            {"message": "Assert 'contains' passed for 'json-data' data."}
+            {"message": "Assert 'jsonArrayContains' passed for 'json-data' data."}
         ]
 
         with pytest.raises(ValueError, match="not contained in expected json-array"):
             AssertOperationExecutor().execute(
                 session,
-                "op-assert-contains-ko",
+                "cmd-assert-contains-ko",
                 cfg,
                 [{"id": 3, "code": "C"}],
             )
 
 
-def test_assert_json_array_equals_operation_executor_is_order_insensitive(alembic_container):
+def test_assert_json_array_equals_command_executor_is_order_insensitive(alembic_container):
     with managed_session() as session:
         expected_json_array_id = _insert_json_array_payload(
             session,
@@ -519,38 +457,40 @@ def test_assert_json_array_equals_operation_executor_is_order_insensitive(alembi
                 {"id": 2, "code": "B"},
             ],
         )
-        cfg = AssertConfigurationOperationDto(
+        cfg = AssertConfigurationCommandDto(
+            commandCode="jsonArrayEquals",
+            commandType="assert",
             evaluated_object_type="json-data",
-            assert_type="json-array-equals",
             expected_json_array_id=expected_json_array_id,
             compare_keys=["id", "code"],
         )
 
         ok_result = AssertOperationExecutor().execute(
             session,
-            "op-assert-equals-ok",
+            "cmd-assert-equals-ok",
             cfg,
             [{"id": 2, "code": "B"}, {"id": 1, "code": "A"}],
         )
         assert ok_result.result == [
-            {"message": "Assert 'json-array-equals' passed for 'json-data' data."}
+            {"message": "Assert 'jsonArrayEquals' passed for 'json-data' data."}
         ]
 
         with pytest.raises(ValueError, match="not equal to expected json-array"):
             AssertOperationExecutor().execute(
                 session,
-                "op-assert-equals-ko",
+                "cmd-assert-equals-ko",
                 cfg,
                 [{"id": 1, "code": "A"}],
             )
 
 
-def test_assert_equals_operation_executor_resolves_context_refs(alembic_container):
-    cfg = AssertConfigurationOperationDto(
+def test_assert_json_equals_command_executor_resolves_context_refs(alembic_container):
+    cfg = AssertConfigurationCommandDto(
+        commandCode="jsonEquals",
+        commandType="assert",
         evaluated_object_type="json-data",
-        assert_type="equals",
-        actual={"$ref": "$.event.payload.actual"},
-        expected={"$ref": "$.event.payload.expected"},
+        actual={"$ref": "$.runEnvelope.event.payload.actual"},
+        expected={"$ref": "$.runEnvelope.event.payload.expected"},
     )
     run_context = create_run_context(
         run_id="run-assert-equals",
@@ -563,12 +503,12 @@ def test_assert_equals_operation_executor_resolves_context_refs(alembic_containe
         with bind_run_context(run_context):
             result = AssertOperationExecutor().execute(
                 session,
-                "op-assert-equals",
+                "cmd-assert-equals",
                 cfg,
                 [{"ignored": True}],
             )
 
-    assert result.result == [{"message": "Assert 'equals' passed for 'json-data' data."}]
+    assert result.result == [{"message": "Assert 'jsonEquals' passed for 'json-data' data."}]
     assert isinstance(run_context.artifacts.get("asserts"), list)
     assert run_context.artifacts["asserts"][-1]["status"] == "passed"
 
@@ -577,6 +517,6 @@ def test_execute_operations_rejects_legacy_operation_ids(alembic_container):
     with managed_session() as session:
         with pytest.raises(
             TypeError,
-            match="Unsupported legacy operation input. Operations must be persisted on their owning context.",
+            match="Unsupported command input. Commands must be persisted on their owning context.",
         ):
             execute_operations(session, ["missing-op"], [{"id": 1}])

@@ -2,74 +2,77 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
-from _alembic.models.suite_item_operation_execution_entity import (
+from _alembic.models.suite_item_command_execution_entity import (
     SuiteItemOperationExecutionEntity,
 )
-from _alembic.models.suite_item_operation_entity import SuiteItemOperationEntity
+from _alembic.models.suite_item_command_entity import SuiteItemOperationEntity
 from _alembic.models.test_operation_execution_entity import TestOperationExecutionEntity
 from _alembic.models.test_operation_entity import TestOperationEntity
-from elaborations.models.dtos.configuration_operation_dto import (
-    AssertConfigurationOperationDto,
-    BuildResponseFromTemplateConfigurationOperationDto,
-    DataConfigurationOperationDto,
-    DataFromDbConfigurationOperationDto,
-    DataFromJsonArrayConfigurationOperationDto,
-    DataFromQueueConfigurationOperationDto,
-    ConfigurationOperationDto,
+from elaborations.models.dtos.configuration_command_dto import (
+    AssertConfigurationCommandDto,
+    CleanDatasetConfigurationCommandDto,
+    CleanTableConfigurationCommandDto,
+    ConfigurationCommandDto,
     ConfigurationOperationTypes,
-    PublishConfigurationOperationDto,
-    RunSuiteConfigurationOperationDto,
-    SaveInternalDBConfigurationOperationDto,
-    SaveToExternalDBConfigurationOperationDto,
-    SetResponseBodyConfigurationOperationDto,
-    SetResponseHeaderConfigurationOperationDto,
-    SetResponseStatusConfigurationOperationDto,
-    SetVarConfigurationOperationDto,
-    SleepConfigurationOperationDto,
-    convert_to_config_operation_type,
+    DataConfigurationOperationDto,
+    DeleteConstantConfigurationCommandDto,
+    DropDatasetConfigurationCommandDto,
+    DropTableConfigurationCommandDto,
+    ExportDatasetConfigurationCommandDto,
+    RunSuiteConfigurationCommandDto,
+    SaveTableConfigurationCommandDto,
+    SendMessageQueueConfigurationCommandDto,
+    SleepConfigurationCommandDto,
+    convert_to_config_command_type,
 )
-from elaborations.services.operations.data_from_db_operation_executor import (
-    DataFromDbOperationExecutor,
+from elaborations.services.alembic.suite_item_command_execution_service import (
+    SuiteItemOperationExecutionService,
 )
-from elaborations.services.operations.data_from_json_array_operation_executor import (
-    DataFromJsonArrayOperationExecutor,
-)
-from elaborations.services.operations.data_from_queue_operation_executor import (
-    DataFromQueueOperationExecutor,
-)
-from elaborations.services.operations.data_operation_executor import DataOperationExecutor
 from elaborations.services.alembic.test_operation_execution_service import (
     TestOperationExecutionService,
 )
-from elaborations.services.alembic.suite_item_operation_execution_service import (
-    SuiteItemOperationExecutionService,
+from elaborations.services.operations.assert_command_executor import (
+    AssertOperationExecutor,
 )
-from elaborations.services.operations.operation_executor import ExecutionResultDto, OperationExecutor
-from elaborations.services.operations.assert_operation_executor import AssertOperationExecutor
-from elaborations.services.operations.build_response_from_template_operation_executor import (
-    BuildResponseFromTemplateOperationExecutor,
+from elaborations.services.operations.clean_dataset_command_executor import (
+    CleanDatasetOperationExecutor,
 )
-from elaborations.services.operations.operation_policy_validator import (
+from elaborations.services.operations.clean_table_command_executor import (
+    CleanTableOperationExecutor,
+)
+from elaborations.services.operations.init_constant_command_executor import (
+    DataOperationExecutor,
+)
+from elaborations.services.operations.delete_constant_command_executor import (
+    DeleteConstantOperationExecutor,
+)
+from elaborations.services.operations.drop_dataset_command_executor import (
+    DropDatasetOperationExecutor,
+)
+from elaborations.services.operations.drop_table_command_executor import (
+    DropTableOperationExecutor,
+)
+from elaborations.services.operations.command_executor import (
+    ExecutionResultDto,
+    OperationExecutor,
+)
+from elaborations.services.operations.command_policy_validator import (
     validate_operation_policy,
 )
-from elaborations.services.operations.operation_scope import resolve_execution_scope
-from elaborations.services.operations.publish_to_queue_operation_executor import PublishToQueueOperationExecutor
-from elaborations.services.operations.run_suite_operation_executor import (
+from elaborations.services.operations.command_scope import resolve_execution_scope
+from elaborations.services.operations.send_message_queue_command_executor import (
+    PublishToQueueOperationExecutor,
+)
+from elaborations.services.operations.run_suite_command_executor import (
     RunSuiteOperationExecutor,
 )
-from elaborations.services.operations.save_to_external_db_operation_executor import SaveToExternalDbOperationExecutor
-from elaborations.services.operations.save_to_internal_db_operation_executor import SaveInternalDbOperationExecutor
-from elaborations.services.operations.set_response_body_operation_executor import (
-    SetResponseBodyOperationExecutor,
+from elaborations.services.operations.export_dataset_command_executor import (
+    SaveToExternalDbOperationExecutor,
 )
-from elaborations.services.operations.set_response_header_operation_executor import (
-    SetResponseHeaderOperationExecutor,
+from elaborations.services.operations.save_table_command_executor import (
+    SaveInternalDbOperationExecutor,
 )
-from elaborations.services.operations.set_response_status_operation_executor import (
-    SetResponseStatusOperationExecutor,
-)
-from elaborations.services.operations.set_var_operation_executor import SetVarOperationExecutor
-from elaborations.services.operations.sleep_operation_executor import SleepOperationExecutor
+from elaborations.services.operations.sleep_command_executor import SleepOperationExecutor
 from elaborations.services.suite_runs.execution_event_bus import (
     publish_execution_event,
     publish_runtime_log_event,
@@ -77,37 +80,32 @@ from elaborations.services.suite_runs.execution_event_bus import (
 from elaborations.services.suite_runs.execution_runtime_context import (
     get_execution_id,
     get_suite_execution_id,
-    get_suite_test_id,
-    get_suite_test_execution_id,
     get_suite_item_execution_id,
     get_suite_item_id,
+    get_suite_test_execution_id,
+    get_suite_test_id,
     get_test_suite_execution_id,
 )
-from elaborations.services.suite_runs.run_context import (
-    build_run_context_scope,
-)
+from elaborations.services.suite_runs.run_context import build_run_context_scope
 from elaborations.services.suite_runs.run_context_resolver import resolve_dynamic_value
 from logs.models.dtos.log_dto import LogDto
 from logs.models.enums.log_level import LogLevel
 from logs.models.enums.log_subject_type import LogSubjectType
 from logs.services.alembic.log_service import LogService
 
-_EXECUTOR_MAPPING: dict[type[ConfigurationOperationDto], type[OperationExecutor]] = {
+_EXECUTOR_MAPPING: dict[type[ConfigurationCommandDto], type[OperationExecutor]] = {
     DataConfigurationOperationDto: DataOperationExecutor,
-    DataFromJsonArrayConfigurationOperationDto: DataFromJsonArrayOperationExecutor,
-    DataFromDbConfigurationOperationDto: DataFromDbOperationExecutor,
-    DataFromQueueConfigurationOperationDto: DataFromQueueOperationExecutor,
-    SleepConfigurationOperationDto: SleepOperationExecutor,
-    PublishConfigurationOperationDto: PublishToQueueOperationExecutor,
-    SaveInternalDBConfigurationOperationDto: SaveInternalDbOperationExecutor,
-    SaveToExternalDBConfigurationOperationDto: SaveToExternalDbOperationExecutor,
-    RunSuiteConfigurationOperationDto: RunSuiteOperationExecutor,
-    SetVarConfigurationOperationDto: SetVarOperationExecutor,
-    SetResponseStatusConfigurationOperationDto: SetResponseStatusOperationExecutor,
-    SetResponseHeaderConfigurationOperationDto: SetResponseHeaderOperationExecutor,
-    SetResponseBodyConfigurationOperationDto: SetResponseBodyOperationExecutor,
-    BuildResponseFromTemplateConfigurationOperationDto: BuildResponseFromTemplateOperationExecutor,
-    AssertConfigurationOperationDto: AssertOperationExecutor,
+    DeleteConstantConfigurationCommandDto: DeleteConstantOperationExecutor,
+    SleepConfigurationCommandDto: SleepOperationExecutor,
+    SendMessageQueueConfigurationCommandDto: PublishToQueueOperationExecutor,
+    SaveTableConfigurationCommandDto: SaveInternalDbOperationExecutor,
+    DropTableConfigurationCommandDto: DropTableOperationExecutor,
+    CleanTableConfigurationCommandDto: CleanTableOperationExecutor,
+    ExportDatasetConfigurationCommandDto: SaveToExternalDbOperationExecutor,
+    DropDatasetConfigurationCommandDto: DropDatasetOperationExecutor,
+    CleanDatasetConfigurationCommandDto: CleanDatasetOperationExecutor,
+    RunSuiteConfigurationCommandDto: RunSuiteOperationExecutor,
+    AssertConfigurationCommandDto: AssertOperationExecutor,
 }
 
 
@@ -133,9 +131,9 @@ def log(message: str, level: LogLevel = LogLevel.INFO):
 
 def _resolve_operation_payload(
     operation_input: TestOperationEntity | SuiteItemOperationEntity,
-) -> tuple[str, dict, str, str, int]:
+) -> tuple[str, dict, str, int]:
     if not isinstance(operation_input, (TestOperationEntity, SuiteItemOperationEntity)):
-        message = "Unsupported legacy operation input. Operations must be persisted on their owning context."
+        message = "Unsupported command input. Commands must be persisted on their owning context."
         log(message, level=LogLevel.ERROR)
         raise TypeError(message)
 
@@ -147,13 +145,13 @@ def _resolve_operation_payload(
     )
     operation_description = str(operation_input.description or "")
     operation_order = int(operation_input.order or 0)
-    return operation_id, cfg_json, operation_description, operation_description, operation_order
+    return operation_id, cfg_json, operation_description, operation_order
 
 
 def execute_operations(
     session: Session,
     operations: list[TestOperationEntity] | list[SuiteItemOperationEntity],
-    data: list[dict],
+    data,
     execution_scope: str | None = None,
 ) -> ExecutionResultDto:
     execution_result = ExecutionResultDto(data=data, result=[])
@@ -161,10 +159,10 @@ def execute_operations(
     suite_operation_execution_service = SuiteItemOperationExecutionService()
     resolved_execution_scope = resolve_execution_scope(execution_scope)
 
-    log(f"Starting execution {len(operations)} operations")
+    log(f"Starting execution {len(operations)} commands")
 
     for operation_input in operations:
-        op_id, op_cfg_json, _op_label, op_description, op_order = _resolve_operation_payload(operation_input)
+        op_id, op_cfg_json, op_description, op_order = _resolve_operation_payload(operation_input)
 
         suite_execution_id = str(get_suite_execution_id() or "").strip()
         suite_test_execution_id = str(get_suite_test_execution_id() or "").strip()
@@ -203,7 +201,7 @@ def execute_operations(
             )
 
         resolved_cfg_json = resolve_dynamic_value(op_cfg_json, build_run_context_scope())
-        cfg = convert_to_config_operation_type(resolved_cfg_json)
+        cfg = convert_to_config_command_type(resolved_cfg_json)
         contract = None
         try:
             contract = validate_operation_policy(cfg, resolved_execution_scope)
@@ -229,7 +227,7 @@ def execute_operations(
             if execution_id:
                 publish_execution_event(
                     execution_id,
-                    "operation_finished",
+                    "command_finished",
                     {
                         "suite_test_id": suite_test_id,
                         "suite_test_execution_id": suite_test_execution_id or None,
@@ -237,10 +235,10 @@ def execute_operations(
                         "suite_item_id": suite_item_id or None,
                         "suite_item_execution_id": suite_item_execution_id or None,
                         "suite_item_operation_execution_id": suite_operation_execution_id or None,
-                        "operation_id": op_id,
-                        "operation_description": op_description,
-                        "operation_scope": resolved_execution_scope,
-                        "operation_family": contract.family if contract else None,
+                        "command_id": op_id,
+                        "command_description": op_description,
+                        "command_scope": resolved_execution_scope,
+                        "command_family": contract.family if contract else None,
                         "status": "success",
                         "result": new_execution_result.result,
                     },
@@ -266,7 +264,7 @@ def execute_operations(
             if execution_id:
                 publish_execution_event(
                     execution_id,
-                    "operation_finished",
+                    "command_finished",
                     {
                         "suite_test_id": suite_test_id,
                         "suite_test_execution_id": suite_test_execution_id or None,
@@ -274,10 +272,10 @@ def execute_operations(
                         "suite_item_id": suite_item_id or None,
                         "suite_item_execution_id": suite_item_execution_id or None,
                         "suite_item_operation_execution_id": suite_operation_execution_id or None,
-                        "operation_id": op_id,
-                        "operation_description": op_description,
-                        "operation_scope": resolved_execution_scope,
-                        "operation_family": contract.family if contract else None,
+                        "command_id": op_id,
+                        "command_description": op_description,
+                        "command_scope": resolved_execution_scope,
+                        "command_family": contract.family if contract else None,
                         "status": "error",
                         "error": str(op_exception),
                     },
@@ -291,13 +289,14 @@ def execute_operation(
     session: Session,
     operation_id: str,
     cfg: ConfigurationOperationTypes,
-    data: list[dict],
+    data,
 ) -> ExecutionResultDto:
     clazz = _EXECUTOR_MAPPING.get(type(cfg))
     if clazz is None:
         supported_types = list(_EXECUTOR_MAPPING.keys())
-        message = f"Unsupported operation type: {cfg}. Supported types: {supported_types}"
+        message = f"Unsupported command type: {cfg}. Supported types: {supported_types}"
         log(message, level=LogLevel.ERROR)
         raise ValueError(message)
-    operation_executor = clazz()
-    return operation_executor.execute(session, operation_id, cfg, data)
+    command_executor = clazz()
+    return command_executor.execute(session, operation_id, cfg, data)
+

@@ -1,19 +1,18 @@
 import unittest
 
 from app._alembic.models.suite_item_entity import SuiteItemEntity
-from app._alembic.models.suite_item_operation_entity import SuiteItemOperationEntity
+from app._alembic.models.suite_item_command_entity import SuiteItemOperationEntity
 from app._alembic.models.test_suite_entity import TestSuiteEntity
 from app._alembic.services.session_context_manager import managed_session
-from app.elaborations.models.enums.operation_type import OperationType
 from app.elaborations.models.enums.on_failure import OnFailure
 from app.elaborations.models.enums.suite_item_kind import SuiteItemKind
 from app.elaborations.services.alembic.suite_item_execution_service import (
     SuiteItemExecutionService,
 )
-from app.elaborations.services.alembic.suite_item_operation_execution_service import (
+from app.elaborations.services.alembic.suite_item_command_execution_service import (
     SuiteItemOperationExecutionService,
 )
-from app.elaborations.services.alembic.suite_item_operation_service import (
+from app.elaborations.services.alembic.suite_item_command_service import (
     SuiteItemOperationService,
 )
 from app.elaborations.services.alembic.suite_item_service import SuiteItemService
@@ -51,10 +50,13 @@ def test_execution(alembic_container):
             session,
             SuiteItemOperationEntity(
                 suite_item_id=suite_item_id,
-                description="operation 1",
-                operation_type=OperationType.DATA.value,
+                description="command 1",
+                command_code="initConstant",
+                command_type="context",
                 configuration_json={
-                    "operationType": "data",
+                    "commandCode": "initConstant",
+                    "commandType": "context",
+                    "target": "$.local.rows",
                     "data": [{"id": 1}],
                 },
                 order=0,
@@ -121,11 +123,12 @@ def test_execution_with_assert_failure_marks_error_statuses(alembic_container):
             SuiteItemOperationEntity(
                 suite_item_id=suite_item_id,
                 description="assert empty",
-                operation_type=OperationType.ASSERT.value,
+                command_code="jsonEmpty",
+                command_type="assert",
                 configuration_json={
-                    "operationType": "assert",
+                    "commandCode": "jsonEmpty",
+                    "commandType": "assert",
                     "evaluated_object_type": "json-data",
-                    "assert_type": "empty",
                     "actual": [{"id": 1, "code": "A"}],
                     "error_message": "Expected no rows from test.",
                 },
@@ -176,3 +179,4 @@ def test_execution_with_assert_failure_marks_error_statuses(alembic_container):
 
 if __name__ == "__main__":
     unittest.main()
+

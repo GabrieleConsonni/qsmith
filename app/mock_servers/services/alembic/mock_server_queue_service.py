@@ -3,7 +3,7 @@ from sqlalchemy.orm import InstrumentedAttribute, Session
 from _alembic.models.base_entity import BaseIdEntity
 from _alembic.models.mock_server_queue_entity import MockServerQueueEntity
 from _alembic.services.base_id_service import BaseIdEntityService
-from mock_servers.services.alembic.ms_queue_operation_service import (
+from mock_servers.services.alembic.ms_queue_command_service import (
     MsQueueOperationService,
 )
 
@@ -38,3 +38,4 @@ class MockServerQueueService(BaseIdEntityService):
 
     def delete_on_cascade(self, session: Session, _id: str):
         MsQueueOperationService().delete_by_queue_binding_id(session, _id)
+

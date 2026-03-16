@@ -1,9 +1,9 @@
 from sqlalchemy.orm import Session
 
-from elaborations.models.dtos.configuration_operation_dto import (
+from elaborations.models.dtos.configuration_command_dto import (
     SetResponseStatusConfigurationOperationDto,
 )
-from elaborations.services.operations.operation_executor import (
+from elaborations.services.operations.command_executor import (
     ExecutionResultDto,
     OperationExecutor,
 )
@@ -28,3 +28,4 @@ class SetResponseStatusOperationExecutor(OperationExecutor):
         message = f"Response status set to {normalized_status}"
         self.log(operation_id, message)
         return ExecutionResultDto(data=data, result=[{"message": message, "status": normalized_status}])
+

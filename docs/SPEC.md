@@ -120,15 +120,15 @@ Obiettivi:
 - eseguire singoli test o l'intera suite
 - visualizzare stato ultima esecuzione di hook/test/operazioni (check/error/idle)
 - mostrare avanzamento esecuzione suite in tempo reale (test eseguiti / totali)
-- il dialog `Add operation` supporta:
+- il dialog `Add command` supporta:
   - un solo submit locale che aggiunge snapshot contestuale all'item
-  - campi di contesto per operation:
-    - `target` per operation di input
-    - `result_target` opzionale per operation action/trigger
+  - ogni command espone sempre `commandCode` e `commandType`
+  - i command context scrivono dentro `runEnvelope/global/local.constants`
+  - i command action possono salvare output tecnici nel root `result`
 
 Modello dati suite:
-- `test_suites`, `suite_items` e `suite_item_operations` contengono i dettagli funzionali usati in esecuzione.
-- Lo suite non dipende più da `test_id`/`operation_id` in runtime e non usa cataloghi condivisi di operation.
+- `test_suites`, `suite_items` e `suite_item_commands` contengono i dettagli funzionali usati in esecuzione.
+- La suite non dipende piu da `test_id`/`command_id` in runtime e non usa cataloghi condivisi di command.
 
 
 ### 4.9 Logs
@@ -142,15 +142,15 @@ Obiettivi:
 - creare/modificare/cancellare mock server con endpoint dedicato
 - configurare API mock (`method`, `path`, params/headers/body, response)
 - configurare queue binding verso queue esistenti
-- associare operazioni a trigger API e queue (incluso `run-suite`)
+- associare command a trigger API e queue (incluso `runSuite`)
 - attivare/disattivare runtime mock server
 
 Comportamento runtime:
 - route runtime sotto prefisso fisso `/mock/{server_endpoint}/...`
-- pipeline operation API:
-  - `pre_response_operations` (sync, senza side effects)
-  - `response_operations` (costruzione response draft)
-  - `post_response_operations` (async, side effects consentiti)
+- pipeline command API:
+  - `pre_response_commands` (sync, senza side effects)
+  - response statica/dinamica da configurazione route
+  - `post_response_commands` (async, side effects consentiti)
 - risposta API mock immediata, operazioni eseguite in background
 - listener queue avviati solo quando il server e attivo
 - su trigger queue viene eseguito `ACK` sempre (anche in caso errore operazioni)
@@ -173,3 +173,4 @@ Comportamento runtime:
 - Avvio standard via Docker Compose.
 - UI dipende da `QSMITH_API_BASE_URL`.
 - I test backend usano Docker/Testcontainers.
+

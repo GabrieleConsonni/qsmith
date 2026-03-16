@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, model_validator
 
-from elaborations.models.dtos.configuration_operation_dto import ConfigurationOperationTypes
+from elaborations.models.dtos.configuration_command_dto import ConfigurationOperationTypes
 
 
 def _normalize_endpoint(endpoint: str) -> str:
@@ -48,9 +48,8 @@ class MockServerApiConfigurationDto(BaseModel):
     response_status: int = 200
     response_headers: dict | None = None
     response_body: dict | list | str | int | float | bool | None = None
-    pre_response_operations: list[dict] | None = None
-    response_operations: list[dict] | None = None
-    post_response_operations: list[dict] | None = None
+    pre_response_commands: list[dict] | None = None
+    post_response_commands: list[dict] | None = None
     priority: int = 0
 
     @model_validator(mode="after")
@@ -80,7 +79,7 @@ class MockServerApiDto(BaseModel):
     order: int = 0
     description: str = ""
     cfg: MockServerApiConfigurationDto
-    operations: list[MockServerOperationDto] = Field(default_factory=list)
+    commands: list[MockServerOperationDto] = Field(default_factory=list)
 
 
 class MockServerQueueConfigurationDto(BaseModel):
@@ -102,7 +101,7 @@ class MockServerQueueDto(BaseModel):
     cfg: MockServerQueueConfigurationDto = Field(
         default_factory=MockServerQueueConfigurationDto
     )
-    operations: list[MockServerOperationDto] = Field(default_factory=list)
+    commands: list[MockServerOperationDto] = Field(default_factory=list)
 
 
 class CreateMockServerDto(BaseModel):
@@ -115,3 +114,4 @@ class CreateMockServerDto(BaseModel):
 
 class UpdateMockServerDto(CreateMockServerDto):
     id: str
+

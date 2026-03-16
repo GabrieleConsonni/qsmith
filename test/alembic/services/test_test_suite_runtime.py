@@ -9,14 +9,14 @@ from app.elaborations.api.test_suites_api import (
     find_test_suite_api,
     insert_test_suite_api,
 )
-from app.elaborations.models.dtos.configuration_operation_dto import (
-    AssertConfigurationOperationDto,
+from app.elaborations.models.dtos.configuration_command_dto import (
+    AssertConfigurationCommandDto,
     DataConfigurationOperationDto,
     SetVarConfigurationOperationDto,
 )
 from app.elaborations.models.dtos.test_suite_dto import (
+    CreateSuiteItemCommandDto,
     CreateSuiteItemDto,
-    CreateSuiteItemOperationDto,
     CreateTestSuiteDto,
 )
 from app.elaborations.services.alembic.suite_item_execution_service import (
@@ -44,8 +44,8 @@ def test_test_suite_api_and_runtime_happy_path(alembic_container):
                 kind="hook",
                 hook_phase="before-all",
                 description="before all",
-                operations=[
-                    CreateSuiteItemOperationDto(
+                commands=[
+                    CreateSuiteItemCommandDto(
                         order=1,
                         description="set tenant",
                         cfg=_cfg_payload(SetVarConfigurationOperationDto(
@@ -60,8 +60,8 @@ def test_test_suite_api_and_runtime_happy_path(alembic_container):
                 kind="hook",
                 hook_phase="before-each",
                 description="before each",
-                operations=[
-                    CreateSuiteItemOperationDto(
+                commands=[
+                    CreateSuiteItemCommandDto(
                         order=1,
                         description="set local",
                         cfg=_cfg_payload(SetVarConfigurationOperationDto(
@@ -76,29 +76,32 @@ def test_test_suite_api_and_runtime_happy_path(alembic_container):
         tests=[
             CreateSuiteItemDto(
                 description="verifies global and local values",
-                operations=[
-                    CreateSuiteItemOperationDto(
+                commands=[
+                    CreateSuiteItemCommandDto(
                         order=1,
                         description="load inline data",
                         cfg=_cfg_payload(DataConfigurationOperationDto(
                             data=[{"id": 1, "customer": "C-001"}],
+                            target="$.local.actualRows",
                         )),
                     ),
-                    CreateSuiteItemOperationDto(
+                    CreateSuiteItemCommandDto(
                         order=2,
                         description="assert tenant",
-                        cfg=_cfg_payload(AssertConfigurationOperationDto(
-                            assert_type="equals",
-                            actual="$.global.tenant",
+                        cfg=_cfg_payload(AssertConfigurationCommandDto(
+                            commandCode="jsonEquals",
+                            commandType="assert",
+                            actual="$.global.constants.tenant",
                             expected="ACME",
                         )),
                     ),
-                    CreateSuiteItemOperationDto(
+                    CreateSuiteItemCommandDto(
                         order=3,
                         description="assert local",
-                        cfg=_cfg_payload(AssertConfigurationOperationDto(
-                            assert_type="equals",
-                            actual="$.local.local_customer",
+                        cfg=_cfg_payload(AssertConfigurationCommandDto(
+                            commandCode="jsonEquals",
+                            commandType="assert",
+                            actual="$.local.constants.local_customer",
                             expected="C-001",
                         )),
                     ),
@@ -141,14 +144,15 @@ def test_test_execution_cannot_write_global_context(alembic_container):
         tests=[
             CreateSuiteItemDto(
                 description="test invalid global write",
-                operations=[
-                    CreateSuiteItemOperationDto(
+                commands=[
+                    CreateSuiteItemCommandDto(
                         order=1,
                         description="set global in test",
                         cfg=_cfg_payload(SetVarConfigurationOperationDto(
                             key="forbidden",
                             value="boom",
                             scope="global",
+                            target="$.global.forbidden",
                         )),
                     )
                 ],
@@ -180,9 +184,15 @@ def test_test_execution_cannot_write_global_context(alembic_container):
 
 def test_suite_item_operation_dto_rejects_legacy_operation_id_field():
     with pytest.raises(ValidationError, match="operation_id"):
-        CreateSuiteItemOperationDto(
+        CreateSuiteItemCommandDto(
             order=1,
             description="legacy import",
-            cfg=_cfg_payload(DataConfigurationOperationDto(data=[{"id": 1}])),
+            cfg=_cfg_payload(
+                DataConfigurationOperationDto(
+                    data=[{"id": 1}],
+                    target="$.local.actualRows",
+                )
+            ),
             operation_id="legacy-operation-id",
         )
+

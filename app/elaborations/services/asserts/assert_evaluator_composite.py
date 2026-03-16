@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from elaborations.models.dtos.configuration_operation_dto import (
+from elaborations.models.dtos.configuration_command_dto import (
     AssertConfigurationOperationDto,
     AssertEvaluatedObjectType,
     AssertType,
@@ -71,3 +71,4 @@ def evaluate_assert(
             expected=expected,
         )
     )
+

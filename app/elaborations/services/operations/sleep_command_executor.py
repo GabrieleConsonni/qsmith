@@ -2,10 +2,10 @@ import time
 
 from sqlalchemy.orm import Session
 
-from elaborations.models.dtos.configuration_operation_dto import (
+from elaborations.models.dtos.configuration_command_dto import (
     SleepConfigurationOperationDto,
 )
-from elaborations.services.operations.operation_executor import (
+from elaborations.services.operations.command_executor import (
     ExecutionResultDto,
     OperationExecutor,
 )
@@ -26,3 +26,4 @@ class SleepOperationExecutor(OperationExecutor):
             data=data,
             result=[{"message": f"Slept for {cfg.duration} second(s)."}],
         )
+

@@ -3,11 +3,10 @@ from typing import Any
 
 from _alembic.models.test_operation_entity import TestOperationEntity
 from _alembic.services.session_context_manager import managed_session
-from elaborations.services.operations.operation_executor_composite import execute_operations
-from elaborations.services.operations.operation_scope import (
+from elaborations.services.operations.command_executor_composite import execute_operations
+from elaborations.services.operations.command_scope import (
     SCOPE_MOCK_POST_RESPONSE,
     SCOPE_MOCK_PRE_RESPONSE,
-    SCOPE_MOCK_RESPONSE,
 )
 from elaborations.services.suite_runs.run_context import (
     RunContext,
@@ -15,7 +14,7 @@ from elaborations.services.suite_runs.run_context import (
     deserialize_run_context,
 )
 from logs.models.enums.log_level import LogLevel
-from mock_servers.models.runtime_models import MockOperationSnapshot
+from mock_servers.models.runtime_models import MockCommandSnapshot
 from mock_servers.services.runtime.mock_runtime_logger import log_mock_server_event
 
 
@@ -29,14 +28,14 @@ def _normalize_input_data(data: Any) -> list[dict]:
 
 def _to_test_operation_snapshot(
     source_id: str,
-    operation: MockOperationSnapshot,
+    operation: MockCommandSnapshot,
 ) -> TestOperationEntity:
     snapshot = TestOperationEntity()
     snapshot.id = operation.id
     snapshot.suite_test_id = source_id or "mock-runtime"
     snapshot.code = operation.id
     snapshot.description = operation.description
-    snapshot.operation_type = operation.operation_type
+    snapshot.operation_type = operation.command_code
     snapshot.configuration_json = operation.configuration_json
     snapshot.order = operation.order
     return snapshot
@@ -46,8 +45,6 @@ def _scope_from_source_type(source_type: str) -> str:
     normalized_source_type = str(source_type or "").strip().lower()
     if normalized_source_type == "api-pre-response":
         return SCOPE_MOCK_PRE_RESPONSE
-    if normalized_source_type == "api-response":
-        return SCOPE_MOCK_RESPONSE
     return SCOPE_MOCK_POST_RESPONSE
 
 
@@ -57,7 +54,7 @@ def execute_mock_operations(
     trigger_id: str,
     source_type: str,
     source_ref: str,
-    operations: list[MockOperationSnapshot],
+    operations: list[MockCommandSnapshot],
     data: Any,
     run_context: RunContext | None = None,
     run_context_payload: dict | None = None,
@@ -89,19 +86,19 @@ def execute_mock_operations(
                 )
         log_mock_server_event(
             mock_server_id,
-            f"[{trigger_id}] Executed {len(snapshots)} operation(s) for {source_type} trigger.",
+            f"[{trigger_id}] Executed {len(snapshots)} command(s) for {source_type} trigger.",
             payload={
                 "trigger_id": trigger_id,
                 "source_type": source_type,
                 "scope": execution_scope,
                 "source_ref": source_ref,
-                "operations": len(snapshots),
+                "commands": len(snapshots),
             },
         )
     except Exception as exc:
         log_mock_server_event(
             mock_server_id,
-            f"[{trigger_id}] Error executing operations for {source_type}: {str(exc)}",
+            f"[{trigger_id}] Error executing commands for {source_type}: {str(exc)}",
             level=LogLevel.ERROR,
             payload={
                 "trigger_id": trigger_id,
@@ -112,3 +109,4 @@ def execute_mock_operations(
         )
         if raise_errors:
             raise
+

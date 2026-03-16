@@ -3,8 +3,8 @@ from typing import Any
 from _alembic.models.mock_server_api_entity import MockServerApiEntity
 from _alembic.models.mock_server_entity import MockServerEntity
 from _alembic.models.mock_server_queue_entity import MockServerQueueEntity
-from _alembic.models.ms_api_operation_entity import MsApiOperationEntity
-from _alembic.models.ms_queue_operation_entity import MsQueueOperationEntity
+from _alembic.models.ms_api_command_entity import MsApiOperationEntity
+from _alembic.models.ms_queue_command_entity import MsQueueOperationEntity
 from mock_servers.models.dtos.mock_server_dto import (
     CreateMockServerDto,
     MockServerApiDto,
@@ -15,8 +15,8 @@ from mock_servers.models.dtos.mock_server_dto import (
 from mock_servers.services.alembic.mock_server_api_service import MockServerApiService
 from mock_servers.services.alembic.mock_server_queue_service import MockServerQueueService
 from mock_servers.services.alembic.mock_server_service import MockServerService
-from mock_servers.services.alembic.ms_api_operation_service import MsApiOperationService
-from mock_servers.services.alembic.ms_queue_operation_service import MsQueueOperationService
+from mock_servers.services.alembic.ms_api_command_service import MsApiOperationService
+from mock_servers.services.alembic.ms_queue_command_service import MsQueueOperationService
 
 
 def _safe_cfg(value: dict | None) -> dict[str, Any]:
@@ -63,7 +63,11 @@ def _build_api_operation_entity(
     entity = MsApiOperationEntity()
     entity.mock_server_api_id = mock_server_api_id
     entity.description = str(op_dto.description or "")
-    entity.operation_type = str(op_dto.cfg.operationType or "").strip()
+    entity.operation_type = str(op_dto.cfg.commandCode or "").strip()
+    if hasattr(entity, "command_code"):
+        entity.command_code = str(op_dto.cfg.commandCode or "").strip()
+    if hasattr(entity, "command_type"):
+        entity.command_type = str(op_dto.cfg.commandType or "").strip()
     entity.configuration_json = op_dto.cfg.model_dump()
     entity.order = int(op_dto.order or 0)
     return entity
@@ -76,7 +80,11 @@ def _build_queue_operation_entity(
     entity = MsQueueOperationEntity()
     entity.mock_server_queue_id = mock_server_queue_id
     entity.description = str(op_dto.description or "")
-    entity.operation_type = str(op_dto.cfg.operationType or "").strip()
+    entity.operation_type = str(op_dto.cfg.commandCode or "").strip()
+    if hasattr(entity, "command_code"):
+        entity.command_code = str(op_dto.cfg.commandCode or "").strip()
+    if hasattr(entity, "command_type"):
+        entity.command_type = str(op_dto.cfg.commandType or "").strip()
     entity.configuration_json = op_dto.cfg.model_dump()
     entity.order = int(op_dto.order or 0)
     return entity
@@ -87,7 +95,7 @@ def _insert_mock_server_apis(session, mock_server_id: str, apis: list[MockServer
     api_operation_service = MsApiOperationService()
     for api_dto in apis or []:
         api_id = api_service.insert(session, _build_api_entity(mock_server_id, api_dto))
-        for op_dto in api_dto.operations or []:
+        for op_dto in api_dto.commands or []:
             api_operation_service.insert(
                 session,
                 _build_api_operation_entity(api_id, op_dto),
@@ -106,7 +114,7 @@ def _insert_mock_server_queues(
             session,
             _build_queue_entity(mock_server_id, queue_dto),
         )
-        for op_dto in queue_dto.operations or []:
+        for op_dto in queue_dto.commands or []:
             queue_operation_service.insert(
                 session,
                 _build_queue_operation_entity(queue_binding_id, op_dto),
@@ -156,7 +164,8 @@ def _serialize_operation(operation) -> dict:
     return {
         "id": operation.id,
         "description": operation.description,
-        "operation_type": operation.operation_type,
+        "command_code": getattr(operation, "command_code", None) or operation.operation_type,
+        "command_type": getattr(operation, "command_type", None),
         "configuration_json": _safe_cfg(operation.configuration_json),
         "order": int(operation.order or 0),
     }
@@ -164,6 +173,7 @@ def _serialize_operation(operation) -> dict:
 
 def _serialize_api(session, api_entity: MockServerApiEntity) -> dict:
     operations = MsApiOperationService().get_all_by_api_id(session, api_entity.id)
+    serialized_commands = [_serialize_operation(operation) for operation in operations]
     return {
         "id": api_entity.id,
         "mock_server_id": api_entity.mock_server_id,
@@ -172,7 +182,8 @@ def _serialize_api(session, api_entity: MockServerApiEntity) -> dict:
         "path": api_entity.path,
         "order": int(api_entity.order or 0),
         "configuration_json": _safe_cfg(api_entity.configuration_json),
-        "operations": [_serialize_operation(operation) for operation in operations],
+        "commands": serialized_commands,
+        "operations": serialized_commands,
     }
 
 
@@ -181,6 +192,7 @@ def _serialize_queue(session, queue_entity: MockServerQueueEntity) -> dict:
         session,
         queue_entity.id,
     )
+    serialized_commands = [_serialize_operation(operation) for operation in operations]
     return {
         "id": queue_entity.id,
         "mock_server_id": queue_entity.mock_server_id,
@@ -188,7 +200,8 @@ def _serialize_queue(session, queue_entity: MockServerQueueEntity) -> dict:
         "description": queue_entity.description,
         "order": int(queue_entity.order or 0),
         "configuration_json": _safe_cfg(queue_entity.configuration_json),
-        "operations": [_serialize_operation(operation) for operation in operations],
+        "commands": serialized_commands,
+        "operations": serialized_commands,
     }
 
 
@@ -204,3 +217,4 @@ def serialize_mock_server(session, entity: MockServerEntity) -> dict:
         "apis": [_serialize_api(session, api_entity) for api_entity in apis],
         "queues": [_serialize_queue(session, queue_entity) for queue_entity in queues],
     }
+

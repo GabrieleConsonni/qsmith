@@ -16,7 +16,7 @@ from app.elaborations.models.dtos.configuration_test_dtos import (
     DataFromQueueConfigurationTestDto,
     SleepConfigurationTestDto,
 )
-from app.elaborations.services.operations.operation_executor import ExecutionResultDto
+from app.elaborations.services.operations.command_executor import ExecutionResultDto
 from app.elaborations.services.suite_tests.data_from_db_test_executor import (
     DataFromDbTestExecutor,
 )
@@ -288,3 +288,4 @@ def test_data_from_db_test_executor_reads_from_external_postgres(
     assert len(captured["data"]) == 2
     assert {row["id"] for row in captured["data"]} == {1, 2}
     assert result == [{"message": "db-forwarded"}]
+

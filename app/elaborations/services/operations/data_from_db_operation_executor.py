@@ -3,10 +3,10 @@ from sqlalchemy.orm import Session
 from _alembic.models.json_payload_entity import JsonPayloadEntity
 from data_sources.models.database_connection_config_types import DatabaseConnectionConfigTypes
 from data_sources.services.alembic.database_connection_service import load_database_connection
-from elaborations.models.dtos.configuration_operation_dto import (
+from elaborations.models.dtos.configuration_command_dto import (
     DataFromDbConfigurationOperationDto,
 )
-from elaborations.services.operations.operation_executor import (
+from elaborations.services.operations.command_executor import (
     ExecutionResultDto,
     OperationExecutor,
 )
@@ -64,3 +64,4 @@ class DataFromDbOperationExecutor(OperationExecutor):
                 f"Datasource '{data_source_id}' is not a database-table datasource"
             )
         return json_payload_entity.payload if isinstance(json_payload_entity.payload, dict) else {}
+

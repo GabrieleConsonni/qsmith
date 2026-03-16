@@ -4,7 +4,7 @@ from pydantic.dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from _alembic.services.session_context_manager import managed_session
-from elaborations.models.dtos.configuration_operation_dto import ConfigurationOperationTypes
+from elaborations.models.dtos.configuration_command_dto import ConfigurationOperationTypes
 from _alembic.models.log_entity import LogEntity
 from elaborations.services.suite_runs.execution_event_bus import publish_runtime_log_event
 from logs.models.dtos.log_dto import LogDto
@@ -15,7 +15,7 @@ from logs.services.alembic.log_service import LogService
 
 @dataclass
 class ExecutionResultDto:
-    data: list[dict]
+    data: object
     result: list[dict[str, object]]
 
     def extend(self, new_result):
@@ -44,5 +44,6 @@ class OperationExecutor(ABC):
 
     @abstractmethod
     def execute(self, session: Session, operation_id: str, op: ConfigurationOperationTypes,
-                data: list[dict]) -> ExecutionResultDto:
+                data) -> ExecutionResultDto:
         pass
+

@@ -4,14 +4,14 @@ from uuid import uuid4
 from _alembic.models.mock_server_entity import MockServerEntity
 from mock_servers.models.runtime_models import (
     MockApiRoute,
-    MockOperationSnapshot,
+    MockCommandSnapshot,
     MockQueueBinding,
     MockRuntimeServer,
 )
 from mock_servers.services.alembic.mock_server_api_service import MockServerApiService
 from mock_servers.services.alembic.mock_server_queue_service import MockServerQueueService
-from mock_servers.services.alembic.ms_api_operation_service import MsApiOperationService
-from mock_servers.services.alembic.ms_queue_operation_service import MsQueueOperationService
+from mock_servers.services.alembic.ms_api_command_service import MsApiOperationService
+from mock_servers.services.alembic.ms_queue_command_service import MsQueueOperationService
 
 
 def _safe_cfg(value: object) -> dict[str, Any]:
@@ -33,18 +33,21 @@ def _normalize_endpoint(endpoint: object) -> str:
     return str(endpoint or "").strip().strip("/").lower()
 
 
-def _build_operation_snapshot(entity) -> MockOperationSnapshot:
-    return MockOperationSnapshot(
+def _build_operation_snapshot(entity) -> MockCommandSnapshot:
+    command_code = str(getattr(entity, "command_code", None) or getattr(entity, "operation_type", "") or "")
+    command_type = str(getattr(entity, "command_type", "") or "").strip()
+    return MockCommandSnapshot(
         id=str(entity.id or ""),
         description=str(entity.description or ""),
-        operation_type=str(entity.operation_type or ""),
+        command_code=command_code,
+        command_type=command_type,
         configuration_json=_safe_cfg(entity.configuration_json),
         order=int(entity.order or 0),
     )
 
 
 def _normalize_operation_type(value: object) -> str:
-    return str(value or "").strip().replace("_", "-").lower()
+    return str(value or "").strip()
 
 
 def _extract_operation_cfg(raw_operation: dict[str, Any]) -> dict[str, Any]:
@@ -57,9 +60,9 @@ def _extract_operation_cfg(raw_operation: dict[str, Any]) -> dict[str, Any]:
         return configuration_json
 
     inferred_cfg = dict(raw_operation)
-    raw_type = inferred_cfg.get("type") or inferred_cfg.get("operationType")
-    if raw_type and "operationType" not in inferred_cfg:
-        inferred_cfg["operationType"] = raw_type
+    raw_type = inferred_cfg.get("type") or inferred_cfg.get("commandCode") or inferred_cfg.get("operationType")
+    if raw_type and "commandCode" not in inferred_cfg:
+        inferred_cfg["commandCode"] = raw_type
     return inferred_cfg
 
 
@@ -67,22 +70,24 @@ def _build_inline_operation_snapshot(
     raw_operation: dict[str, Any],
     *,
     order: int,
-) -> MockOperationSnapshot:
+) -> MockCommandSnapshot:
     cfg = _extract_operation_cfg(raw_operation)
-    operation_type = _normalize_operation_type(cfg.get("operationType"))
-    return MockOperationSnapshot(
+    command_code = _normalize_operation_type(cfg.get("commandCode"))
+    command_type = str(cfg.get("commandType") or "").strip()
+    return MockCommandSnapshot(
         id=str(raw_operation.get("id") or uuid4()),
         description=str(raw_operation.get("description") or ""),
-        operation_type=operation_type,
+        command_code=command_code,
+        command_type=command_type,
         configuration_json=cfg,
         order=int(raw_operation.get("order") or order),
     )
 
 
-def _parse_inline_operations(value: object) -> list[MockOperationSnapshot]:
+def _parse_inline_operations(value: object) -> list[MockCommandSnapshot]:
     if not isinstance(value, list):
         return []
-    result: list[MockOperationSnapshot] = []
+    result: list[MockCommandSnapshot] = []
     for index, item in enumerate(value):
         if not isinstance(item, dict):
             continue
@@ -105,16 +110,13 @@ def load_runtime_server(session, entity: MockServerEntity) -> MockRuntimeServer:
             for operation_entity in operations
         ]
 
-        raw_pre_operations = api_cfg.get("pre_response_operations")
+        raw_pre_operations = api_cfg.get("pre_response_commands")
         pre_response_operations = _parse_inline_operations(raw_pre_operations)
 
-        raw_post_operations = api_cfg.get("post_response_operations")
+        raw_post_operations = api_cfg.get("post_response_commands")
         has_explicit_post_operations = isinstance(raw_post_operations, list)
         explicit_post_operations = _parse_inline_operations(
             raw_post_operations
-        )
-        response_operations = _parse_inline_operations(
-            api_cfg.get("response_operations")
         )
 
         response_cfg = (
@@ -122,10 +124,6 @@ def load_runtime_server(session, entity: MockServerEntity) -> MockRuntimeServer:
             if isinstance(api_cfg.get("response"), dict)
             else {}
         )
-        if not response_operations:
-            response_operations = _parse_inline_operations(
-                response_cfg.get("operations")
-            )
         response_status = response_cfg.get(
             "status",
             api_cfg.get("response_status") or 200,
@@ -156,10 +154,9 @@ def load_runtime_server(session, entity: MockServerEntity) -> MockRuntimeServer:
                 response_status=response_status,
                 response_headers=response_headers,
                 response_body=response_body,
-                operations=legacy_operations if not has_explicit_post_operations else [],
-                pre_response_operations=pre_response_operations,
-                response_operations=response_operations,
-                post_response_operations=(
+                commands=legacy_operations if not has_explicit_post_operations else [],
+                pre_response_commands=pre_response_operations,
+                post_response_commands=(
                     explicit_post_operations if has_explicit_post_operations else []
                 ),
             )
@@ -183,7 +180,7 @@ def load_runtime_server(session, entity: MockServerEntity) -> MockRuntimeServer:
                     1,
                 ),
                 max_messages=max(min(int(queue_cfg.get("max_messages") or 10), 10), 1),
-                operations=[
+                commands=[
                     _build_operation_snapshot(operation_entity)
                     for operation_entity in operations
                 ],
@@ -201,3 +198,4 @@ def load_runtime_server(session, entity: MockServerEntity) -> MockRuntimeServer:
         apis=api_routes,
         queues=queue_bindings,
     )
+

@@ -19,7 +19,7 @@ from mock_servers.services.state_keys import (
     MOCK_SERVER_EDITOR_NONCE_KEY,
     SELECTED_MOCK_SERVER_ID_KEY,
 )
-from elaborations_shared.components.test_operation_component import (
+from elaborations_shared.components.test_command_component import (
     render_add_test_operation_dialog,
     render_operation_component,
 )
@@ -36,9 +36,9 @@ from elaborations_shared.services.state_keys import (
 
 MOCK_SERVERS_PAGE_PATH = "pages/MockServers.py"
 HTTP_METHOD_OPTIONS = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
-API_PRE_RESPONSE_OPERATIONS_KEY = "pre_response_operations"
+API_PRE_RESPONSE_OPERATIONS_KEY = "pre_response_commands"
 API_RESPONSE_OPERATIONS_KEY = "response_operations"
-API_POST_RESPONSE_OPERATIONS_KEY = "post_response_operations"
+API_POST_RESPONSE_OPERATIONS_KEY = "post_response_commands"
 BODY_TYPE_ANY = "any"
 BODY_TYPE_STRING = "string"
 BODY_TYPE_JSON = "json"
@@ -466,7 +466,7 @@ def _api_payload(api_entry: dict) -> dict:
         "order": _safe_int(api_entry.get("order"), 0),
         "description": str(api_entry.get("description") or ""),
         "cfg": cfg,
-        "operations": post_response_operations_payload,
+        "commands": post_response_operations_payload,
     }
 
 
@@ -477,7 +477,7 @@ def _queue_payload(queue_entry: dict) -> dict:
         "description": str(queue_entry.get("description") or ""),
         "queue_id": str(queue_entry.get("queue_id") or "").strip(),
         "cfg": cfg,
-        "operations": [
+        "commands": [
             _operation_payload(item)
             for item in (queue_entry.get("operations") or [])
             if isinstance(item, dict)
@@ -1815,4 +1815,5 @@ def _render_editor():
 
 def render_mock_server_editor_page():
     _render_editor()
+
 

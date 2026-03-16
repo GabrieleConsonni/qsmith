@@ -1,6 +1,6 @@
 import streamlit as st
 
-from elaborations_shared.components.test_operation_component import (
+from elaborations_shared.components.test_command_component import (
     render_add_test_operation_dialog,
     render_operation_component,
 )
@@ -544,4 +544,5 @@ def render_suite_editor_page():
 
     if bool(st.session_state.get(ADD_TEST_DIALOG_OPEN_KEY, False)):
         _render_add_test_dialog(draft)
+
 

@@ -16,7 +16,7 @@ def build_test_suite_draft(payload: dict | None) -> dict:
             continue
         hooks_map[hook_phase] = {
             **hook,
-            "operations": list(hook.get("operations") or []),
+            "operations": list(hook.get("commands") or hook.get("operations") or []),
             "_ui_key": str(hook.get("_ui_key") or new_ui_key()),
         }
 
@@ -28,7 +28,7 @@ def build_test_suite_draft(payload: dict | None) -> dict:
             {
                 **test,
                 "position": int(test.get("position") or idx),
-                "operations": list(test.get("operations") or []),
+                "operations": list(test.get("commands") or test.get("operations") or []),
                 "_ui_key": str(test.get("_ui_key") or new_ui_key()),
             }
         )
@@ -58,7 +58,7 @@ def draft_to_test_suite_payload(draft: dict) -> dict:
             "kind": str(item.get("kind") or "test"),
             "description": str(item.get("description") or ""),
             "on_failure": str(item.get("on_failure") or "ABORT"),
-            "operations": operations,
+            "commands": operations,
         }
         hook_phase = str(item.get("hook_phase") or "").strip()
         if hook_phase:

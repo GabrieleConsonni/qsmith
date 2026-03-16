@@ -120,7 +120,7 @@ class MockQueueListenerThread(threading.Thread):
                 trigger_id=trigger_id,
                 source_type="queue",
                 source_ref=self.queue_binding.id,
-                operations=self.queue_binding.operations,
+                operations=self.queue_binding.commands,
                 data=payload,
                 run_context=create_run_context(
                     run_id=invocation_id,

@@ -1,7 +1,7 @@
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from _alembic.models.base_entity import BaseIdEntity
-from _alembic.models.suite_item_operation_entity import SuiteItemOperationEntity
+from _alembic.models.suite_item_command_entity import SuiteItemOperationEntity
 from _alembic.services.base_id_service import BaseIdEntityService
 
 
@@ -31,3 +31,4 @@ class SuiteItemOperationService(BaseIdEntityService):
             count += 1
         session.flush()
         return count
+

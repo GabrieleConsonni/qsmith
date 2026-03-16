@@ -1,12 +1,11 @@
 from typing import Any
 
-from elaborations.services.operations.operation_contract_registry import (
+from elaborations.services.operations.command_contract_registry import (
     OperationContract,
     get_operation_contract,
 )
-from elaborations.services.operations.operation_scope import (
+from elaborations.services.operations.command_scope import (
     SCOPE_MOCK_PRE_RESPONSE,
-    SCOPE_MOCK_RESPONSE,
     SCOPE_TEST,
 )
 from elaborations.services.suite_runs.run_context import extract_context_root
@@ -46,19 +45,20 @@ def _validate_target_roots(targets: list[str], execution_scope: str | None):
         root = extract_context_root(target)
         if root is None:
             raise ValueError(
-                f"Unsupported target path '{target}'. Use $.global, $.local, $.artifacts or $.response."
+                f"Unsupported target path '{target}'. Use $.runEnvelope, $.global, $.local or $.result."
             )
         if execution_scope == SCOPE_TEST and root == "global":
             raise ValueError("Global context is immutable during test execution.")
-        if root == "response" and execution_scope != SCOPE_MOCK_RESPONSE:
-            raise ValueError("Response draft can be written only in mock.response scope.")
+        if execution_scope == SCOPE_TEST and root == "runEnvelope":
+            raise ValueError("RunEnvelope context is immutable during test execution.")
 
 
 def validate_operation_policy(cfg: Any, execution_scope: str | None) -> OperationContract:
-    operation_type = str(getattr(cfg, "operationType", "") or "").strip()
-    contract = get_operation_contract(operation_type)
+    command_code = str(getattr(cfg, "commandCode", "") or "").strip()
+    contract = get_operation_contract(command_code)
     if contract is None:
-        raise ValueError(f"No operation contract found for operation type '{operation_type}'.")
+        raise ValueError(f"No command contract found for commandCode '{command_code}'.")
     _validate_scope_rules(contract, execution_scope)
     _validate_target_roots(_collect_target_paths(cfg), execution_scope)
     return contract
+

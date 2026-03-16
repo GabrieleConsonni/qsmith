@@ -230,33 +230,103 @@ I context, actions e assert commands dentro hooks\test si riferiscono ai relativ
 
 # PLAN
 
-## REFACTOR BE:
-[ ] cambiare naming operation in commands ( codice, database e ux )
-[ ] introdurre CommandType: action, context, assert
-[ ] refactor operations\commands esistenti
-	
-	Context:
-		DataConfigurationOperationDto,
-		DataFromJsonArrayConfigurationOperationDto,
-		DataFromDbConfigurationOperationDto,
-		DataFromQueueConfigurationOperationDto
-			diventano InitContextConstantDto con sourceType differenti
-	
-	Actions:
-		SleepConfigurationOperationDto --> diventa SleepActionDto
-		PublishConfigurationOperationDto --> diventa SendSqsMessageActionDto
-		SaveInternalDBConfigurationOperationDto --> diventa SaveTableActionDto
-		SaveToExternalDBConfigurationOperationDto --> diventa ExportTableActionDto
-		RunSuiteConfigurationOperationDto --> diventa RunSuiteActionDto
-		
-	Assert: 
-		AssertConfigurationOperationDto --> diventa AssertDto 
+## Stato
+- Stato: In corso
+- Modalita: hard cut completo
+- Compatibilita pubblica legacy `operation*`: rimossa
 
-[ ] rimuovere:
-		SetResponseStatusConfigurationOperationDto
-    	SetResponseHeaderConfigurationOperationDto
-    	SetResponseBodyConfigurationOperationDto
-    	BuildResponseFromTemplateConfigurationOperationDto
+## Contratto pubblico
+- payload suite item: `operations` -> `commands`
+- payload mock API: `pre_response_operations` -> `pre_response_commands`
+- payload mock API: `post_response_operations` -> `post_response_commands`
+- payload mock queue: `operations` -> `commands`
+- ogni cfg comando espone:
+  - `commandCode`
+  - `commandType` con valori `context | action | assert`
+- rimossi dal contratto pubblico:
+  - `operationType`
+  - `set-var`
+  - `set-response-status`
+  - `set-response-header`
+  - `set-response-body`
+  - `build-response-from-template`
+  - `response_operations`
 
-## COMMANDS MANCANTI
-[ ] aggiungere i commands mancanti
+## Runtime e contesto
+- modello runtime annidato:
+  - `runEnvelope`
+  - `global`
+  - `local`
+  - `result`
+- `runEnvelope`, `global` e `local` espongono blocchi `constants`
+- `result` raccoglie artifacts assert e output tecnici dei command
+- il mock runtime esegue:
+  - `pre_response_commands`
+  - response statica/dinamica da config route
+  - `post_response_commands`
+- il canale `mock.response` viene rimosso
+
+## Refactor commands esistenti
+- `data`, `data-from-json-array`, `data-from-db`, `data-from-queue` -> `initConstant`
+- `publish` -> `sendMessageQueue`
+- `save-internal-db` -> `saveTable`
+- `save-external-db` -> `exportDataset`
+- `run-suite` -> `runSuite`
+- `assert` -> family assert con `commandCode` specifico:
+  - `jsonEquals`
+  - `jsonEmpty`
+  - `jsonNotEmpty`
+  - `jsonContains`
+  - `jsonArrayEquals`
+  - `jsonArrayEmpty`
+  - `jsonArrayNotEmpty`
+  - `jsonArrayContains`
+- `sleep` resta action con naming command
+
+## Commands da aggiungere
+- `deleteConstant`
+- `dropTable`
+- `cleanTable`
+- `dropDataset`
+- `cleanDataset`
+
+## Persistenza
+- rename tabelle e servizi attivi:
+  - `suite_item_operations` -> `suite_item_commands`
+  - `suite_item_operation_executions` -> `suite_item_command_executions`
+  - `ms_api_operations` -> `ms_api_commands`
+  - `ms_queue_operations` -> `ms_queue_commands`
+- introdurre colonne:
+  - `command_code`
+  - `command_type`
+- eliminare `operation_type`
+- mantenere `configuration_json`
+
+## Policy scope
+- hook: `context` + `action`
+- test: `context` + `action` + `assert`
+- mock `pre_response`: `context` + `assert`
+- mock `post_response`: solo `action`
+- eccezione concordata: `deleteConstant` ammesso anche nei test
+
+## runSuite
+- `runSuite` usa `constants: string[]`
+- precedence risoluzione costanti:
+  - `local.constants`
+  - `global.constants`
+  - `runEnvelope.constants`
+
+## Verifica
+- test migrazione Alembic rename/backfill
+- test CRUD suite/mock con soli `commands`
+- test resolver nuovo contesto `runEnvelope/global/local/result`
+- test `initConstant`, `deleteConstant`, `runSuite.constants`
+- test commands action mancanti
+- test regressione suite runtime e mock runtime
+
+## Gate qualita
+- CodeScene usage: Yes
+- tools richiesti prima del ready:
+  - `select_codescene_project`
+  - `code_health_review`
+  - `pre_commit_code_health_safeguard`

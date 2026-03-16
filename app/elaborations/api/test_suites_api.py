@@ -1,20 +1,20 @@
 from fastapi import APIRouter
 
 from _alembic.models.suite_item_entity import SuiteItemEntity
-from _alembic.models.suite_item_operation_entity import SuiteItemOperationEntity
+from _alembic.models.suite_item_command_entity import SuiteItemOperationEntity
 from _alembic.models.test_suite_entity import TestSuiteEntity
 from _alembic.services.session_context_manager import managed_session
 from elaborations.models.dtos.execute_test_dto import ExecuteSuiteTestDto
 from elaborations.models.dtos.test_suite_dto import (
     CreateSuiteItemDto,
-    CreateSuiteItemOperationDto,
+    CreateSuiteItemCommandDto,
     CreateTestSuiteDto,
     UpdateTestSuiteDto,
 )
 from elaborations.models.enums.hook_phase import HookPhase
 from elaborations.models.enums.on_failure import OnFailure
 from elaborations.models.enums.suite_item_kind import SuiteItemKind
-from elaborations.services.alembic.suite_item_operation_service import (
+from elaborations.services.alembic.suite_item_command_service import (
     SuiteItemOperationService,
 )
 from elaborations.services.alembic.suite_item_service import SuiteItemService
@@ -35,17 +35,22 @@ def _normalize_on_failure(value: str | None) -> str:
     return normalized
 
 
-def _build_suite_item_operation_entity(dto: CreateSuiteItemOperationDto) -> SuiteItemOperationEntity:
+def _build_suite_item_command_entity(dto: CreateSuiteItemCommandDto) -> SuiteItemOperationEntity:
     entity = SuiteItemOperationEntity()
     entity.order = dto.order
     dto_cfg = dto.cfg.model_dump() if dto.cfg else None
-    dto_type = str((dto.cfg.operationType if dto.cfg else None) or "").strip()
+    dto_type = str((dto.cfg.commandCode if dto.cfg else None) or "").strip()
+    dto_family = str((dto.cfg.commandType if dto.cfg else None) or "").strip()
     entity.description = str(dto.description or "")
     entity.operation_type = dto_type
+    if hasattr(entity, "command_code"):
+        entity.command_code = dto_type
+    if hasattr(entity, "command_type"):
+        entity.command_type = dto_family
     entity.configuration_json = dto_cfg if isinstance(dto_cfg, dict) else {}
 
-    if not entity.operation_type:
-        raise QsmithAppException("Operation type is required.")
+    if not dto_type:
+        raise QsmithAppException("Command code is required.")
     return entity
 
 
@@ -60,9 +65,9 @@ def _build_suite_item_entity(test_suite_id: str, dto: CreateSuiteItemDto, positi
     return entity
 
 
-def _insert_suite_item_operations(session, suite_item_id: str, operations: list[CreateSuiteItemOperationDto]):
-    for operation in operations or []:
-        entity = _build_suite_item_operation_entity(operation)
+def _insert_suite_item_operations(session, suite_item_id: str, commands: list[CreateSuiteItemCommandDto]):
+    for operation in commands or []:
+        entity = _build_suite_item_command_entity(operation)
         entity.suite_item_id = suite_item_id
         SuiteItemOperationService().insert(session, entity)
 
@@ -91,12 +96,12 @@ def _insert_suite_items(
         seen_hook_phases.add(phase.value)
         suite_item_entity = _build_suite_item_entity(test_suite_id, hook, position=0)
         suite_item_id = SuiteItemService().insert(session, suite_item_entity)
-        _insert_suite_item_operations(session, suite_item_id, hook.operations or [])
+        _insert_suite_item_operations(session, suite_item_id, hook.commands or [])
 
     for position, test in enumerate(tests or [], start=1):
         suite_item_entity = _build_suite_item_entity(test_suite_id, test, position=position)
         suite_item_id = SuiteItemService().insert(session, suite_item_entity)
-        _insert_suite_item_operations(session, suite_item_id, test.operations or [])
+        _insert_suite_item_operations(session, suite_item_id, test.commands or [])
 
 
 def _serialize_operation(operation: SuiteItemOperationEntity) -> dict:
@@ -104,7 +109,8 @@ def _serialize_operation(operation: SuiteItemOperationEntity) -> dict:
         "id": operation.id,
         "suite_item_id": operation.suite_item_id,
         "description": operation.description,
-        "operation_type": operation.operation_type,
+        "command_code": getattr(operation, "command_code", None) or operation.operation_type,
+        "command_type": getattr(operation, "command_type", None),
         "configuration_json": operation.configuration_json,
         "order": int(operation.order),
     }
@@ -120,7 +126,7 @@ def _serialize_item(session, item: SuiteItemEntity) -> dict:
         "description": item.description,
         "position": int(item.position),
         "on_failure": item.on_failure,
-        "operations": [_serialize_operation(operation) for operation in operations],
+        "commands": [_serialize_operation(operation) for operation in operations],
     }
 
 
@@ -200,3 +206,4 @@ async def execute_test_api(test_suite_id: str, suite_item_id: str, dto: ExecuteS
         include_previous=dto.include_previous,
     )
     return {"message": "Test started", "execution_id": execution_id}
+

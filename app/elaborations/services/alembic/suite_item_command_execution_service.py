@@ -1,7 +1,7 @@
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from _alembic.models.base_entity import BaseIdEntity
-from _alembic.models.suite_item_operation_execution_entity import (
+from _alembic.models.suite_item_command_execution_entity import (
     SuiteItemOperationExecutionEntity,
 )
 from _alembic.services.base_id_service import BaseIdEntityService
@@ -22,6 +22,7 @@ class SuiteItemOperationExecutionService(BaseIdEntityService):
         return (
             session.query(SuiteItemOperationExecutionEntity)
             .filter(item_execution_id_attr == suite_item_execution_id)
-            .order_by(SuiteItemOperationExecutionEntity.operation_order)
+            .order_by(SuiteItemOperationExecutionEntity.command_order)
             .all()
         )
+

@@ -1,10 +1,10 @@
 from sqlalchemy.orm import Session
 
 from _alembic.models.json_payload_entity import JsonPayloadEntity
-from elaborations.models.dtos.configuration_operation_dto import (
+from elaborations.models.dtos.configuration_command_dto import (
     DataFromJsonArrayConfigurationOperationDto,
 )
-from elaborations.services.operations.operation_executor import (
+from elaborations.services.operations.command_executor import (
     ExecutionResultDto,
     OperationExecutor,
 )
@@ -36,3 +36,4 @@ class DataFromJsonArrayOperationExecutor(OperationExecutor):
             data=rows,
             result=[{"message": f"Loaded {len(rows)} row(s) from json array."}],
         )
+

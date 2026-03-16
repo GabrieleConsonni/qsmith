@@ -1,4 +1,4 @@
-﻿# Qsmith - Contesto Progetto per Codex
+# Qsmith - Contesto Progetto per Codex
 
 ## Panoramica
 Qsmith e un'applicazione per test e orchestrazione di flussi su broker SQS, datasource e test suite.
@@ -85,7 +85,7 @@ Organizzazione UI modulare gia presente in package dedicati:
   - database connections + test + metadata oggetti + preview
 - `/elaborations`
   - test suites
-  - suite_items / suite_item_operations (snapshot)
+  - suite_items / suite_item_commands (snapshot)
   - test suite executions
   - SSE runtime: `/elaborations/execution/{execution_id}/events`
 - `/mock-server`
@@ -100,13 +100,13 @@ Organizzazione UI modulare gia presente in package dedicati:
 - `queues` configurazioni queue per broker
 - `test_suites` anagrafica suite
 - `suite_items` snapshot funzionale di test e hook
-- `suite_item_operations` snapshot funzionale operation sull'item
-- `test_suite_executions`, `suite_item_executions`, `suite_item_operation_executions`
-- `mock_servers`, `mock_server_apis`, `ms_api_operations`
-- `mock_server_queues`, `ms_queue_operations`
+- `suite_item_commands` snapshot funzionale operation sull'item
+- `test_suite_executions`, `suite_item_executions`, `suite_item_command_executions`
+- `mock_servers`, `mock_server_apis`, `ms_api_commands`
+- `mock_server_queues`, `ms_queue_commands`
 - `logs`
 
-Nota: il runtime suite e mock usa snapshot contestuali (`suite_items`/`suite_item_operations`, `ms_api_operations`, `ms_queue_operations`), senza catalogo condiviso `operations`.
+Nota: il runtime suite e mock usa snapshot contestuali (`suite_items`/`suite_item_commands`, `ms_api_commands`, `ms_queue_commands`), senza catalogo condiviso `commands`.
 
 ## Configurazione ambiente
 Valori esempio `.env`:
@@ -161,3 +161,4 @@ Quando cambia il comportamento funzionale o il piano di lavoro:
 - aggiornare `docs/stories/QSM-*.md`
 - aggiornare `docs/stories/STORY_INDEX.md` se cambiano le storie
 - aggiornare `docs/CODEX_CONTEXT.md` se cambia il contesto progetto
+

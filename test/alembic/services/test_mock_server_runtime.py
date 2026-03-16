@@ -15,7 +15,7 @@ from app.mock_servers.models.dtos.mock_server_dto import (
 )
 from app.mock_servers.models.runtime_models import (
     MockApiRoute,
-    MockOperationSnapshot,
+    MockCommandSnapshot,
     MockRuntimeServer,
 )
 from app.mock_servers.services.runtime.mock_runtime_dispatcher import (
@@ -42,8 +42,10 @@ def _create_mock_server_payload(code_suffix: str = "1") -> dict:
                     "response_headers": {"Content-Type": "application/json"},
                     "response_body": {"ok": True},
                     "priority": 0,
+                    "pre_response_commands": [],
+                    "post_response_commands": [],
                 },
-                "operations": [],
+                "commands": [],
             }
         ],
         "queues": [],
@@ -94,7 +96,7 @@ def test_mock_server_api_crud(monkeypatch, alembic_container):
     assert deactivate_response["id"] == mock_server_id
 
 
-def test_dispatch_mock_runtime_request_matches_and_schedules_task(monkeypatch):
+def test_dispatch_mock_runtime_request_matches_and_schedules_post_command(monkeypatch):
     import app.mock_servers.services.runtime.mock_runtime_dispatcher as dispatcher_module
 
     captured: dict[str, object] = {}
@@ -124,15 +126,18 @@ def test_dispatch_mock_runtime_request_matches_and_schedules_task(monkeypatch):
                 response_status=200,
                 response_headers={"Content-Type": "application/json"},
                 response_body={"ok": True},
-                operations=[
-                    MockOperationSnapshot(
-                        id="op-1",
-                        code="run_suite",
-                        description="run",
-                        operation_type="run-suite",
+                commands=[
+                    MockCommandSnapshot(
+                        id="cmd-1",
+                        code="runSuite",
+                        description="run suite",
+                        command_code="runSuite",
+                        command_type="action",
                         configuration_json={
-                            "operationType": "run-suite",
+                            "commandCode": "runSuite",
+                            "commandType": "action",
                             "suite_id": "suite-1",
+                            "constants": [],
                         },
                         order=1,
                     )
@@ -193,17 +198,8 @@ def test_dispatch_mock_runtime_request_matches_and_schedules_task(monkeypatch):
     assert captured["source_ref"] == "api-1"
 
 
-def test_dispatch_mock_runtime_request_applies_response_operations(monkeypatch):
+def test_dispatch_mock_runtime_request_builds_response_from_run_envelope(monkeypatch):
     import app.mock_servers.services.runtime.mock_runtime_dispatcher as dispatcher_module
-
-    def _fake_execute_mock_operations(**kwargs):
-        run_context = kwargs.get("run_context")
-        if run_context is None:
-            return
-        source_type = str(kwargs.get("source_type") or "")
-        if source_type == "api-response":
-            run_context.response_draft["status"] = 202
-            run_context.response_draft["body"] = {"ok": True}
 
     runtime_server = MockRuntimeServer(
         id="server-1",
@@ -224,33 +220,12 @@ def test_dispatch_mock_runtime_request_applies_response_operations(monkeypatch):
                 body=None,
                 body_match="contains",
                 priority=0,
-                response_status=200,
+                response_status={"$const": 202},
                 response_headers={"Content-Type": "application/json"},
-                response_body={"legacy": True},
-                response_operations=[
-                    MockOperationSnapshot(
-                        id="op-1",
-                        code="set-status",
-                        description="set status",
-                        operation_type="set-response-status",
-                        configuration_json={
-                            "operationType": "set-response-status",
-                            "status": 202,
-                        },
-                        order=1,
-                    ),
-                    MockOperationSnapshot(
-                        id="op-2",
-                        code="set-body",
-                        description="set body",
-                        operation_type="set-response-body",
-                        configuration_json={
-                            "operationType": "set-response-body",
-                            "body": {"ok": True},
-                        },
-                        order=2,
-                    ),
-                ],
+                response_body={
+                    "ok": True,
+                    "payload_id": {"$ref": "$.runEnvelope.event.payload.id"},
+                },
             )
         ],
         queues=[],
@@ -265,11 +240,6 @@ def test_dispatch_mock_runtime_request_applies_response_operations(monkeypatch):
         dispatcher_module,
         "_persist_mock_invocation",
         lambda **_kwargs: "inv-2",
-    )
-    monkeypatch.setattr(
-        dispatcher_module,
-        "execute_mock_operations",
-        _fake_execute_mock_operations,
     )
     monkeypatch.setattr(
         dispatcher_module,
@@ -294,3 +264,4 @@ def test_dispatch_mock_runtime_request_applies_response_operations(monkeypatch):
     assert status_code == 202
     assert headers.get("X-Qsmith-Invocation-Id") == "inv-2"
     assert body.get("ok") is True
+    assert body.get("payload_id") == 1

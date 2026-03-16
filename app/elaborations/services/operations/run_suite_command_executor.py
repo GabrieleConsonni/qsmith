@@ -1,31 +1,31 @@
 from sqlalchemy.orm import Session
 
-from elaborations.models.dtos.configuration_operation_dto import (
-    RunSuiteConfigurationOperationDto,
+from elaborations.models.dtos.configuration_command_dto import (
+    RunSuiteConfigurationCommandDto,
 )
-from elaborations.services.operations.operation_executor import (
+from elaborations.services.operations.command_executor import (
     ExecutionResultDto,
     OperationExecutor,
 )
 from elaborations.services.suite_runs.run_context import (
-    build_run_context_scope,
     get_run_context,
+    resolve_constant_value,
     write_context_path,
 )
-from elaborations.services.suite_runs.run_context_resolver import resolve_dynamic_value
 
 
 class RunSuiteOperationExecutor(OperationExecutor):
     @staticmethod
-    def _resolve_suite_id(session: Session, cfg: RunSuiteConfigurationOperationDto) -> str:
+    def _resolve_suite_id(session: Session, cfg: RunSuiteConfigurationCommandDto) -> str:
+        del session
         return str(cfg.suite_id or "").strip()
 
     def execute(
         self,
         session: Session,
         operation_id: str,
-        cfg: RunSuiteConfigurationOperationDto,
-        data: list[dict],
+        cfg: RunSuiteConfigurationCommandDto,
+        data,
     ) -> ExecutionResultDto:
         # Local import avoids circular dependency with test executor modules.
         from elaborations.services.test_suites.test_suite_executor_service import (
@@ -34,15 +34,16 @@ class RunSuiteOperationExecutor(OperationExecutor):
 
         suite_id = self._resolve_suite_id(session, cfg)
         run_context = get_run_context()
-        scope = build_run_context_scope(run_context)
-        init_vars = resolve_dynamic_value(cfg.init_vars or {}, scope)
-        if not isinstance(init_vars, dict):
-            raise ValueError("init_vars must resolve to a JSON object.")
+        constants_payload: dict[str, object] = {}
+        for constant_name in cfg.constants or []:
+            resolved_value = resolve_constant_value(constant_name)
+            if resolved_value is not None:
+                constants_payload[constant_name] = resolved_value
 
         execution_id = execute_test_suite_by_id(
             suite_id,
             run_event=run_context.event if run_context else {},
-            vars_init=init_vars,
+            vars_init=constants_payload,
             invocation_id=run_context.invocation_id if run_context else None,
         )
         message = (
@@ -54,14 +55,14 @@ class RunSuiteOperationExecutor(OperationExecutor):
             payload={
                 "suite_id": suite_id,
                 "execution_id": execution_id,
-                "init_vars": init_vars,
+                "constants": constants_payload,
                 "invocation_id": run_context.invocation_id if run_context else None,
             },
         )
         result_payload = {
             "suite_id": suite_id,
             "execution_id": execution_id,
-            "init_vars": init_vars,
+            "constants": constants_payload,
         }
         if cfg.result_target:
             write_context_path(cfg.result_target, result_payload)
@@ -77,3 +78,4 @@ class RunSuiteOperationExecutor(OperationExecutor):
 
 
 RunSuiteOperationExecutor = RunSuiteOperationExecutor
+

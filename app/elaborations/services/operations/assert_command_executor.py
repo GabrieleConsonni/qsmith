@@ -1,10 +1,10 @@
 from sqlalchemy.orm import Session
 
-from elaborations.models.dtos.configuration_operation_dto import (
-    AssertConfigurationOperationDto,
+from elaborations.models.dtos.configuration_command_dto import (
+    AssertConfigurationCommandDto,
 )
 from elaborations.services.asserts.assert_evaluator_composite import evaluate_assert
-from elaborations.services.operations.operation_executor import (
+from elaborations.services.operations.command_executor import (
     ExecutionResultDto,
     OperationExecutor,
 )
@@ -21,8 +21,8 @@ class AssertOperationExecutor(OperationExecutor):
         self,
         session: Session,
         operation_id: str,
-        cfg: AssertConfigurationOperationDto,
-        data: list[dict],
+        cfg: AssertConfigurationCommandDto,
+        data,
     ) -> ExecutionResultDto:
         scope = build_run_context_scope()
         resolved_actual = (
@@ -49,7 +49,7 @@ class AssertOperationExecutor(OperationExecutor):
             )
             append_assert_artifact(
                 {
-                    "operation_id": operation_id,
+                    "command_id": operation_id,
                     "assert_type": cfg.assert_type,
                     "status": "passed",
                     "actual": resolved_actual,
@@ -62,7 +62,7 @@ class AssertOperationExecutor(OperationExecutor):
             error_message = configured_message or technical_message
             append_assert_artifact(
                 {
-                    "operation_id": operation_id,
+                    "command_id": operation_id,
                     "assert_type": cfg.assert_type,
                     "status": "failed",
                     "actual": resolved_actual,
@@ -79,8 +79,9 @@ class AssertOperationExecutor(OperationExecutor):
             raise ValueError(error_message) from exc
 
         message = (
-            f"Assert '{cfg.assert_type}' passed for "
+            f"Assert '{cfg.commandCode}' passed for "
             f"'{cfg.evaluated_object_type}' data."
         )
         self.log(operation_id, message=message)
         return ExecutionResultDto(data=data, result=[{"message": message}])
+

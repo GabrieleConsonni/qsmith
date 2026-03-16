@@ -5,14 +5,12 @@ from elaborations_shared.components.test_operation_component import (
     render_operation_component,
 )
 from elaborations_shared.services.data_loader_service import (
-    load_operations_catalog,
     load_test_editor_context,
 )
 from elaborations_shared.services.state_keys import (
     ADD_TEST_OPERATION_DIALOG_NONCE_KEY,
     ADD_TEST_OPERATION_DIALOG_OPEN_KEY,
     ADD_TEST_OPERATION_DIALOG_TARGET_TEST_UI_KEY,
-    OPERATIONS_CATALOG_KEY,
     SUITE_FEEDBACK_KEY,
 )
 from test_suites.services.api_service import (
@@ -373,19 +371,8 @@ def _render_test_item(test: dict, index: int, execution_state: dict):
 
 @st.dialog("Add operation", width="large")
 def _render_add_operation_dialog(draft: dict):
-    operations_catalog = st.session_state.get(OPERATIONS_CATALOG_KEY, [])
-    if not isinstance(operations_catalog, list):
-        operations_catalog = []
-
-    operation_labels_by_id = {
-        str(item.get("id")): str(item.get("description") or item.get("id"))
-        for item in operations_catalog
-        if item.get("id")
-    }
     render_add_test_operation_dialog(
         draft,
-        operations_catalog,
-        operation_labels_by_id,
         _close_add_operation_dialog,
         persist_suite_changes_fn=_persist_changes,
     )
@@ -440,7 +427,6 @@ def _render_add_test_dialog(draft: dict):
 
 def render_suite_editor_page():
     load_test_editor_context(force=False)
-    load_operations_catalog(force=False)
 
     suites = _load_test_suites(force=False)
     if not suites:

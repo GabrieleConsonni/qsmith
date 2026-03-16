@@ -9,19 +9,12 @@ from database_connections.services.data_loader_service import (
     load_database_connections,
 )
 from elaborations_shared.services.data_loader_service import (
-    load_operations_catalog,
     load_test_editor_context,
     load_test_editor_queues_for_broker,
-)
-from elaborations_shared.services.api_service import (
-    create_operation,
-    delete_operation_by_id,
-    get_operations_page,
 )
 from elaborations_shared.services.state_keys import (
     ADD_TEST_OPERATION_DIALOG_NONCE_KEY,
     ADD_TEST_OPERATION_DIALOG_TARGET_TEST_UI_KEY,
-    OPERATIONS_CATALOG_KEY,
     SUITE_FEEDBACK_KEY,
     TEST_EDITOR_BROKERS_KEY,
     TEST_EDITOR_DATABASE_DATASOURCES_KEY,
@@ -80,14 +73,6 @@ OPERATION_STATUS_SUCCESS = "success"
 OPERATION_STATUS_ERROR = "error"
 OPERATION_STATUS_RUNNING = "running"
 OPERATION_STATUS_IDLE = "idle"
-OPERATION_PAGE_SIZE = 5
-
-
-def _rerun_dialog_fragment():
-    try:
-        st.rerun(scope="fragment")
-    except Exception:
-        st.rerun()
 
 
 def _safe_int(value: object, default: int = 0) -> int:
@@ -730,6 +715,7 @@ def render_operation_component(
     operation_error_message: str = "",
     persist_suite_changes_fn=None,
     summary_only: bool = False,
+    show_status_indicator: bool = True,
 ):
     operation_ui_key = operation.get("_ui_key") or f"{test_ui_key}_op_{op_idx}"
     operation["_ui_key"] = operation_ui_key
@@ -737,27 +723,45 @@ def render_operation_component(
     operation_label = operation_description or f"Operation {op_idx + 1}"
     operation_type = _operation_type_label(str(operation.get("operation_type") or ""))
     target_label, target_value = _resolve_operation_target_summary(operation)
-    operation_action_cols = st.columns([1, 18, 1], gap="small", vertical_alignment="top")
-    with operation_action_cols[0]:
-        st.button(
-            "",
-            key=f"suite_{nonce}_test_{test_ui_key}_operation_status_{operation_ui_key}",
-            icon=_operation_status_icon(operation_status),
-            type="tertiary",
-            disabled=True,
-            use_container_width=True,
-        )
+    operation_action_cols = (
+        st.columns([18, 1], gap="small", vertical_alignment="top")
+        if not show_status_indicator
+        else st.columns([1, 18, 1], gap="small", vertical_alignment="top")
+    )
 
-    with operation_action_cols[1]:
+    content_col_idx = 0
+    actions_col_idx = 1
+    if show_status_indicator:
+        with operation_action_cols[0]:
+            st.button(
+                "",
+                key=f"suite_{nonce}_test_{test_ui_key}_operation_status_{operation_ui_key}",
+                icon=_operation_status_icon(operation_status),
+                type="tertiary",
+                disabled=True,
+                use_container_width=True,
+            )
+        content_col_idx = 1
+        actions_col_idx = 2
+
+    with operation_action_cols[content_col_idx]:
         with st.container(border=True):
-            summary_cols = st.columns(3, gap="small", vertical_alignment="top")
-            with summary_cols[0]:
+            if show_status_indicator:
+                summary_cols = st.columns(3, gap="small", vertical_alignment="top")
+                with summary_cols[0]:
+                    st.caption("Type")
+                    st.write(operation_type or "-")
+                with summary_cols[1]:
+                    st.caption(target_label)
+                    st.write(target_value or "-")
+                with summary_cols[2]:
+                    st.caption("Description")
+                    st.write(operation_description or "-")
+            else:
                 st.caption("Type")
                 st.write(operation_type or "-")
-            with summary_cols[1]:
                 st.caption(target_label)
                 st.write(target_value or "-")
-            with summary_cols[2]:
                 st.caption("Description")
                 st.write(operation_description or "-")
             if not summary_only:
@@ -765,7 +769,7 @@ def render_operation_component(
                 _render_operation_details(operation)
             if operation_error_message:
                 st.caption(f"Error: {operation_error_message}")
-    with operation_action_cols[2]:
+    with operation_action_cols[actions_col_idx]:
         if st.button(
             "",
             key=f"suite_{nonce}_test_{test_ui_key}_operation_more_actions_{operation_ui_key}",
@@ -1134,34 +1138,6 @@ def build_draft_operation_from_creation_payload(payload: dict) -> dict:
         "configuration_json": cfg,
     }
 
-
-def render_readonly_operation_preview(selected_operation: dict, dialog_nonce: int):
-    if not isinstance(selected_operation, dict):
-        st.info("Seleziona un'operazione esistente.")
-        return
-
-    operation_id = str(selected_operation.get("id") or "")
-    st.text_input(
-        "Description",
-        value=str(selected_operation.get("description") or ""),
-        key=f"suite_add_operation_preview_description_{dialog_nonce}_{operation_id}",
-        disabled=True,
-    )
-    st.text_input(
-        "Operation type",
-        value=_operation_type_label(str(selected_operation.get("operation_type") or "")),
-        key=f"suite_add_operation_preview_type_{dialog_nonce}_{operation_id}",
-        disabled=True,
-    )
-    st.text_area(
-        "Configuration",
-        value=_pretty_json(selected_operation.get("configuration_json") or {}),
-        key=f"suite_add_operation_preview_cfg_{dialog_nonce}_{operation_id}",
-        disabled=True,
-        height=220,
-    )
-
-
 def _resolve_target_test_for_operation_dialog(
     draft: dict,
     dialog_nonce: int,
@@ -1183,122 +1159,6 @@ def _resolve_target_test_for_operation_dialog(
         close_add_test_operation_dialog_fn()
         st.rerun()
     return None
-
-
-def _render_existing_operations_panel(
-    suite_test: dict,
-    operation_labels_by_id: dict[str, str],
-    close_add_test_operation_dialog_fn,
-    dialog_nonce: int,
-    persist_suite_changes_fn=None,
-    show_title: bool = True,
-):
-    if show_title:
-        st.markdown("**Select existing operation**")
-    search_key = f"suite_add_operation_search_{dialog_nonce}"
-    page_key = f"suite_add_operation_page_{dialog_nonce}"
-    last_search_key = f"suite_add_operation_last_search_{dialog_nonce}"
-
-    search_value = st.text_input(
-        "Filter by text/description",
-        key=search_key,
-        placeholder="Search by description",
-    ).strip()
-    normalized_search = search_value.lower()
-    if normalized_search != str(st.session_state.get(last_search_key) or ""):
-        st.session_state[last_search_key] = normalized_search
-        st.session_state[page_key] = 1
-
-    current_page = max(_safe_int(st.session_state.get(page_key), 1), 1)
-    page_payload = get_operations_page(
-        current_page,
-        size=OPERATION_PAGE_SIZE,
-        search=search_value,
-    )
-    total_pages = max(_safe_int(page_payload.get("total_pages"), 0), 0)
-    total_items = max(_safe_int(page_payload.get("total_items"), 0), 0)
-    if total_pages > 0 and current_page > total_pages:
-        st.session_state[page_key] = total_pages
-        _rerun_dialog_fragment()
-
-    available_operations = page_payload.get("items") or []
-    if not isinstance(available_operations, list):
-        available_operations = []
-
-    resolved_page = max(_safe_int(page_payload.get("page"), current_page), 1)
-
-    if total_items <= 0 and search_value:
-        st.info("Nessuna operation trovata per il filtro inserito.")
-    elif total_items <= 0:
-        st.info("Nessuna operation disponibile da selezionare.")
-
-    for op_idx, operation_item in enumerate(available_operations):
-        operation_id = str(operation_item.get("id") or "").strip()
-        operation_label = operation_labels_by_id.get(operation_id) or str(
-            operation_item.get("description") or operation_id or "-"
-        )
-        with st.expander(operation_label, expanded=False):
-            _render_operation_details(operation_item)
-            if st.button(
-                "Add",
-                key=(
-                    "suite_add_operation_select_existing_"
-                    f"{dialog_nonce}_{operation_id}_{op_idx}"
-                ),
-                icon=":material/add:",
-                type="secondary",
-                use_container_width=True,
-            ):
-                append_operation_to_test(suite_test, operation_item)
-                close_add_test_operation_dialog_fn()
-                st.session_state[SUITE_FEEDBACK_KEY] = "Operazione aggiunta."
-                _persist_suite_changes(persist_suite_changes_fn)
-            if st.button(
-                "Delete",
-                key=f"suite_add_operation_delete_existing_{dialog_nonce}_{operation_id}_{op_idx}",
-                icon=":material/delete:",
-                type="secondary",
-                use_container_width=True,
-                disabled=not bool(operation_id),
-            ):
-                try:
-                    delete_operation_by_id(operation_id)
-                except Exception as exc:
-                    st.error(f"Errore cancellazione operazione: {str(exc)}")
-                    return
-                load_operations_catalog(force=True)
-                st.session_state[SUITE_FEEDBACK_KEY] = "Operazione eliminata da anagrafica."
-                _rerun_dialog_fragment()
-
-    pagination_cols = st.columns([1, 1, 6], gap="small", vertical_alignment="center")
-    with pagination_cols[0]:
-        if st.button(
-            "",
-            key=f"suite_add_operation_page_prev_{dialog_nonce}",
-            icon=":material/keyboard_arrow_left:",
-            help="Previous page",
-            use_container_width=True,
-            disabled=current_page <= 1,
-        ):
-            st.session_state[page_key] = max(current_page - 1, 1)
-            _rerun_dialog_fragment()
-    with pagination_cols[1]:
-        if st.button(
-            "",
-            key=f"suite_add_operation_page_next_{dialog_nonce}",
-            icon=":material/keyboard_arrow_right:",
-            help="Next page",
-            use_container_width=True,
-            disabled=(total_pages <= 0 or current_page >= total_pages),
-        ):
-            st.session_state[page_key] = current_page + 1
-            _rerun_dialog_fragment()
-    with pagination_cols[2]:
-        if total_items > 0:
-            st.caption(
-                f"Pagina {resolved_page}/{max(total_pages, 1)} - {total_items} operation trovate"
-            )
-
 
 def _render_new_operation_form_panel(
     suite_test: dict,
@@ -1711,83 +1571,32 @@ def _render_new_operation_form_panel(
             help="JSON or plain text template.",
         )
 
-    create_cols = st.columns([1, 1], gap="small")
-    with create_cols[0]:
-        if st.button(
-            "Save and add",
-            key=f"suite_add_operation_save_and_add_{dialog_nonce}",
-            icon=":material/save:",
-            type="secondary",
-            use_container_width=True,
-        ):
-            payload, validation_error = build_operation_creation_payload(dialog_nonce)
-            if validation_error:
-                st.error(validation_error)
-                return
-
-            try:
-                response = create_operation(payload or {})
-            except Exception as exc:
-                st.error(f"Errore creazione operazione: {str(exc)}")
-                return
-
-            created_operation_id = str(response.get("id") or "").strip()
-            if not created_operation_id:
-                st.error("Risposta creazione operazione non valida.")
-                return
-
-            load_operations_catalog(force=True)
-            updated_operations_catalog = st.session_state.get(OPERATIONS_CATALOG_KEY, [])
-            if not isinstance(updated_operations_catalog, list):
-                updated_operations_catalog = []
-            created_operation = next(
-                (
-                    item
-                    for item in updated_operations_catalog
-                    if str(item.get("id") or "").strip() == created_operation_id
-                ),
-                None,
-            )
-            append_operation_to_test(
-                suite_test,
-                created_operation
-                if isinstance(created_operation, dict)
-                else build_draft_operation_from_creation_payload(payload or {}),
-            )
-            close_add_test_operation_dialog_fn()
-            st.session_state[SUITE_FEEDBACK_KEY] = "Nuova operazione creata e aggiunta."
-            _persist_suite_changes(persist_suite_changes_fn)
-
-    with create_cols[1]:
-        if st.button(
-            "Add only",
-            key=f"suite_add_operation_add_only_{dialog_nonce}",
-            icon=":material/add_circle:",
-            type="secondary",
-            use_container_width=True,
-        ):
-            payload, validation_error = build_operation_creation_payload(dialog_nonce)
-            if validation_error:
-                st.error(validation_error)
-                return
-            append_operation_to_test(
-                suite_test,
-                build_draft_operation_from_creation_payload(payload or {}),
-            )
-            close_add_test_operation_dialog_fn()
-            st.session_state[SUITE_FEEDBACK_KEY] = "Nuova test operation aggiunta."
-            _persist_suite_changes(persist_suite_changes_fn)
+    if st.button(
+        "Add operation",
+        key=f"suite_add_operation_add_local_{dialog_nonce}",
+        icon=":material/add_circle:",
+        type="secondary",
+        use_container_width=True,
+    ):
+        payload, validation_error = build_operation_creation_payload(dialog_nonce)
+        if validation_error:
+            st.error(validation_error)
+            return
+        append_operation_to_test(
+            suite_test,
+            build_draft_operation_from_creation_payload(payload or {}),
+        )
+        close_add_test_operation_dialog_fn()
+        st.session_state[SUITE_FEEDBACK_KEY] = "Nuova operation aggiunta."
+        _persist_suite_changes(persist_suite_changes_fn)
 
 
 def render_add_test_operation_dialog(
     draft: dict,
-    operation_catalog: list[dict],
-    operation_labels_by_id: dict[str, str],
     close_add_test_operation_dialog_fn,
     persist_suite_changes_fn=None,
 ):
     dialog_nonce = int(st.session_state.get(ADD_TEST_OPERATION_DIALOG_NONCE_KEY, 0))
-    show_existing_key = f"suite_add_operation_show_existing_{dialog_nonce}"
     suite_test = _resolve_target_test_for_operation_dialog(
         draft,
         dialog_nonce,
@@ -1804,32 +1613,6 @@ def render_add_test_operation_dialog(
     )
 
     st.divider()
-    existing_cols = st.columns([8, 2], gap="small", vertical_alignment="center")
-    with existing_cols[0]:
-        st.markdown("**Select existing operation**")
-    with existing_cols[1]:
-        show_existing = bool(st.session_state.get(show_existing_key, False))
-        if st.button(
-            "Nascondi" if show_existing else "Ricerca",
-            key=f"suite_add_operation_toggle_existing_{dialog_nonce}",
-            icon=":material/search:",
-            type="secondary",
-            use_container_width=True,
-        ):
-            st.session_state[show_existing_key] = not show_existing
-            _rerun_dialog_fragment()
-
-    if bool(st.session_state.get(show_existing_key, False)):
-        _render_existing_operations_panel(
-            suite_test,
-            operation_labels_by_id,
-            close_add_test_operation_dialog_fn,
-            dialog_nonce,
-            persist_suite_changes_fn=persist_suite_changes_fn,
-            show_title=False,
-        )
-
-    st.divider()
     footer_cols = st.columns([1, 1], gap="large", vertical_alignment="center")
     with footer_cols[1]:
         if st.button(
@@ -1843,14 +1626,10 @@ def render_add_test_operation_dialog(
 
 def render_import_test_operation_dialog(
     draft: dict,
-    operation_catalog: list[dict],
-    operation_labels_by_id: dict[str, str],
     close_add_test_operation_dialog_fn,
 ):
     render_add_test_operation_dialog(
         draft,
-        operation_catalog,
-        operation_labels_by_id,
         close_add_test_operation_dialog_fn,
     )
 
@@ -1858,8 +1637,6 @@ def render_import_test_operation_dialog(
 def render_add_new_test_operation_dialog(draft: dict, close_add_test_operation_dialog_fn):
     render_add_test_operation_dialog(
         draft,
-        [],
-        {},
         close_add_test_operation_dialog_fn,
     )
 

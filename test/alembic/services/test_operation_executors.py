@@ -1,4 +1,3 @@
-import asyncio
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -13,7 +12,6 @@ from testcontainers.postgres import PostgresContainer
 from app._alembic.models.json_payload_entity import JsonPayloadEntity
 from app._alembic.services.alembic_config_service import url_from_env
 from app._alembic.services.session_context_manager import managed_session
-from app.elaborations.api.operations_api import insert_operation_api
 from app.elaborations.models.dtos.configuration_operation_dto import (
     AssertConfigurationOperationDto,
     PublishConfigurationOperationDto,
@@ -22,8 +20,6 @@ from app.elaborations.models.dtos.configuration_operation_dto import (
     SaveToExternalDBConfigurationOperationDto,
     SetVarConfigurationOperationDto,
 )
-from app.elaborations.models.dtos.create_operation_dto import CreateOperationDto
-from app.elaborations.services.alembic.operation_service import OperationService
 from app.elaborations.services.operations.operation_executor_composite import (
     execute_operations,
 )
@@ -106,7 +102,6 @@ def _new_name(prefix: str) -> str:
 
 def _insert_database_connection_payload(session, payload: dict) -> str:
     entity = JsonPayloadEntity(
-        code=_new_name("conn"),
         description="test database connection",
         json_type=JsonType.DATABASE_CONNECTION.value,
         payload=payload,
@@ -116,7 +111,6 @@ def _insert_database_connection_payload(session, payload: dict) -> str:
 
 def _insert_database_datasource_payload(session, payload: dict) -> str:
     entity = JsonPayloadEntity(
-        code=_new_name("ds"),
         description="test database datasource",
         json_type=JsonType.DATABASE_TABLE.value,
         payload=payload,
@@ -126,7 +120,6 @@ def _insert_database_datasource_payload(session, payload: dict) -> str:
 
 def _insert_json_array_payload(session, payload: list[dict] | dict) -> str:
     entity = JsonPayloadEntity(
-        code=_new_name("json_arr"),
         description="test json array",
         json_type=JsonType.JSON_ARRAY.value,
         payload=payload,
@@ -580,49 +573,10 @@ def test_assert_equals_operation_executor_resolves_context_refs(alembic_containe
     assert run_context.artifacts["asserts"][-1]["status"] == "passed"
 
 
-def test_execute_operations_raises_when_operation_not_found(alembic_container):
+def test_execute_operations_rejects_legacy_operation_ids(alembic_container):
     with managed_session() as session:
-        with pytest.raises(ValueError, match="Operation with id 'missing-op' not found"):
+        with pytest.raises(
+            TypeError,
+            match="Unsupported legacy operation input. Operations must be persisted on their owning context.",
+        ):
             execute_operations(session, ["missing-op"], [{"id": 1}])
-
-
-def test_insert_operation_api_persists_scalar_fields(alembic_container):
-    dto = CreateOperationDto(
-        description="api operation",
-        cfg={
-            "operationType": "save-internal-db",
-            "table_name": _new_name("api_tbl"),
-        },
-    )
-
-    created_operation_id = asyncio.run(insert_operation_api(dto))["id"]
-
-    with managed_session() as session:
-        entity = OperationService().get_by_id(session, created_operation_id)
-        assert entity is not None
-        assert entity.description == dto.description
-        assert entity.operation_type == dto.cfg.operationType
-
-
-def test_insert_operation_api_persists_assert_configuration(alembic_container):
-    dto = CreateOperationDto(
-        description="api assert operation",
-        cfg={
-            "operationType": "assert",
-            "evaluated_object_type": "json-data",
-            "assert_type": "contains",
-            "expected_json_array_id": "json-arr-id",
-            "compare_keys": ["id", "code"],
-            "error_message": "Assertion failed.",
-        },
-    )
-
-    created_operation_id = asyncio.run(insert_operation_api(dto))["id"]
-
-    with managed_session() as session:
-        entity = OperationService().get_by_id(session, created_operation_id)
-        assert entity is not None
-        assert entity.operation_type == "assert"
-        assert entity.configuration_json["assert_type"] == "contains"
-        assert entity.configuration_json["evaluated_object_type"] == "json-data"
-        assert entity.configuration_json["compare_keys"] == ["id", "code"]

@@ -1,6 +1,9 @@
 import asyncio
 from uuid import uuid4
 
+import pytest
+from pydantic import ValidationError
+
 from app._alembic.services.session_context_manager import managed_session
 from app.elaborations.api.test_suites_api import (
     find_test_suite_api,
@@ -172,4 +175,14 @@ def test_test_execution_cannot_write_global_context(alembic_container):
         assert str(execution.status or "").strip().lower() == "error"
         assert "Global context is immutable during test execution." in str(
             execution.error_message or ""
+        )
+
+
+def test_suite_item_operation_dto_rejects_legacy_operation_id_field():
+    with pytest.raises(ValidationError, match="operation_id"):
+        CreateSuiteItemOperationDto(
+            order=1,
+            description="legacy import",
+            cfg=_cfg_payload(DataConfigurationOperationDto(data=[{"id": 1}])),
+            operation_id="legacy-operation-id",
         )

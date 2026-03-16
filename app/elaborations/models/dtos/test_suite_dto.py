@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from elaborations.models.dtos.configuration_operation_dto import ConfigurationOperationTypes
 from elaborations.models.enums.hook_phase import HookPhase
@@ -7,10 +7,11 @@ from elaborations.models.enums.suite_item_kind import SuiteItemKind
 
 
 class CreateSuiteItemOperationDto(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     order: int
     description: str | None = ""
     cfg: ConfigurationOperationTypes | None = None
-    operation_id: str | None = None
 
 
 class CreateSuiteItemDto(BaseModel):

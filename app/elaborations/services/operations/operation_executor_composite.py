@@ -38,7 +38,6 @@ from elaborations.services.operations.data_from_queue_operation_executor import 
     DataFromQueueOperationExecutor,
 )
 from elaborations.services.operations.data_operation_executor import DataOperationExecutor
-from elaborations.services.alembic.operation_service import OperationService
 from elaborations.services.alembic.test_operation_execution_service import (
     TestOperationExecutionService,
 )
@@ -133,40 +132,27 @@ def log(message: str, level: LogLevel = LogLevel.INFO):
 
 
 def _resolve_operation_payload(
-    session: Session,
-    operation_input: TestOperationEntity | SuiteItemOperationEntity | str,
+    operation_input: TestOperationEntity | SuiteItemOperationEntity,
 ) -> tuple[str, dict, str, str, int]:
-    if isinstance(operation_input, (TestOperationEntity, SuiteItemOperationEntity)):
-        operation_id = str(operation_input.id)
-        cfg_json = (
-            operation_input.configuration_json
-            if isinstance(operation_input.configuration_json, dict)
-            else {}
-        )
-        operation_description = str(operation_input.description or "")
-        operation_order = int(operation_input.order or 0)
-        return operation_id, cfg_json, operation_description, operation_description, operation_order
-
-    # Backward compatibility for old code paths that still pass operation ids.
-    operation_id = str(operation_input or "").strip()
-    operation_entity = OperationService().get_by_id(session, operation_id)
-    if not operation_entity:
-        message = f"Operation with id '{operation_id}' not found"
+    if not isinstance(operation_input, (TestOperationEntity, SuiteItemOperationEntity)):
+        message = "Unsupported legacy operation input. Operations must be persisted on their owning context."
         log(message, level=LogLevel.ERROR)
-        raise ValueError(message)
+        raise TypeError(message)
+
+    operation_id = str(operation_input.id)
     cfg_json = (
-        operation_entity.configuration_json
-        if isinstance(operation_entity.configuration_json, dict)
+        operation_input.configuration_json
+        if isinstance(operation_input.configuration_json, dict)
         else {}
     )
-    operation_description = str(operation_entity.description or "")
-    operation_order = 0
+    operation_description = str(operation_input.description or "")
+    operation_order = int(operation_input.order or 0)
     return operation_id, cfg_json, operation_description, operation_description, operation_order
 
 
 def execute_operations(
     session: Session,
-    operations: list[TestOperationEntity] | list[SuiteItemOperationEntity] | list[str],
+    operations: list[TestOperationEntity] | list[SuiteItemOperationEntity],
     data: list[dict],
     execution_scope: str | None = None,
 ) -> ExecutionResultDto:
@@ -178,10 +164,7 @@ def execute_operations(
     log(f"Starting execution {len(operations)} operations")
 
     for operation_input in operations:
-        op_id, op_cfg_json, _op_label, op_description, op_order = _resolve_operation_payload(
-            session,
-            operation_input,
-        )
+        op_id, op_cfg_json, _op_label, op_description, op_order = _resolve_operation_payload(operation_input)
 
         suite_execution_id = str(get_suite_execution_id() or "").strip()
         suite_test_execution_id = str(get_suite_test_execution_id() or "").strip()

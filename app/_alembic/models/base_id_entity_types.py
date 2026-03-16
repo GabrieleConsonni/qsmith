@@ -6,7 +6,6 @@ from _alembic.models.mock_server_invocation_entity import MockServerInvocationEn
 from _alembic.models.mock_server_queue_entity import MockServerQueueEntity
 from _alembic.models.ms_api_operation_entity import MsApiOperationEntity
 from _alembic.models.ms_queue_operation_entity import MsQueueOperationEntity
-from _alembic.models.operation_entity import OperationEntity
 from _alembic.models.queue_entity import QueueEntity
 from _alembic.models.suite_entity import SuiteEntity
 from _alembic.models.suite_execution_entity import SuiteExecutionEntity
@@ -33,7 +32,6 @@ BaseIdEntityTypes = (
     | MockServerQueueEntity
     | MsApiOperationEntity
     | MsQueueOperationEntity
-    | OperationEntity
     | QueueEntity
     | SuiteEntity
     | SuiteExecutionEntity

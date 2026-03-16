@@ -84,7 +84,7 @@ Organizzazione UI modulare gia presente in package dedicati:
 - `/database`
   - database connections + test + metadata oggetti + preview
 - `/elaborations`
-  - operations, test suites
+  - test suites
   - suite_items / suite_item_operations (snapshot)
   - test suite executions
   - SSE runtime: `/elaborations/execution/{execution_id}/events`
@@ -98,7 +98,6 @@ Organizzazione UI modulare gia presente in package dedicati:
 ## Modello dati (alto livello)
 - `json_payloads` configurazioni JSON tipizzate
 - `queues` configurazioni queue per broker
-- `operations` anagrafica riusabile
 - `test_suites` anagrafica suite
 - `suite_items` snapshot funzionale di test e hook
 - `suite_item_operations` snapshot funzionale operation sull'item
@@ -107,7 +106,7 @@ Organizzazione UI modulare gia presente in package dedicati:
 - `mock_server_queues`, `ms_queue_operations`
 - `logs`
 
-Nota: il runtime suite usa gli snapshot (`suite_items`/`suite_item_operations`), non esiste piu il catalogo `tests`.
+Nota: il runtime suite e mock usa snapshot contestuali (`suite_items`/`suite_item_operations`, `ms_api_operations`, `ms_queue_operations`), senza catalogo condiviso `operations`.
 
 ## Configurazione ambiente
 Valori esempio `.env`:

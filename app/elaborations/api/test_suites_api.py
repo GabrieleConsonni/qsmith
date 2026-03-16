@@ -14,7 +14,6 @@ from elaborations.models.dtos.test_suite_dto import (
 from elaborations.models.enums.hook_phase import HookPhase
 from elaborations.models.enums.on_failure import OnFailure
 from elaborations.models.enums.suite_item_kind import SuiteItemKind
-from elaborations.services.alembic.operation_service import OperationService
 from elaborations.services.alembic.suite_item_operation_service import (
     SuiteItemOperationService,
 )
@@ -36,36 +35,14 @@ def _normalize_on_failure(value: str | None) -> str:
     return normalized
 
 
-def _build_suite_item_operation_entity(session, dto: CreateSuiteItemOperationDto) -> SuiteItemOperationEntity:
+def _build_suite_item_operation_entity(dto: CreateSuiteItemOperationDto) -> SuiteItemOperationEntity:
     entity = SuiteItemOperationEntity()
     entity.order = dto.order
     dto_cfg = dto.cfg.model_dump() if dto.cfg else None
     dto_type = str((dto.cfg.operationType if dto.cfg else None) or "").strip()
-
-    operation_id = str(dto.operation_id or "").strip()
-    if operation_id:
-        source_operation = OperationService().get_by_id(session, operation_id)
-        if not source_operation:
-            raise QsmithAppException(f"No operation found with id [ {operation_id} ]")
-        entity.description = (
-            str(dto.description)
-            if dto.description is not None and str(dto.description).strip()
-            else str(source_operation.description or "")
-        )
-        entity.operation_type = str(dto_type or source_operation.operation_type or "").strip()
-        entity.configuration_json = (
-            dto_cfg
-            if isinstance(dto_cfg, dict)
-            else (
-                source_operation.configuration_json
-                if isinstance(source_operation.configuration_json, dict)
-                else {}
-            )
-        )
-    else:
-        entity.description = str(dto.description or "")
-        entity.operation_type = dto_type
-        entity.configuration_json = dto_cfg if isinstance(dto_cfg, dict) else {}
+    entity.description = str(dto.description or "")
+    entity.operation_type = dto_type
+    entity.configuration_json = dto_cfg if isinstance(dto_cfg, dict) else {}
 
     if not entity.operation_type:
         raise QsmithAppException("Operation type is required.")
@@ -85,7 +62,7 @@ def _build_suite_item_entity(test_suite_id: str, dto: CreateSuiteItemDto, positi
 
 def _insert_suite_item_operations(session, suite_item_id: str, operations: list[CreateSuiteItemOperationDto]):
     for operation in operations or []:
-        entity = _build_suite_item_operation_entity(session, operation)
+        entity = _build_suite_item_operation_entity(operation)
         entity.suite_item_id = suite_item_id
         SuiteItemOperationService().insert(session, entity)
 

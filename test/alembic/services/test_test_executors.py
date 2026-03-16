@@ -60,7 +60,6 @@ def _insert_json_payload(
     code_prefix: str,
 ) -> str:
     entity = JsonPayloadEntity(
-        code=_new_name(code_prefix),
         description=f"{code_prefix} test payload",
         json_type=json_type.value,
         payload=payload,

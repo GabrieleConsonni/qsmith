@@ -15,7 +15,6 @@ from data_sources.api.database_data_source_api import router as database_router
 from data_sources.api.database_table_data_source_api import (
     router as database_table_data_source_router,
 )
-from elaborations.api.operations_api import router as operations_router
 from elaborations.api.execution_events_api import router as execution_events_router
 from elaborations.api.test_suite_executions_api import router as test_suite_executions_router
 from elaborations.api.test_suites_api import router as test_suites_router
@@ -105,7 +104,6 @@ app.include_router(brokers_connection_router)
 app.include_router(json_array_router)
 app.include_router(database_router)
 app.include_router(database_table_data_source_router)
-app.include_router(operations_router)
 app.include_router(test_suites_router)
 app.include_router(execution_events_router)
 app.include_router(test_suite_executions_router)

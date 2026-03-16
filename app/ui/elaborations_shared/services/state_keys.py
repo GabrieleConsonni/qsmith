@@ -1,4 +1,3 @@
-OPERATIONS_CATALOG_KEY = "operations_catalog"
 TEST_EDITOR_JSON_ARRAYS_KEY = "test_editor_json_arrays"
 TEST_EDITOR_DATABASE_DATASOURCES_KEY = "test_editor_database_datasources"
 TEST_EDITOR_BROKERS_KEY = "test_editor_brokers"

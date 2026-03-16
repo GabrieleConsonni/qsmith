@@ -34,8 +34,6 @@ def test_elaborations_openapi_exposes_only_supported_routes(monkeypatch):
     paths = set(response.json()["paths"].keys())
 
     supported_paths = {
-        "/elaborations/operation",
-        "/elaborations/operation/{_id}",
         "/elaborations/test-suite",
         "/elaborations/test-suite/{_id}",
         "/elaborations/test-suite/{_id}/execute",
@@ -55,6 +53,8 @@ def test_elaborations_openapi_exposes_only_supported_routes(monkeypatch):
         "/elaborations/suite-execution/{execution_id}",
         "/elaborations/suite/{suite_id}/test",
         "/elaborations/suite/test/{test_id}/operation",
+        "/elaborations/operation",
+        "/elaborations/operation/{_id}",
     }
 
     assert supported_paths.issubset(paths)
@@ -68,3 +68,5 @@ def test_removed_suite_endpoints_return_404(monkeypatch):
     assert client.get("/elaborations/suite").status_code == 404
     assert client.get("/elaborations/test").status_code == 404
     assert client.get("/elaborations/suite-execution").status_code == 404
+    assert client.get("/elaborations/operation").status_code == 404
+    assert client.get("/elaborations/operation/legacy-id").status_code == 404

@@ -121,15 +121,14 @@ Obiettivi:
 - visualizzare stato ultima esecuzione di hook/test/operazioni (check/error/idle)
 - mostrare avanzamento esecuzione suite in tempo reale (test eseguiti / totali)
 - il dialog `Add operation` supporta:
-  - `Save and add`: salva in anagrafica `operations` e aggiunge snapshot all'item
-  - `Add only`: aggiunge solo snapshot all'item senza salvare nell'anagrafica
+  - un solo submit locale che aggiunge snapshot contestuale all'item
   - campi di contesto per operation:
     - `target` per operation di input
     - `result_target` opzionale per operation action/trigger
 
 Modello dati suite:
 - `test_suites`, `suite_items` e `suite_item_operations` contengono i dettagli funzionali usati in esecuzione.
-- Lo suite non dipende più da `test_id`/`operation_id` in runtime.
+- Lo suite non dipende più da `test_id`/`operation_id` in runtime e non usa cataloghi condivisi di operation.
 
 
 ### 4.9 Logs

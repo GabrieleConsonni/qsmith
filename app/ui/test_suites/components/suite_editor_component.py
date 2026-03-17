@@ -50,6 +50,7 @@ from test_suites.services.state_keys import (
 )
 
 SELECTED_TEST_SUITE_EXECUTION_ID_KEY = "selected_test_suite_execution_id"
+PENDING_TEST_SUITE_EXECUTION_SELECTION_KEY = "pending_test_suite_execution_selection"
 ADD_TEST_DIALOG_OPEN_KEY = "test_suite_add_test_dialog_open"
 ADD_TEST_DIALOG_NONCE_KEY = "test_suite_add_test_dialog_nonce"
 ACTIVE_SUITE_SECTION_KEY = "active_suite_section"
@@ -359,6 +360,7 @@ def _load_execution_history(suite_id: str) -> list[dict]:
     if not suite_id:
         st.session_state[TEST_SUITE_EXECUTIONS_KEY] = []
         st.session_state.pop(SELECTED_TEST_SUITE_EXECUTION_ID_KEY, None)
+        st.session_state.pop(PENDING_TEST_SUITE_EXECUTION_SELECTION_KEY, None)
         return []
 
     executions = get_test_suite_executions(suite_id, limit=20)
@@ -367,12 +369,21 @@ def _load_execution_history(suite_id: str) -> list[dict]:
     execution_ids = [str(item.get("id")) for item in executions if item.get("id")]
     selected_execution_id = str(st.session_state.get(SELECTED_TEST_SUITE_EXECUTION_ID_KEY) or "").strip()
     preferred_execution_id = str(st.session_state.get(TEST_SUITE_LAST_EXECUTION_ID_KEY) or "").strip()
+    pending_execution_id = str(st.session_state.get(PENDING_TEST_SUITE_EXECUTION_SELECTION_KEY) or "").strip()
 
     if execution_ids:
-        if selected_execution_id not in execution_ids:
-            st.session_state[SELECTED_TEST_SUITE_EXECUTION_ID_KEY] = (
+        next_selected_execution_id = selected_execution_id if selected_execution_id in execution_ids else ""
+
+        if pending_execution_id and pending_execution_id in execution_ids:
+            next_selected_execution_id = pending_execution_id
+            st.session_state.pop(PENDING_TEST_SUITE_EXECUTION_SELECTION_KEY, None)
+        elif not next_selected_execution_id:
+            next_selected_execution_id = (
                 preferred_execution_id if preferred_execution_id in execution_ids else execution_ids[0]
             )
+
+        if next_selected_execution_id and next_selected_execution_id != selected_execution_id:
+            st.session_state[SELECTED_TEST_SUITE_EXECUTION_ID_KEY] = next_selected_execution_id
     else:
         st.session_state.pop(SELECTED_TEST_SUITE_EXECUTION_ID_KEY, None)
 
@@ -2422,7 +2433,7 @@ def render_suite_editor_page():
             execution_id = str(response.get("execution_id") or "").strip()
             if execution_id:
                 st.session_state[TEST_SUITE_LAST_EXECUTION_ID_KEY] = execution_id
-                st.session_state[SELECTED_TEST_SUITE_EXECUTION_ID_KEY] = execution_id
+                st.session_state[PENDING_TEST_SUITE_EXECUTION_SELECTION_KEY] = execution_id
                 register_execution_listener(execution_id, selected_suite_id)
                 st.rerun()
 

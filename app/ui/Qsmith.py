@@ -23,6 +23,7 @@ database_datasources = st.Page(
 )
 test_suites = st.Page("pages/TestSuites.py", title="Test Suites")
 suite_editor = st.Page("pages/SuiteEditor.py", title="Suite editor")
+test_suite_schedules = st.Page("pages/TestSuiteSchedules.py", title="Test Suite Scheduler")
 tools = st.Page("pages/Tools.py", title="Tools")
 logs = st.Page("pages/Logs.py", title="Logs")
 
@@ -102,6 +103,12 @@ _sidebar_nav_button(
     key="nav_test_suites_page",
     icon=":material/experiment:",
 )
+_sidebar_nav_button(
+    label="Test suite scheduler",
+    page_path="pages/TestSuiteSchedules.py",
+    key="nav_test_suite_schedules_page",
+    icon=":material/schedule:",
+)
 st.sidebar.subheader("Mock Servers")
 for server in mock_servers if isinstance(mock_servers, list) else []:
     server_id = str(server.get("id") or "").strip()
@@ -136,7 +143,7 @@ pg = st.navigation(
         "Configurations": [brokers_page, database_connections_page, mock_servers_page],
         "Brokers & Queues": [queues_page, queue_details],
         "Data Sources": [json_array, database_datasources],
-        "Test Suites": [test_suites, suite_editor],
+        "Test Suites": [test_suites, suite_editor, test_suite_schedules],
         "Mock Servers": [mock_server_editor_page],
         "Logs & Tools": [logs, tools]
     },

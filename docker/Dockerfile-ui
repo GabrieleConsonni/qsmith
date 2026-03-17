@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 WORKDIR /qsmith/app/ui
 
 COPY app/ui /qsmith/app/ui
+COPY .streamlit /qsmith/.streamlit 
 
 EXPOSE 8501
 

@@ -85,7 +85,7 @@ class DataOperationExecutor(OperationExecutor):
             session,
             str(data_source_id or "").strip(),
         )
-        return DatasetQueryService.load_rows_for_runtime(dataset)
+        return str(dataset.id)
 
     @staticmethod
     def _load_queue_messages(session: Session, cfg: InitConstantConfigurationCommandDto):

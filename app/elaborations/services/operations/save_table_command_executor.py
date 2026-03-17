@@ -6,16 +6,23 @@ from sqlalchemy.orm import Session
 
 from _alembic.services.alembic_config_service import url_from_env
 from elaborations.models.dtos.configuration_command_dto import SaveTableConfigurationCommandDto
-from elaborations.services.operations.command_data_resolver import coerce_rows, resolve_command_input_data
+from elaborations.services.operations.command_data_resolver import (
+    coerce_rows,
+    resolve_definition_input_data,
+    write_result_constant,
+)
 from elaborations.services.operations.command_executor import OperationExecutor, ExecutionResultDto
-from elaborations.services.suite_runs.run_context import write_context_path
 from sqlalchemy_utils.database_table_writer import DatabaseTableWriter
 
 
 class SaveInternalDbOperationExecutor(OperationExecutor):
     def execute(self, session:Session,  operation_id:str, cfg: SaveTableConfigurationCommandDto, data)->ExecutionResultDto:
         engine = create_engine(url_from_env())
-        input_data = resolve_command_input_data(cfg.source, data)
+        input_data = resolve_definition_input_data(
+            session,
+            cfg.sourceConstantRef.definitionId,
+            data,
+        )
         rows = coerce_rows(input_data)
 
         if not rows:
@@ -39,8 +46,8 @@ class SaveInternalDbOperationExecutor(OperationExecutor):
             "table_name": cfg.table_name,
             "inserted_rows": len(rows),
         }
-        if cfg.result_target:
-            write_context_path(cfg.result_target, result_payload)
+        if cfg.resultConstant:
+            write_result_constant(session, cfg.resultConstant, result_payload)
 
         self.log(operation_id, message)
 

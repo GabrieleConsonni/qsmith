@@ -59,6 +59,36 @@ class AssertType(str, Enum):
     EQUALS = "equals"
 
 
+class ConstantRefDto(BaseModel):
+    definitionId: str
+
+    @model_validator(mode="after")
+    def validate_definition_id(self):
+        self.definitionId = _normalize_token(self.definitionId)
+        if not self.definitionId:
+            raise ValueError("definitionId is required.")
+        return self
+
+
+class ResultConstantDto(BaseModel):
+    definitionId: str
+    name: str
+    valueType: str = ConstantSourceType.JSON.value
+
+    @model_validator(mode="after")
+    def validate_result_constant(self):
+        self.definitionId = _normalize_token(self.definitionId)
+        self.name = _normalize_token(self.name)
+        self.valueType = _normalize_token(self.valueType) or ConstantSourceType.JSON.value
+        if not self.definitionId:
+            raise ValueError("resultConstant.definitionId is required.")
+        if not self.name:
+            raise ValueError("resultConstant.name is required.")
+        if self.valueType not in {item.value for item in ConstantSourceType}:
+            raise ValueError("Unsupported resultConstant.valueType.")
+        return self
+
+
 def _normalize_token(value: object) -> str:
     return str(value or "").strip()
 
@@ -92,6 +122,10 @@ def _normalize_target_path(value: object) -> str | None:
     return f"$.{raw.lstrip('.')}"
 
 
+def _normalize_definition_id(value: object) -> str:
+    return _normalize_token(value)
+
+
 def _normalize_compare_keys(value: object) -> list[str]:
     if isinstance(value, str):
         raw_items = value.replace(";", ",").replace("\n", ",").split(",")
@@ -104,6 +138,32 @@ def _normalize_compare_keys(value: object) -> list[str]:
                 result.append(normalized)
         return result
     return []
+
+
+def _coerce_constant_ref(value: object) -> ConstantRefDto | None:
+    if isinstance(value, ConstantRefDto):
+        return value
+    if isinstance(value, dict):
+        definition_id = _first_non_empty(value, "definitionId", "definition_id")
+        if definition_id:
+            return ConstantRefDto(definitionId=definition_id)
+    return None
+
+
+def _coerce_result_constant(value: object) -> ResultConstantDto | None:
+    if isinstance(value, ResultConstantDto):
+        return value
+    if isinstance(value, dict):
+        definition_id = _first_non_empty(value, "definitionId", "definition_id")
+        name = _first_non_empty(value, "name")
+        value_type = _first_non_empty(value, "valueType", "value_type")
+        if definition_id or name:
+            return ResultConstantDto(
+                definitionId=definition_id or "",
+                name=name or "",
+                valueType=value_type or ConstantSourceType.JSON.value,
+            )
+    return None
 
 
 def _normalize_command_type(value: object) -> str:
@@ -195,6 +255,7 @@ class ConfigurationCommandDto(BaseModel):
 class InitConstantConfigurationCommandDto(ConfigurationCommandDto):
     commandCode: str = CommandCode.INIT_CONSTANT.value
     commandType: str = CommandType.CONTEXT.value
+    definitionId: str | None = None
     name: str | None = None
     context: str | None = None
     sourceType: str | None = None
@@ -212,6 +273,9 @@ class InitConstantConfigurationCommandDto(ConfigurationCommandDto):
 
     @model_validator(mode="after")
     def validate_configuration(self):
+        self.definitionId = _normalize_definition_id(self.definitionId)
+        if not self.definitionId:
+            raise ValueError("definitionId is required for initConstant.")
         self.target = _normalize_target_path(self.target)
         if self.target:
             target_tokens = [token for token in self.target.split(".") if token]
@@ -263,15 +327,13 @@ class InitConstantConfigurationCommandDto(ConfigurationCommandDto):
 class DeleteConstantConfigurationCommandDto(ConfigurationCommandDto):
     commandCode: str = CommandCode.DELETE_CONSTANT.value
     commandType: str = CommandType.CONTEXT.value
-    name: str
-    context: str = ConstantContext.LOCAL.value
+    targetConstantRef: ConstantRefDto | None = None
 
     @model_validator(mode="after")
     def validate_configuration(self):
-        self.name = _normalize_token(self.name)
-        self.context = _normalize_token(self.context)
-        if self.context not in {item.value for item in ConstantContext}:
-            raise ValueError("context must be one of: runEnvelope, global, local, result.")
+        self.targetConstantRef = _coerce_constant_ref(self.targetConstantRef)
+        if self.targetConstantRef is None:
+            raise ValueError("targetConstantRef is required for deleteConstant.")
         return self
 
 
@@ -285,15 +347,17 @@ class SendMessageQueueConfigurationCommandDto(ConfigurationCommandDto):
     commandCode: str = CommandCode.SEND_MESSAGE_QUEUE.value
     commandType: str = CommandType.ACTION.value
     queue_id: str
-    source: str | None = None
+    sourceConstantRef: ConstantRefDto | None = None
     template_id: str | None = None
     template_params: dict | None = None
-    result_target: str | None = None
+    resultConstant: ResultConstantDto | None = None
 
     @model_validator(mode="after")
     def validate_configuration(self):
-        self.result_target = _normalize_target_path(self.result_target)
-        self.source = _normalize_target_path(self.source)
+        self.sourceConstantRef = _coerce_constant_ref(self.sourceConstantRef)
+        self.resultConstant = _coerce_result_constant(self.resultConstant)
+        if self.sourceConstantRef is None:
+            raise ValueError("sourceConstantRef is required for sendMessageQueue.")
         return self
 
 
@@ -301,13 +365,15 @@ class SaveTableConfigurationCommandDto(ConfigurationCommandDto):
     commandCode: str = CommandCode.SAVE_TABLE.value
     commandType: str = CommandType.ACTION.value
     table_name: str
-    source: str | None = None
-    result_target: str | None = None
+    sourceConstantRef: ConstantRefDto | None = None
+    resultConstant: ResultConstantDto | None = None
 
     @model_validator(mode="after")
     def validate_configuration(self):
-        self.result_target = _normalize_target_path(self.result_target)
-        self.source = _normalize_target_path(self.source)
+        self.sourceConstantRef = _coerce_constant_ref(self.sourceConstantRef)
+        self.resultConstant = _coerce_result_constant(self.resultConstant)
+        if self.sourceConstantRef is None:
+            raise ValueError("sourceConstantRef is required for saveTable.")
         return self
 
 
@@ -328,17 +394,19 @@ class ExportDatasetConfigurationCommandDto(ConfigurationCommandDto):
     commandType: str = CommandType.ACTION.value
     connection_id: str | None = None
     table_name: str | None = None
-    source: str | None = None
+    sourceConstantRef: ConstantRefDto | None = None
     mode: str = "append"
     mapping_keys: list[str] | None = None
     dataset_description: str | None = None
     dataset_id: str | None = None
-    result_target: str | None = None
+    resultConstant: ResultConstantDto | None = None
 
     @model_validator(mode="after")
     def validate_configuration(self):
-        self.result_target = _normalize_target_path(self.result_target)
-        self.source = _normalize_target_path(self.source)
+        self.sourceConstantRef = _coerce_constant_ref(self.sourceConstantRef)
+        self.resultConstant = _coerce_result_constant(self.resultConstant)
+        if self.sourceConstantRef is None:
+            raise ValueError("sourceConstantRef is required for exportDataset.")
         normalized_mode = _normalize_token(self.mode).replace("_", "-").lower() or "append"
         if normalized_mode not in {"append", "drop-create", "insert-update"}:
             raise ValueError("mode must be one of: append, drop-create, insert-update.")
@@ -364,21 +432,21 @@ class RunSuiteConfigurationCommandDto(ConfigurationCommandDto):
     commandCode: str = CommandCode.RUN_SUITE.value
     commandType: str = CommandType.ACTION.value
     suite_id: str
-    constants: list[str] = Field(default_factory=list)
-    result_target: str | None = None
+    constantRefs: list[ConstantRefDto] = Field(default_factory=list)
+    resultConstant: ResultConstantDto | None = None
 
     @model_validator(mode="after")
     def validate_configuration(self):
         self.suite_id = _normalize_token(self.suite_id)
         if not self.suite_id:
             raise ValueError("suite_id is required for runSuite.")
-        normalized_constants: list[str] = []
-        for item in self.constants or []:
-            normalized = _normalize_token(item)
-            if normalized:
-                normalized_constants.append(normalized)
-        self.constants = normalized_constants
-        self.result_target = _normalize_target_path(self.result_target)
+        normalized_constant_refs: list[ConstantRefDto] = []
+        for item in self.constantRefs or []:
+            normalized = _coerce_constant_ref(item)
+            if normalized is not None:
+                normalized_constant_refs.append(normalized)
+        self.constantRefs = normalized_constant_refs
+        self.resultConstant = _coerce_result_constant(self.resultConstant)
         return self
 
 
@@ -387,7 +455,7 @@ class AssertConfigurationCommandDto(ConfigurationCommandDto):
     commandType: str = CommandType.ASSERT.value
     error_message: str | None = None
     evaluated_object_type: str = AssertEvaluatedObjectType.JSON_DATA.value
-    actual: object | None = None
+    actualConstantRef: ConstantRefDto | None = None
     expected: object | None = None
     expected_json_array_id: str | None = None
     compare_keys: list[str] | None = None
@@ -408,10 +476,13 @@ class AssertConfigurationCommandDto(ConfigurationCommandDto):
         }
         if self.commandCode not in supported_codes:
             raise ValueError("Unsupported assert commandCode.")
+        self.actualConstantRef = _coerce_constant_ref(self.actualConstantRef)
         self.evaluated_object_type = _normalize_path_token(self.evaluated_object_type).lower()
         self.expected_json_array_id = _normalize_token(self.expected_json_array_id) or None
         keys = _normalize_compare_keys(self.compare_keys)
         self.compare_keys = keys or None
+        if self.actualConstantRef is None:
+            raise ValueError("actualConstantRef is required for assert commands.")
         if self.commandCode in {
             CommandCode.JSON_ARRAY_EQUALS.value,
             CommandCode.JSON_ARRAY_CONTAINS.value,
@@ -473,6 +544,7 @@ def convert_to_config_command_type(data: dict):
         return InitConstantConfigurationCommandDto(
             commandCode=command_code,
             commandType=command_type or CommandType.CONTEXT.value,
+            definitionId=_first_non_empty(data, "definitionId", "definition_id"),
             name=_first_non_empty(data, "name", "key"),
             context=_first_non_empty(data, "context", "scope"),
             sourceType=_first_non_empty(data, "sourceType", "source_type"),
@@ -492,8 +564,7 @@ def convert_to_config_command_type(data: dict):
         return DeleteConstantConfigurationCommandDto(
             commandCode=command_code,
             commandType=command_type or CommandType.CONTEXT.value,
-            name=_first_non_empty(data, "name", "key"),
-            context=_first_non_empty(data, "context"),
+            targetConstantRef=_first_non_empty(data, "targetConstantRef", "target_constant_ref"),
         )
     if command_code == CommandCode.SLEEP.value:
         return SleepConfigurationCommandDto(
@@ -506,18 +577,18 @@ def convert_to_config_command_type(data: dict):
             commandCode=command_code,
             commandType=command_type or CommandType.ACTION.value,
             queue_id=_first_non_empty(data, "queue_id", "queueId"),
-            source=_first_non_empty(data, "source"),
+            sourceConstantRef=_first_non_empty(data, "sourceConstantRef", "source_constant_ref"),
             template_id=_first_non_empty(data, "template_id", "templateId"),
             template_params=_first_non_empty(data, "template_params", "templateParams"),
-            result_target=_first_non_empty(data, "result_target", "resultTarget"),
+            resultConstant=_first_non_empty(data, "resultConstant", "result_constant"),
         )
     if command_code == CommandCode.SAVE_TABLE.value:
         return SaveTableConfigurationCommandDto(
             commandCode=command_code,
             commandType=command_type or CommandType.ACTION.value,
             table_name=_first_non_empty(data, "table_name", "tableName"),
-            source=_first_non_empty(data, "source"),
-            result_target=_first_non_empty(data, "result_target", "resultTarget"),
+            sourceConstantRef=_first_non_empty(data, "sourceConstantRef", "source_constant_ref"),
+            resultConstant=_first_non_empty(data, "resultConstant", "result_constant"),
         )
     if command_code == CommandCode.DROP_TABLE.value:
         return DropTableConfigurationCommandDto(
@@ -537,12 +608,12 @@ def convert_to_config_command_type(data: dict):
             commandType=command_type or CommandType.ACTION.value,
             connection_id=_first_non_empty(data, "connection_id", "connectionId", "dataset_id", "datasetId"),
             table_name=_first_non_empty(data, "table_name", "tableName"),
-            source=_first_non_empty(data, "source"),
+            sourceConstantRef=_first_non_empty(data, "sourceConstantRef", "source_constant_ref"),
             mode=_first_non_empty(data, "mode", "export_mode", "exportMode") or "append",
             mapping_keys=_normalize_compare_keys(_first_non_empty(data, "mapping_keys", "mappingKeys")),
             dataset_description=_first_non_empty(data, "dataset_description", "datasetDescription"),
             dataset_id=_first_non_empty(data, "dataset_id", "datasetId"),
-            result_target=_first_non_empty(data, "result_target", "resultTarget"),
+            resultConstant=_first_non_empty(data, "resultConstant", "result_constant"),
         )
     if command_code == CommandCode.DROP_DATASET.value:
         return DropDatasetConfigurationCommandDto(
@@ -561,8 +632,8 @@ def convert_to_config_command_type(data: dict):
             commandCode=command_code,
             commandType=command_type or CommandType.ACTION.value,
             suite_id=_first_non_empty(data, "suite_id", "suiteId"),
-            constants=_first_non_empty(data, "constants") or [],
-            result_target=_first_non_empty(data, "result_target", "resultTarget"),
+            constantRefs=_first_non_empty(data, "constantRefs", "constant_refs") or [],
+            resultConstant=_first_non_empty(data, "resultConstant", "result_constant"),
         )
     if command_code in {
         CommandCode.JSON_EQUALS.value,
@@ -584,7 +655,7 @@ def convert_to_config_command_type(data: dict):
                 "evaluetedObjectType",
                 "evaluatedObjectType",
             ) or AssertEvaluatedObjectType.JSON_DATA.value,
-            actual=_first_non_empty(data, "actual"),
+            actualConstantRef=_first_non_empty(data, "actualConstantRef", "actual_constant_ref"),
             expected=_first_non_empty(data, "expected"),
             expected_json_array_id=_first_non_empty(
                 data,

@@ -123,11 +123,15 @@ Obiettivi:
 - il dialog `Add command` supporta:
   - un solo submit locale che aggiunge snapshot contestuale all'item
   - ogni command espone sempre `commandCode` e `commandType`
-  - i command context scrivono dentro `runEnvelope/global/local.constants`
-  - i command action possono salvare output tecnici nel root `result`
+  - i command context dichiarano costanti con `definitionId`, `name`, `context` e `sourceType`
+  - i command consumer usano solo referenze guidate `*ConstantRef.definitionId`
+  - i command che producono output tecnici possono dichiarare `resultConstant`
+  - il runtime usa `runEnvelope/global/local/result.constants` come scope risolvibili
+  - le costanti `dataset` salvano il solo `dataset_id`; `sendMessageQueue`, `saveTable` ed `exportDataset` materializzano le righe a runtime applicando il `perimeter` del dataset
 
 Modello dati suite:
 - `test_suites`, `suite_items` e `suite_item_commands` contengono i dettagli funzionali usati in esecuzione.
+- `command_constant_definitions` mantiene la symbol table persistita per suite e mock commands.
 - La suite non dipende piu da `test_id`/`command_id` in runtime e non usa cataloghi condivisi di command.
 
 
@@ -151,6 +155,7 @@ Comportamento runtime:
   - `pre_response_commands` (sync, senza side effects)
   - response statica/dinamica da configurazione route
   - `post_response_commands` (async, side effects consentiti)
+- i command mock e suite condividono la stessa risoluzione costanti `definitionId -> command_constant_definitions -> scope runtime`
 - risposta API mock immediata, operazioni eseguite in background
 - listener queue avviati solo quando il server e attivo
 - su trigger queue viene eseguito `ACK` sempre (anche in caso errore operazioni)

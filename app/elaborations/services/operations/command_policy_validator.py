@@ -16,9 +16,16 @@ def _collect_target_paths(cfg: Any) -> list[str]:
     target = getattr(cfg, "target", None)
     if isinstance(target, str) and target.strip():
         targets.append(target)
+    context = getattr(cfg, "context", None)
+    name = getattr(cfg, "name", None)
+    if isinstance(context, str) and context.strip() and isinstance(name, str) and name.strip():
+        targets.append(f"$.{context}.constants.{name}")
     result_target = getattr(cfg, "result_target", None)
     if isinstance(result_target, str) and result_target.strip():
         targets.append(result_target)
+    result_constant = getattr(cfg, "resultConstant", None)
+    if result_constant is not None and getattr(result_constant, "name", None):
+        targets.append(f"$.result.constants.{result_constant.name}")
     return targets
 
 

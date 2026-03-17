@@ -11,6 +11,9 @@ from testcontainers.postgres import PostgresContainer
 
 from app._alembic.models.dataset_entity import DatasetEntity
 from app._alembic.models.json_payload_entity import JsonPayloadEntity
+from app._alembic.models.command_constant_definition_entity import (
+    CommandConstantDefinitionEntity,
+)
 from app._alembic.services.alembic_config_service import url_from_env
 from app._alembic.services.session_context_manager import managed_session
 from app.data_sources.models.database_connection_config_types import (
@@ -129,6 +132,18 @@ def _insert_dataset_payload(
     return DatasetService().insert(session, entity)
 
 
+def _postgres_connection_payload(container) -> dict:
+    return {
+        "database_type": "postgres",
+        "host": container.get_container_host_ip(),
+        "port": int(container.get_exposed_port(5432)),
+        "database": container.dbname,
+        "db_schema": "public",
+        "user": container.username,
+        "password": container.password,
+    }
+
+
 def _count_rows(url: str, table_name: str, query: str | None = None) -> int:
     engine = create_engine(url)
     try:
@@ -147,6 +162,30 @@ def _count_rows_from_connection_payload(payload: dict, table_name: str) -> int:
             return int(connection.execute(text(f"SELECT COUNT(*) FROM {table_name}")).scalar_one())
     finally:
         engine.dispose()
+
+
+def _insert_constant_definition(
+    session,
+    *,
+    definition_id: str,
+    name: str,
+    context_scope: str = "local",
+    value_type: str = "json",
+    command_id: str = "cmd-def",
+    section_type: str = "test",
+):
+    entity = CommandConstantDefinitionEntity()
+    entity.id = definition_id
+    entity.owner_type = "test"
+    entity.command_id = command_id
+    entity.command_order = 1
+    entity.section_type = section_type
+    entity.name = name
+    entity.context_scope = context_scope
+    entity.value_type = value_type
+    entity.declared_at_order = 1
+    session.add(entity)
+    session.flush()
 
 
 def test_send_message_queue_command_executor_sends_flat_messages(monkeypatch, alembic_container):
@@ -184,51 +223,371 @@ def test_send_message_queue_command_executor_sends_flat_messages(monkeypatch, al
         lambda _self, _cfg: FakeQueueConnectionService(),
     )
 
-    data = [{"id": 1, "value": "a"}, {"id": 2, "value": "b"}]
     cfg = SendMessageQueueConfigurationCommandDto(
         commandCode="sendMessageQueue",
         commandType="action",
         queue_id="queue-1",
+        sourceConstantRef={"definitionId": "def-payload"},
     )
+    run_context = create_run_context(run_id="run-publish")
+    run_context.local_scope["constants"]["payload"] = [
+        {"id": 1, "value": "a"},
+        {"id": 2, "value": "b"},
+    ]
 
     with managed_session() as session:
-        result = PublishToQueueOperationExecutor().execute(
-            session,
-            "cmd-publish",
-            cfg,
-            data,
-        )
+        _insert_constant_definition(session, definition_id="def-payload", name="payload", value_type="jsonArray")
+        with bind_run_context(run_context):
+            result = PublishToQueueOperationExecutor().execute(
+                session,
+                "cmd-publish",
+                cfg,
+                [],
+            )
 
     assert len(published_calls) == 1
     assert published_calls[0]["queue_id"] == "queue-1"
-    assert published_calls[0]["messages"] == data
+    assert published_calls[0]["messages"] == run_context.local_scope["constants"]["payload"]
     assert result.result == [{"message": "Published 2 message(s) to queue 'orders'"}]
+
+
+def test_send_message_queue_command_executor_loads_rows_from_dataset(
+    monkeypatch,
+    alembic_container,
+    external_postgres_container,
+):
+    import app.elaborations.services.operations.send_message_queue_command_executor as publish_module
+
+    table_name = _new_name("queue_dataset")
+    external_engine = create_engine(external_postgres_container.get_connection_url())
+    try:
+        with external_engine.begin() as conn:
+            conn.execute(text(f"CREATE TABLE {table_name} (id INTEGER, status TEXT, note TEXT)"))
+            conn.execute(
+                text(
+                    f"""
+                    INSERT INTO {table_name} (id, status, note)
+                    VALUES
+                        (1, 'READY', 'msg-1'),
+                        (2, 'READY', 'msg-2'),
+                        (3, 'PENDING', 'skip-me')
+                    """
+                )
+            )
+    finally:
+        external_engine.dispose()
+
+    published_calls: list[dict] = []
+
+    class FakeQueueConnectionService:
+        def publish_messages(self, connection_config, queue_id, messages):
+            published_calls.append(
+                {
+                    "connection_config": connection_config,
+                    "queue_id": queue_id,
+                    "messages": messages,
+                }
+            )
+            return [{"status": "ok"}]
+
+    fake_connection_cfg = object()
+    fake_queue = SimpleNamespace(code="orders", broker_id="broker-1")
+
+    monkeypatch.setattr(
+        publish_module.QueueService,
+        "get_by_id",
+        lambda _self, _session, _queue_id: fake_queue,
+    )
+    monkeypatch.setattr(
+        publish_module,
+        "load_broker_connection",
+        lambda _broker_id: fake_connection_cfg,
+    )
+    monkeypatch.setattr(
+        publish_module.QueueConnectionServiceFactory,
+        "get_service",
+        lambda _self, _cfg: FakeQueueConnectionService(),
+    )
+
+    with managed_session() as session:
+        connection_id = _insert_database_connection_payload(
+            session,
+            _postgres_connection_payload(external_postgres_container),
+        )
+        dataset_id = _insert_dataset_payload(
+            session,
+            {
+                "connection_id": connection_id,
+                "schema": "public",
+                "object_name": table_name,
+                "object_type": "table",
+            },
+            perimeter={
+                "selected_columns": ["id", "status"],
+                "filter": {
+                    "logic": "AND",
+                    "conditions": [
+                        {"field": "status", "operator": "eq", "value": "READY"},
+                    ],
+                },
+                "sort": [
+                    {"field": "id", "direction": "desc"},
+                ],
+            },
+        )
+    cfg = SendMessageQueueConfigurationCommandDto(
+        commandCode="sendMessageQueue",
+        commandType="action",
+        queue_id="queue-1",
+        sourceConstantRef={"definitionId": "def-dataset"},
+    )
+    with managed_session() as session:
+        _insert_constant_definition(
+            session,
+            definition_id="def-dataset",
+            name="payloadDataset",
+            value_type="dataset",
+        )
+        run_context = create_run_context(run_id="run-publish-dataset")
+        run_context.local_scope["constants"]["payloadDataset"] = dataset_id
+        with bind_run_context(run_context):
+            result = PublishToQueueOperationExecutor().execute(
+                session,
+                "cmd-publish-dataset",
+                cfg,
+                [],
+            )
+
+    assert len(published_calls) == 1
+    assert published_calls[0]["queue_id"] == "queue-1"
+    assert published_calls[0]["messages"] == [
+        {"id": 2, "status": "READY"},
+        {"id": 1, "status": "READY"},
+    ]
+    assert result.result == [{"message": "Published 2 message(s) to queue 'orders'"}]
+
+
+def test_send_message_queue_command_executor_dataset_with_no_rows_is_noop(
+    monkeypatch,
+    alembic_container,
+    external_postgres_container,
+):
+    import app.elaborations.services.operations.send_message_queue_command_executor as publish_module
+
+    table_name = _new_name("queue_empty_dataset")
+    external_engine = create_engine(external_postgres_container.get_connection_url())
+    try:
+        with external_engine.begin() as conn:
+            conn.execute(text(f"CREATE TABLE {table_name} (id INTEGER, status TEXT)"))
+            conn.execute(
+                text(
+                    f"""
+                    INSERT INTO {table_name} (id, status)
+                    VALUES
+                        (1, 'PENDING'),
+                        (2, 'PENDING')
+                    """
+                )
+            )
+    finally:
+        external_engine.dispose()
+
+    published_calls: list[dict] = []
+
+    class FakeQueueConnectionService:
+        def publish_messages(self, connection_config, queue_id, messages):
+            published_calls.append(
+                {
+                    "connection_config": connection_config,
+                    "queue_id": queue_id,
+                    "messages": messages,
+                }
+            )
+            return [{"status": "ok"}]
+
+    fake_connection_cfg = object()
+    fake_queue = SimpleNamespace(code="orders", broker_id="broker-1")
+
+    monkeypatch.setattr(
+        publish_module.QueueService,
+        "get_by_id",
+        lambda _self, _session, _queue_id: fake_queue,
+    )
+    monkeypatch.setattr(
+        publish_module,
+        "load_broker_connection",
+        lambda _broker_id: fake_connection_cfg,
+    )
+    monkeypatch.setattr(
+        publish_module.QueueConnectionServiceFactory,
+        "get_service",
+        lambda _self, _cfg: FakeQueueConnectionService(),
+    )
+
+    with managed_session() as session:
+        connection_id = _insert_database_connection_payload(
+            session,
+            _postgres_connection_payload(external_postgres_container),
+        )
+        dataset_id = _insert_dataset_payload(
+            session,
+            {
+                "connection_id": connection_id,
+                "schema": "public",
+                "object_name": table_name,
+                "object_type": "table",
+            },
+            perimeter={
+                "selected_columns": ["id", "status"],
+                "filter": {
+                    "logic": "AND",
+                    "conditions": [
+                        {"field": "status", "operator": "eq", "value": "READY"},
+                    ],
+                },
+            },
+        )
+    cfg = SendMessageQueueConfigurationCommandDto(
+        commandCode="sendMessageQueue",
+        commandType="action",
+        queue_id="queue-1",
+        sourceConstantRef={"definitionId": "def-empty-dataset"},
+    )
+    with managed_session() as session:
+        _insert_constant_definition(
+            session,
+            definition_id="def-empty-dataset",
+            name="emptyDataset",
+            value_type="dataset",
+        )
+        run_context = create_run_context(run_id="run-publish-empty-dataset")
+        run_context.local_scope["constants"]["emptyDataset"] = dataset_id
+        with bind_run_context(run_context):
+            result = PublishToQueueOperationExecutor().execute(
+                session,
+                "cmd-publish-empty-dataset",
+                cfg,
+                [],
+            )
+
+    assert len(published_calls) == 1
+    assert published_calls[0]["messages"] == []
+    assert result.result == [{"message": "Published 0 message(s) to queue 'orders'"}]
 
 
 def test_save_table_command_executor_inserts_rows(alembic_container):
     table_name = _new_name("internal_cmd")
-    data = [
-        {"id": 1, "name": "first"},
-        {"id": 2, "name": "second"},
-    ]
     cfg = SaveTableConfigurationCommandDto(
         commandCode="saveTable",
         commandType="action",
         table_name=table_name,
+        sourceConstantRef={"definitionId": "def-rows"},
     )
+    run_context = create_run_context(run_id="run-save-table")
+    run_context.local_scope["constants"]["rows"] = [
+        {"id": 1, "name": "first"},
+        {"id": 2, "name": "second"},
+    ]
 
     with managed_session() as session:
-        result = SaveInternalDbOperationExecutor().execute(
-            session,
-            "cmd-internal",
-            cfg,
-            data,
-        )
+        _insert_constant_definition(session, definition_id="def-rows", name="rows", value_type="jsonArray")
+        with bind_run_context(run_context):
+            result = SaveInternalDbOperationExecutor().execute(
+                session,
+                "cmd-internal",
+                cfg,
+                [],
+            )
 
     inserted_rows = _count_rows(url_from_env(), table_name)
 
     assert inserted_rows == 2
     assert result.result == [{"message": f"Created 2 rows in {table_name} table"}]
+
+
+def test_save_table_command_executor_reads_rows_from_dataset(
+    alembic_container,
+    external_postgres_container,
+):
+    source_table_name = _new_name("src_dataset_internal")
+    target_table_name = _new_name("internal_dataset_rows")
+    external_engine = create_engine(external_postgres_container.get_connection_url())
+    try:
+        with external_engine.begin() as conn:
+            conn.execute(text(f"CREATE TABLE {source_table_name} (id INTEGER, status TEXT, note TEXT)"))
+            conn.execute(
+                text(
+                    f"""
+                    INSERT INTO {source_table_name} (id, status, note)
+                    VALUES
+                        (1, 'READY', 'keep-1'),
+                        (2, 'READY', 'keep-2'),
+                        (3, 'PENDING', 'skip-me')
+                    """
+                )
+            )
+    finally:
+        external_engine.dispose()
+
+    with managed_session() as session:
+        connection_id = _insert_database_connection_payload(
+            session,
+            _postgres_connection_payload(external_postgres_container),
+        )
+        dataset_id = _insert_dataset_payload(
+            session,
+            {
+                "connection_id": connection_id,
+                "schema": "public",
+                "object_name": source_table_name,
+                "object_type": "table",
+            },
+            perimeter={
+                "selected_columns": ["id", "status"],
+                "filter": {
+                    "logic": "AND",
+                    "conditions": [
+                        {"field": "status", "operator": "eq", "value": "READY"},
+                    ],
+                },
+                "sort": [
+                    {"field": "id", "direction": "asc"},
+                ],
+            },
+        )
+    cfg = SaveTableConfigurationCommandDto(
+        commandCode="saveTable",
+        commandType="action",
+        table_name=target_table_name,
+        sourceConstantRef={"definitionId": "def-dataset-rows"},
+    )
+    with managed_session() as session:
+        _insert_constant_definition(
+            session,
+            definition_id="def-dataset-rows",
+            name="rowsDataset",
+            value_type="dataset",
+        )
+        run_context = create_run_context(run_id="run-save-table-dataset")
+        run_context.local_scope["constants"]["rowsDataset"] = dataset_id
+        with bind_run_context(run_context):
+            result = SaveInternalDbOperationExecutor().execute(
+                session,
+                "cmd-internal-dataset",
+                cfg,
+                [],
+            )
+
+    inserted_rows = _count_rows(url_from_env(), target_table_name)
+    ready_rows = _count_rows(
+        url_from_env(),
+        target_table_name,
+        f"SELECT COUNT(*) FROM {target_table_name} WHERE status = 'READY'",
+    )
+
+    assert inserted_rows == 2
+    assert ready_rows == 2
+    assert result.result == [{"message": f"Created 2 rows in {target_table_name} table"}]
 
 
 def test_export_dataset_command_executor_postgres(alembic_container, external_postgres_container):
@@ -255,18 +614,102 @@ def test_export_dataset_command_executor_postgres(alembic_container, external_po
             commandType="action",
             connection_id=connection_id,
             table_name=table_name,
+            sourceConstantRef={"definitionId": "def-ext-pg"},
         )
-        result = SaveToExternalDbOperationExecutor().execute(
-            session,
-            "cmd-external-postgres",
-            cfg,
-            data,
-        )
+        _insert_constant_definition(session, definition_id="def-ext-pg", name="rows", value_type="jsonArray")
+        run_context = create_run_context(run_id="run-export-pg")
+        run_context.local_scope["constants"]["rows"] = data
+        with bind_run_context(run_context):
+            result = SaveToExternalDbOperationExecutor().execute(
+                session,
+                "cmd-external-postgres",
+                cfg,
+                [],
+            )
 
     inserted_rows = _count_rows_from_connection_payload(connection_payload, f"public.{table_name}")
 
     assert inserted_rows == 2
     assert result.result == [{"message": f"Created 2 rows in {table_name} table"}]
+
+
+def test_export_dataset_command_executor_postgres_reads_rows_from_dataset(
+    alembic_container,
+    external_postgres_container,
+):
+    source_table_name = _new_name("src_dataset_ext")
+    target_table_name = _new_name("ext_pg_dataset")
+    external_engine = create_engine(external_postgres_container.get_connection_url())
+    try:
+        with external_engine.begin() as conn:
+            conn.execute(text(f"CREATE TABLE {source_table_name} (id INTEGER, status TEXT, note TEXT)"))
+            conn.execute(
+                text(
+                    f"""
+                    INSERT INTO {source_table_name} (id, status, note)
+                    VALUES
+                        (10, 'READY', 'keep-10'),
+                        (11, 'READY', 'keep-11'),
+                        (12, 'PENDING', 'skip-12')
+                    """
+                )
+            )
+    finally:
+        external_engine.dispose()
+
+    connection_payload = _postgres_connection_payload(external_postgres_container)
+
+    with managed_session() as session:
+        connection_id = _insert_database_connection_payload(session, connection_payload)
+        dataset_id = _insert_dataset_payload(
+            session,
+            {
+                "connection_id": connection_id,
+                "schema": "public",
+                "object_name": source_table_name,
+                "object_type": "table",
+            },
+            perimeter={
+                "selected_columns": ["id", "status"],
+                "filter": {
+                    "logic": "AND",
+                    "conditions": [
+                        {"field": "status", "operator": "eq", "value": "READY"},
+                    ],
+                },
+                "sort": [
+                    {"field": "id", "direction": "asc"},
+                ],
+            },
+        )
+    with managed_session() as session:
+        cfg = ExportDatasetConfigurationCommandDto(
+            commandCode="exportDataset",
+            commandType="action",
+            connection_id=connection_id,
+            table_name=target_table_name,
+            sourceConstantRef={"definitionId": "def-ext-dataset"},
+        )
+        _insert_constant_definition(
+            session,
+            definition_id="def-ext-dataset",
+            name="rowsDataset",
+            value_type="dataset",
+        )
+        run_context = create_run_context(run_id="run-export-pg-dataset")
+        run_context.local_scope["constants"]["rowsDataset"] = dataset_id
+        with bind_run_context(run_context):
+            result = SaveToExternalDbOperationExecutor().execute(
+                session,
+                "cmd-external-postgres-dataset",
+                cfg,
+                [],
+            )
+
+    inserted_rows = _count_rows_from_connection_payload(connection_payload, f"public.{target_table_name}")
+
+    assert inserted_rows == 2
+    assert result.result == [{"message": f"Created 2 rows in {target_table_name} table"}]
 
 
 def test_export_dataset_command_executor_sqlserver(alembic_container, external_sqlserver_container):
@@ -293,13 +736,18 @@ def test_export_dataset_command_executor_sqlserver(alembic_container, external_s
             commandType="action",
             connection_id=connection_id,
             table_name=table_name,
+            sourceConstantRef={"definitionId": "def-ext-sql"},
         )
-        result = SaveToExternalDbOperationExecutor().execute(
-            session,
-            "cmd-external-sqlserver",
-            cfg,
-            data,
-        )
+        _insert_constant_definition(session, definition_id="def-ext-sql", name="rows", value_type="jsonArray")
+        run_context = create_run_context(run_id="run-export-sql")
+        run_context.local_scope["constants"]["rows"] = data
+        with bind_run_context(run_context):
+            result = SaveToExternalDbOperationExecutor().execute(
+                session,
+                "cmd-external-sqlserver",
+                cfg,
+                [],
+            )
 
     inserted_rows = _count_rows_from_connection_payload(connection_payload, table_name)
 
@@ -327,7 +775,7 @@ def test_run_suite_command_executor_starts_execution(monkeypatch, alembic_contai
         commandCode="runSuite",
         commandType="action",
         suite_id="suite-123",
-        constants=["order_id"],
+        constantRefs=[{"definitionId": "def-order-id"}],
     )
     run_context = create_run_context(
         run_id="run-1",
@@ -338,6 +786,7 @@ def test_run_suite_command_executor_starts_execution(monkeypatch, alembic_contai
     run_context.local_scope["constants"]["order_id"] = "ORD-100"
 
     with managed_session() as session:
+        _insert_constant_definition(session, definition_id="def-order-id", name="order_id", value_type="raw")
         with bind_run_context(run_context):
             result = RunSuiteOperationExecutor().execute(
                 session,
@@ -380,13 +829,18 @@ def test_export_dataset_command_executor_oracle(alembic_container, external_orac
             commandType="action",
             connection_id=connection_id,
             table_name=table_name,
+            sourceConstantRef={"definitionId": "def-ext-oracle"},
         )
-        result = SaveToExternalDbOperationExecutor().execute(
-            session,
-            "cmd-external-oracle",
-            cfg,
-            data,
-        )
+        _insert_constant_definition(session, definition_id="def-ext-oracle", name="rows", value_type="jsonArray")
+        run_context = create_run_context(run_id="run-export-oracle")
+        run_context.local_scope["constants"]["rows"] = data
+        with bind_run_context(run_context):
+            result = SaveToExternalDbOperationExecutor().execute(
+                session,
+                "cmd-external-oracle",
+                cfg,
+                [],
+            )
 
     inserted_rows = _count_rows_from_connection_payload(connection_payload, table_name)
 
@@ -414,15 +868,7 @@ def test_init_constant_dataset_applies_perimeter(alembic_container, external_pos
     finally:
         external_engine.dispose()
 
-    connection_payload = {
-        "database_type": "postgres",
-        "host": external_postgres_container.get_container_host_ip(),
-        "port": int(external_postgres_container.get_exposed_port(5432)),
-        "database": external_postgres_container.dbname,
-        "db_schema": "public",
-        "user": external_postgres_container.username,
-        "password": external_postgres_container.password,
-    }
+    connection_payload = _postgres_connection_payload(external_postgres_container)
 
     with managed_session() as session:
         connection_id = _insert_database_connection_payload(session, connection_payload)
@@ -451,6 +897,7 @@ def test_init_constant_dataset_applies_perimeter(alembic_container, external_pos
         cfg = InitConstantConfigurationCommandDto(
             commandCode="initConstant",
             commandType="context",
+            definitionId="def-dataset",
             name="rows",
             context="local",
             dataset_id=dataset_id,
@@ -469,10 +916,31 @@ def test_init_constant_dataset_applies_perimeter(alembic_container, external_pos
                 [],
             )
 
-    assert result.data == [
-        {"id": 2, "status": "READY"},
-        {"id": 1, "status": "READY"},
-    ]
+    assert result.data == dataset_id
+    assert run_context.local_scope["constants"]["rows"] == dataset_id
+
+
+def test_resolve_definition_input_data_raises_for_invalid_dataset_constant_value(alembic_container):
+    from app.elaborations.services.operations.command_data_resolver import (
+        resolve_definition_input_data,
+    )
+
+    run_context = create_run_context(run_id="run-invalid-dataset")
+    run_context.local_scope["constants"]["rowsDataset"] = {"dataset_id": "dataset-1"}
+
+    with managed_session() as session:
+        _insert_constant_definition(
+            session,
+            definition_id="def-invalid-dataset",
+            name="rowsDataset",
+            value_type="dataset",
+        )
+        with bind_run_context(run_context):
+            with pytest.raises(
+                ValueError,
+                match="must resolve to a dataset id string",
+            ):
+                resolve_definition_input_data(session, "def-invalid-dataset", [])
 
 
 def test_assert_json_not_empty_command_executor_passes(alembic_container):
@@ -480,16 +948,21 @@ def test_assert_json_not_empty_command_executor_passes(alembic_container):
         commandCode="jsonNotEmpty",
         commandType="assert",
         evaluated_object_type="json-data",
+        actualConstantRef={"definitionId": "def-assert-json"},
     )
     data = [{"id": 1, "name": "first"}]
+    run_context = create_run_context(run_id="run-assert-json")
+    run_context.local_scope["constants"]["actualRows"] = data
 
     with managed_session() as session:
-        result = AssertOperationExecutor().execute(
-            session,
-            "cmd-assert-not-empty",
-            cfg,
-            data,
-        )
+        _insert_constant_definition(session, definition_id="def-assert-json", name="actualRows", value_type="json")
+        with bind_run_context(run_context):
+            result = AssertOperationExecutor().execute(
+                session,
+                "cmd-assert-not-empty",
+                cfg,
+                data,
+            )
 
     assert result.data == data
     assert result.result == [{"message": "Assert 'jsonNotEmpty' passed for 'json-data' data."}]
@@ -500,16 +973,21 @@ def test_assert_json_empty_command_executor_fails_with_custom_message(alembic_co
         commandCode="jsonEmpty",
         commandType="assert",
         error_message="Expected no rows.",
+        actualConstantRef={"definitionId": "def-assert-empty"},
     )
+    run_context = create_run_context(run_id="run-assert-empty")
+    run_context.local_scope["constants"]["actualRows"] = [{"id": 1}]
 
     with managed_session() as session:
-        with pytest.raises(ValueError, match="Expected no rows."):
-            AssertOperationExecutor().execute(
-                session,
-                "cmd-assert-empty",
-                cfg,
-                [{"id": 1}],
-            )
+        _insert_constant_definition(session, definition_id="def-assert-empty", name="actualRows", value_type="json")
+        with bind_run_context(run_context):
+            with pytest.raises(ValueError, match="Expected no rows."):
+                AssertOperationExecutor().execute(
+                    session,
+                    "cmd-assert-empty",
+                    cfg,
+                    [{"id": 1}],
+                )
 
 
 def test_assert_json_array_contains_command_executor_uses_expected_json_array(alembic_container):
@@ -525,27 +1003,39 @@ def test_assert_json_array_contains_command_executor_uses_expected_json_array(al
             commandCode="jsonArrayContains",
             commandType="assert",
             evaluated_object_type="json-data",
+            actualConstantRef={"definitionId": "def-assert-array-contains"},
             expected_json_array_id=expected_json_array_id,
             compare_keys=["id", "code"],
         )
-
-        ok_result = AssertOperationExecutor().execute(
+        _insert_constant_definition(
             session,
-            "cmd-assert-contains-ok",
-            cfg,
-            [{"id": 2, "code": "B"}],
+            definition_id="def-assert-array-contains",
+            name="actualRows",
+            value_type="jsonArray",
         )
+        run_context = create_run_context(run_id="run-assert-array-contains")
+        run_context.local_scope["constants"]["actualRows"] = [{"id": 2, "code": "B"}]
+
+        with bind_run_context(run_context):
+            ok_result = AssertOperationExecutor().execute(
+                session,
+                "cmd-assert-contains-ok",
+                cfg,
+                [{"id": 2, "code": "B"}],
+            )
         assert ok_result.result == [
             {"message": "Assert 'jsonArrayContains' passed for 'json-data' data."}
         ]
 
-        with pytest.raises(ValueError, match="not contained in expected json-array"):
-            AssertOperationExecutor().execute(
-                session,
-                "cmd-assert-contains-ko",
-                cfg,
-                [{"id": 3, "code": "C"}],
-            )
+        run_context.local_scope["constants"]["actualRows"] = [{"id": 3, "code": "C"}]
+        with bind_run_context(run_context):
+            with pytest.raises(ValueError, match="not contained in expected json-array"):
+                AssertOperationExecutor().execute(
+                    session,
+                    "cmd-assert-contains-ko",
+                    cfg,
+                    [{"id": 3, "code": "C"}],
+                )
 
 
 def test_assert_json_array_equals_command_executor_is_order_insensitive(alembic_container):
@@ -561,27 +1051,39 @@ def test_assert_json_array_equals_command_executor_is_order_insensitive(alembic_
             commandCode="jsonArrayEquals",
             commandType="assert",
             evaluated_object_type="json-data",
+            actualConstantRef={"definitionId": "def-assert-array-equals"},
             expected_json_array_id=expected_json_array_id,
             compare_keys=["id", "code"],
         )
-
-        ok_result = AssertOperationExecutor().execute(
+        _insert_constant_definition(
             session,
-            "cmd-assert-equals-ok",
-            cfg,
-            [{"id": 2, "code": "B"}, {"id": 1, "code": "A"}],
+            definition_id="def-assert-array-equals",
+            name="actualRows",
+            value_type="jsonArray",
         )
+        run_context = create_run_context(run_id="run-assert-array-equals")
+        run_context.local_scope["constants"]["actualRows"] = [{"id": 2, "code": "B"}, {"id": 1, "code": "A"}]
+
+        with bind_run_context(run_context):
+            ok_result = AssertOperationExecutor().execute(
+                session,
+                "cmd-assert-equals-ok",
+                cfg,
+                [{"id": 2, "code": "B"}, {"id": 1, "code": "A"}],
+            )
         assert ok_result.result == [
             {"message": "Assert 'jsonArrayEquals' passed for 'json-data' data."}
         ]
 
-        with pytest.raises(ValueError, match="not equal to expected json-array"):
-            AssertOperationExecutor().execute(
-                session,
-                "cmd-assert-equals-ko",
-                cfg,
-                [{"id": 1, "code": "A"}],
-            )
+        run_context.local_scope["constants"]["actualRows"] = [{"id": 1, "code": "A"}]
+        with bind_run_context(run_context):
+            with pytest.raises(ValueError, match="not equal to expected json-array"):
+                AssertOperationExecutor().execute(
+                    session,
+                    "cmd-assert-equals-ko",
+                    cfg,
+                    [{"id": 1, "code": "A"}],
+                )
 
 
 def test_assert_json_equals_command_executor_resolves_context_refs(alembic_container):
@@ -589,17 +1091,25 @@ def test_assert_json_equals_command_executor_resolves_context_refs(alembic_conta
         commandCode="jsonEquals",
         commandType="assert",
         evaluated_object_type="json-data",
-        actual={"$ref": "$.runEnvelope.event.payload.actual"},
+        actualConstantRef={"definitionId": "def-assert-equals"},
         expected={"$ref": "$.runEnvelope.event.payload.expected"},
     )
     run_context = create_run_context(
         run_id="run-assert-equals",
-        event={"payload": {"actual": {"value": 10}, "expected": {"value": 10}}},
+        event={"payload": {"expected": {"value": 10}}},
         initial_vars={},
         invocation_id=None,
     )
+    run_context.run_envelope["constants"]["actual"] = {"value": 10}
 
     with managed_session() as session:
+        _insert_constant_definition(
+            session,
+            definition_id="def-assert-equals",
+            name="actual",
+            context_scope="runEnvelope",
+            value_type="json",
+        )
         with bind_run_context(run_context):
             result = AssertOperationExecutor().execute(
                 session,

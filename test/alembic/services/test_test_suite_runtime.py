@@ -49,6 +49,7 @@ def test_test_suite_api_and_runtime_happy_path(alembic_container):
                         order=1,
                         description="set tenant",
                         cfg=_cfg_payload(SetVarConfigurationOperationDto(
+                            definitionId="def-tenant",
                             key="tenant",
                             value="ACME",
                             scope="global",
@@ -65,6 +66,7 @@ def test_test_suite_api_and_runtime_happy_path(alembic_container):
                         order=1,
                         description="set local",
                         cfg=_cfg_payload(SetVarConfigurationOperationDto(
+                            definitionId="def-local-customer",
                             key="local_customer",
                             value="C-001",
                             scope="local",
@@ -81,6 +83,7 @@ def test_test_suite_api_and_runtime_happy_path(alembic_container):
                         order=1,
                         description="load inline data",
                         cfg=_cfg_payload(DataConfigurationOperationDto(
+                            definitionId="def-actual-rows",
                             data=[{"id": 1, "customer": "C-001"}],
                             target="$.local.actualRows",
                         )),
@@ -91,7 +94,7 @@ def test_test_suite_api_and_runtime_happy_path(alembic_container):
                         cfg=_cfg_payload(AssertConfigurationCommandDto(
                             commandCode="jsonEquals",
                             commandType="assert",
-                            actual="$.global.constants.tenant",
+                            actualConstantRef={"definitionId": "def-tenant"},
                             expected="ACME",
                         )),
                     ),
@@ -101,7 +104,7 @@ def test_test_suite_api_and_runtime_happy_path(alembic_container):
                         cfg=_cfg_payload(AssertConfigurationCommandDto(
                             commandCode="jsonEquals",
                             commandType="assert",
-                            actual="$.local.constants.local_customer",
+                            actualConstantRef={"definitionId": "def-local-customer"},
                             expected="C-001",
                         )),
                     ),
@@ -149,6 +152,7 @@ def test_test_execution_cannot_write_global_context(alembic_container):
                         order=1,
                         description="set global in test",
                         cfg=_cfg_payload(SetVarConfigurationOperationDto(
+                            definitionId="def-forbidden",
                             key="forbidden",
                             value="boom",
                             scope="global",
@@ -160,26 +164,8 @@ def test_test_execution_cannot_write_global_context(alembic_container):
         ],
     )
 
-    response = asyncio.run(insert_test_suite_api(dto))
-    test_suite_id = str(response.get("id") or "").strip()
-    assert test_suite_id
-
-    _execute(
-        TestSuiteExecutionInput(
-            execution_id=str(uuid4()),
-            test_suite_id=test_suite_id,
-            test_suite_description="suite global guard",
-        )
-    )
-
-    with managed_session() as session:
-        executions = TestSuiteExecutionService().get_all_by_suite_id(session, test_suite_id, limit=10)
-        assert len(executions) == 1
-        execution = executions[0]
-        assert str(execution.status or "").strip().lower() == "error"
-        assert "Global context is immutable during test execution." in str(
-            execution.error_message or ""
-        )
+    with pytest.raises(ValueError, match="Scope 'global' is not writable in section 'test'"):
+        asyncio.run(insert_test_suite_api(dto))
 
 
 def test_suite_item_operation_dto_rejects_legacy_operation_id_field():
@@ -189,6 +175,7 @@ def test_suite_item_operation_dto_rejects_legacy_operation_id_field():
             description="legacy import",
             cfg=_cfg_payload(
                 DataConfigurationOperationDto(
+                    definitionId="def-actualRows",
                     data=[{"id": 1}],
                     target="$.local.actualRows",
                 )

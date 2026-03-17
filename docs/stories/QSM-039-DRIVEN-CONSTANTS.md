@@ -262,7 +262,7 @@ sendMessageQueue (usa A)
 
 | Campo                    | Tipi ammessi    |
 | ------------------------ | --------------- |
-| sendMessageQueue.source  | json, jsonArray |
+| sendMessageQueue.source  | raw, json, jsonArray, dataset |
 | jsonNotEmpty.actual      | json            |
 | jsonArrayNotEmpty.actual | jsonArray       |
 | saveTable.source         | dataset         |

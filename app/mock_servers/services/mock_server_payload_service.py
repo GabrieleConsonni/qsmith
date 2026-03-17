@@ -17,10 +17,24 @@ from mock_servers.services.alembic.mock_server_queue_service import MockServerQu
 from mock_servers.services.alembic.mock_server_service import MockServerService
 from mock_servers.services.alembic.ms_api_command_service import MsApiOperationService
 from mock_servers.services.alembic.ms_queue_command_service import MsQueueOperationService
+from elaborations.services.constants.command_constant_definition_registry import (
+    ensure_command_id,
+    rebuild_mock_constant_definitions,
+    validate_mock_server_constant_graph,
+)
 
 
 def _safe_cfg(value: dict | None) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _ensure_inline_command_ids(dto: CreateMockServerDto | UpdateMockServerDto) -> None:
+    for api_dto in dto.apis or []:
+        cfg = api_dto.cfg
+        pre_commands = cfg.pre_response_commands if isinstance(cfg.pre_response_commands, list) else []
+        for item in pre_commands:
+            if isinstance(item, dict):
+                ensure_command_id(item)
 
 
 def _build_mock_server_entity(dto: CreateMockServerDto | UpdateMockServerDto) -> MockServerEntity:
@@ -122,6 +136,8 @@ def _insert_mock_server_queues(
 
 
 def create_mock_server(session, dto: CreateMockServerDto) -> str:
+    _ensure_inline_command_ids(dto)
+    validate_mock_server_constant_graph(dto)
     mock_server_service = MockServerService()
     existing = mock_server_service.get_by_endpoint(session, dto.cfg.endpoint)
     if existing:
@@ -129,10 +145,13 @@ def create_mock_server(session, dto: CreateMockServerDto) -> str:
     mock_server_id = mock_server_service.insert(session, _build_mock_server_entity(dto))
     _insert_mock_server_apis(session, mock_server_id, dto.apis or [])
     _insert_mock_server_queues(session, mock_server_id, dto.queues or [])
+    rebuild_mock_constant_definitions(session, mock_server_id)
     return mock_server_id
 
 
 def update_mock_server(session, dto: UpdateMockServerDto) -> MockServerEntity:
+    _ensure_inline_command_ids(dto)
+    validate_mock_server_constant_graph(dto)
     mock_server_service = MockServerService()
     existing = mock_server_service.get_by_id(session, dto.id)
     if not existing:
@@ -154,6 +173,7 @@ def update_mock_server(session, dto: UpdateMockServerDto) -> MockServerEntity:
     MockServerQueueService().delete_by_server_id(session, dto.id)
     _insert_mock_server_apis(session, dto.id, dto.apis or [])
     _insert_mock_server_queues(session, dto.id, dto.queues or [])
+    rebuild_mock_constant_definitions(session, dto.id)
     updated = mock_server_service.get_by_id(session, dto.id)
     if not updated:
         raise ValueError(f"Mock server '{dto.id}' not found.")

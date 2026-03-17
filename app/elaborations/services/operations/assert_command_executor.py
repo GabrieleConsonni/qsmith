@@ -4,6 +4,9 @@ from elaborations.models.dtos.configuration_command_dto import (
     AssertConfigurationCommandDto,
 )
 from elaborations.services.asserts.assert_evaluator_composite import evaluate_assert
+from elaborations.services.constants.command_constant_definition_registry import (
+    resolve_definition_path,
+)
 from elaborations.services.operations.command_executor import (
     ExecutionResultDto,
     OperationExecutor,
@@ -25,11 +28,11 @@ class AssertOperationExecutor(OperationExecutor):
         data,
     ) -> ExecutionResultDto:
         scope = build_run_context_scope()
-        resolved_actual = (
-            resolve_dynamic_value(cfg.actual, scope)
-            if cfg.actual is not None
-            else data
+        _definition, actual_path = resolve_definition_path(
+            session,
+            cfg.actualConstantRef.definitionId,
         )
+        resolved_actual = resolve_dynamic_value(actual_path, scope)
         resolved_expected = (
             resolve_dynamic_value(cfg.expected, scope)
             if cfg.expected is not None

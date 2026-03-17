@@ -99,3 +99,152 @@ def test_default_context_for_item_uses_local_for_before_each_test_and_after_each
     assert suite_editor_component._default_context_for_item({"kind": "hook", "hook_phase": "before-each"}) == "local"
     assert suite_editor_component._default_context_for_item({"kind": "hook", "hook_phase": "after-each"}) == "local"
     assert suite_editor_component._default_context_for_item({"kind": "test"}) == "local"
+
+
+def test_resolve_available_source_constants_for_test_action_includes_visible_compatible_constants():
+    test_item = {
+        "kind": "test",
+        "description": "test",
+        "operations": [
+            {
+                "configuration_json": {
+                    "commandCode": "initConstant",
+                    "commandType": "context",
+                    "name": "localRows",
+                    "context": "local",
+                    "sourceType": "json",
+                }
+            }
+        ],
+    }
+    draft = {
+        "hooks": {
+            "before-all": {
+                "kind": "hook",
+                "hook_phase": "before-all",
+                "operations": [
+                    {
+                        "configuration_json": {
+                            "commandCode": "initConstant",
+                            "commandType": "context",
+                            "name": "globalRows",
+                            "context": "global",
+                            "sourceType": "jsonArray",
+                        }
+                    }
+                ],
+            }
+        },
+        "tests": [test_item],
+    }
+
+    options = suite_editor_component._resolve_available_source_constants(
+        draft,
+        test_item,
+        command_code="saveTable",
+        stop_before_index=1,
+    )
+
+    assert [item["path"] for item in options] == [
+        "$.global.constants.globalRows",
+        "$.local.constants.localRows",
+    ]
+
+
+def test_resolve_available_source_constants_for_before_all_excludes_global_constants():
+    hook_item = {
+        "kind": "hook",
+        "hook_phase": "before-all",
+        "operations": [
+            {
+                "configuration_json": {
+                    "commandCode": "initConstant",
+                    "commandType": "context",
+                    "name": "globalRows",
+                    "context": "global",
+                    "sourceType": "jsonArray",
+                }
+            }
+        ],
+    }
+    draft = {
+        "hooks": {
+            "before-all": hook_item,
+        },
+        "tests": [],
+    }
+
+    options = suite_editor_component._resolve_available_source_constants(
+        draft,
+        hook_item,
+        command_code="saveTable",
+        stop_before_index=1,
+    )
+
+    assert options == []
+
+
+def test_resolve_available_source_constants_for_send_message_queue_includes_raw_constants():
+    test_item = {
+        "kind": "test",
+        "description": "test",
+        "operations": [
+            {
+                "configuration_json": {
+                    "commandCode": "initConstant",
+                    "commandType": "context",
+                    "name": "messageBody",
+                    "context": "local",
+                    "sourceType": "raw",
+                }
+            }
+        ],
+    }
+    draft = {
+        "hooks": {},
+        "tests": [test_item],
+    }
+
+    options = suite_editor_component._resolve_available_source_constants(
+        draft,
+        test_item,
+        command_code="sendMessageQueue",
+        stop_before_index=1,
+    )
+
+    assert [item["path"] for item in options] == [
+        "$.local.constants.messageBody",
+    ]
+
+
+def test_resolve_available_source_constants_for_send_message_queue_includes_dataset_constants():
+    test_item = {
+        "kind": "test",
+        "description": "test",
+        "operations": [
+            {
+                "configuration_json": {
+                    "commandCode": "initConstant",
+                    "commandType": "context",
+                    "name": "messageDataset",
+                    "context": "local",
+                    "sourceType": "dataset",
+                }
+            }
+        ],
+    }
+    draft = {
+        "hooks": {},
+        "tests": [test_item],
+    }
+
+    options = suite_editor_component._resolve_available_source_constants(
+        draft,
+        test_item,
+        command_code="sendMessageQueue",
+        stop_before_index=1,
+    )
+
+    assert [item["path"] for item in options] == [
+        "$.local.constants.messageDataset",
+    ]

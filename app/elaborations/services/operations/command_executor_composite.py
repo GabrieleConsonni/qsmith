@@ -86,8 +86,6 @@ from elaborations.services.suite_runs.execution_runtime_context import (
     get_suite_test_id,
     get_test_suite_execution_id,
 )
-from elaborations.services.suite_runs.run_context import build_run_context_scope
-from elaborations.services.suite_runs.run_context_resolver import resolve_dynamic_value
 from logs.models.dtos.log_dto import LogDto
 from logs.models.enums.log_level import LogLevel
 from logs.models.enums.log_subject_type import LogSubjectType
@@ -200,8 +198,7 @@ def execute_operations(
                 ),
             )
 
-        resolved_cfg_json = resolve_dynamic_value(op_cfg_json, build_run_context_scope())
-        cfg = convert_to_config_command_type(resolved_cfg_json)
+        cfg = convert_to_config_command_type(op_cfg_json)
         contract = None
         try:
             contract = validate_operation_policy(cfg, resolved_execution_scope)

@@ -10,10 +10,10 @@ from elaborations.models.dtos.configuration_command_dto import (
     SendMessageQueueConfigurationCommandDto,
 )
 from elaborations.services.operations.command_data_resolver import (
-    resolve_command_input_data,
+    resolve_definition_input_data,
+    write_result_constant,
 )
 from elaborations.services.operations.command_executor import OperationExecutor, ExecutionResultDto
-from elaborations.services.suite_runs.run_context import write_context_path
 from json_utils.services.json_service import make_json_safe
 
 
@@ -24,7 +24,11 @@ class PublishToQueueOperationExecutor(OperationExecutor):
             raise ValueError(f"Queue '{cfg.queue_id}' not found")
         connection_config: BrokerConnectionConfigTypes = load_broker_connection(queue.broker_id)
         service = QueueConnectionServiceFactory().get_service(connection_config)
-        input_data = resolve_command_input_data(cfg.source, data)
+        input_data = resolve_definition_input_data(
+            session,
+            cfg.sourceConstantRef.definitionId,
+            data,
+        )
         payload = input_data if isinstance(input_data, list) else [input_data]
         msg = [make_json_safe(item) for item in payload]
         service.publish_messages(connection_config, cfg.queue_id, msg)
@@ -34,8 +38,8 @@ class PublishToQueueOperationExecutor(OperationExecutor):
             "queue_code": str(queue.code or ""),
             "published": len(payload),
         }
-        if cfg.result_target:
-            write_context_path(cfg.result_target, result_payload)
+        if cfg.resultConstant:
+            write_result_constant(session, cfg.resultConstant, result_payload)
         self.log(operation_id, message=message)
         return ExecutionResultDto(
             data=input_data,

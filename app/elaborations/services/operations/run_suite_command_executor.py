@@ -3,15 +3,19 @@ from sqlalchemy.orm import Session
 from elaborations.models.dtos.configuration_command_dto import (
     RunSuiteConfigurationCommandDto,
 )
+from elaborations.services.constants.command_constant_definition_registry import (
+    resolve_definition_path,
+)
 from elaborations.services.operations.command_executor import (
     ExecutionResultDto,
     OperationExecutor,
 )
 from elaborations.services.suite_runs.run_context import (
+    build_run_context_scope,
     get_run_context,
-    resolve_constant_value,
-    write_context_path,
 )
+from elaborations.services.suite_runs.run_context_resolver import resolve_dynamic_value
+from elaborations.services.operations.command_data_resolver import write_result_constant
 
 
 class RunSuiteOperationExecutor(OperationExecutor):
@@ -35,10 +39,12 @@ class RunSuiteOperationExecutor(OperationExecutor):
         suite_id = self._resolve_suite_id(session, cfg)
         run_context = get_run_context()
         constants_payload: dict[str, object] = {}
-        for constant_name in cfg.constants or []:
-            resolved_value = resolve_constant_value(constant_name)
+        scope = build_run_context_scope(run_context)
+        for constant_ref in cfg.constantRefs or []:
+            definition, path = resolve_definition_path(session, constant_ref.definitionId)
+            resolved_value = resolve_dynamic_value(path, scope)
             if resolved_value is not None:
-                constants_payload[constant_name] = resolved_value
+                constants_payload[definition.name] = resolved_value
 
         execution_id = execute_test_suite_by_id(
             suite_id,
@@ -64,8 +70,8 @@ class RunSuiteOperationExecutor(OperationExecutor):
             "execution_id": execution_id,
             "constants": constants_payload,
         }
-        if cfg.result_target:
-            write_context_path(cfg.result_target, result_payload)
+        if cfg.resultConstant:
+            write_result_constant(session, cfg.resultConstant, result_payload)
         return ExecutionResultDto(
             data=data,
             result=[

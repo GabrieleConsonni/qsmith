@@ -6,9 +6,12 @@ from data_sources.models.database_connection_config_types import DatabaseConnect
 from data_sources.models.database_connection_config_types import convert_database_connection_config
 from data_sources.services.alembic.dataset_service import DatasetService
 from elaborations.models.dtos.configuration_command_dto import ExportDatasetConfigurationCommandDto
-from elaborations.services.operations.command_data_resolver import coerce_rows, resolve_command_input_data
+from elaborations.services.operations.command_data_resolver import (
+    coerce_rows,
+    resolve_definition_input_data,
+    write_result_constant,
+)
 from elaborations.services.operations.command_executor import OperationExecutor, ExecutionResultDto
-from elaborations.services.suite_runs.run_context import write_context_path
 from json_utils.services.alembic.json_files_service import JsonFilesService
 from sqlalchemy_utils.database_table_writer import DatabaseTableWriter
 from sqlalchemy_utils.database_table_manager import DatabaseTableManager
@@ -20,7 +23,11 @@ class SaveToExternalDbOperationExecutor(OperationExecutor):
     def execute(self, session:Session, operation_id:str, cfg: ExportDatasetConfigurationCommandDto, data)->ExecutionResultDto:
         connection_id = str(cfg.connection_id or "").strip()
         table_name = str(cfg.table_name or "").strip()
-        input_data = resolve_command_input_data(cfg.source, data)
+        input_data = resolve_definition_input_data(
+            session,
+            cfg.sourceConstantRef.definitionId,
+            data,
+        )
         rows = coerce_rows(input_data)
 
         if not connection_id:
@@ -106,8 +113,8 @@ class SaveToExternalDbOperationExecutor(OperationExecutor):
             "dataset_id": dataset_id,
             "mode": cfg.mode,
         }
-        if cfg.result_target:
-            write_context_path(cfg.result_target, result_payload)
+        if cfg.resultConstant:
+            write_result_constant(session, cfg.resultConstant, result_payload)
 
         self.log(operation_id, message)
 

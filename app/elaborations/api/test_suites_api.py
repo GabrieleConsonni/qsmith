@@ -19,6 +19,10 @@ from elaborations.services.alembic.suite_item_command_service import (
 )
 from elaborations.services.alembic.suite_item_service import SuiteItemService
 from elaborations.services.alembic.test_suite_service import TestSuiteService
+from elaborations.services.constants.command_constant_definition_registry import (
+    rebuild_suite_constant_definitions,
+    validate_suite_constant_graph,
+)
 from elaborations.services.test_suites.test_suite_executor_service import (
     execute_test_by_id,
     execute_test_suite_by_id,
@@ -133,21 +137,25 @@ def _serialize_item(session, item: SuiteItemEntity) -> dict:
 @router.post("/test-suite")
 async def insert_test_suite_api(dto: CreateTestSuiteDto):
     with managed_session() as session:
+        validate_suite_constant_graph(dto)
         entity = TestSuiteEntity()
         entity.description = dto.description
         test_suite_id = TestSuiteService().insert(session, entity)
         _insert_suite_items(session, test_suite_id, hooks=dto.hooks or [], tests=dto.tests or [])
+        rebuild_suite_constant_definitions(session, test_suite_id)
     return {"id": test_suite_id, "message": "Test suite added"}
 
 
 @router.put("/test-suite")
 async def update_test_suite_api(dto: UpdateTestSuiteDto):
     with managed_session() as session:
+        validate_suite_constant_graph(dto)
         entity = TestSuiteService().update(session, dto.id, description=dto.description)
         if not entity:
             raise QsmithAppException(f"No test suite found with id [ {dto.id} ]")
         SuiteItemService().delete_by_suite_id(session, dto.id)
         _insert_suite_items(session, dto.id, hooks=dto.hooks or [], tests=dto.tests or [])
+        rebuild_suite_constant_definitions(session, dto.id)
     return {"id": dto.id, "message": "Test suite updated"}
 
 

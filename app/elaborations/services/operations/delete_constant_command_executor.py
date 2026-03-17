@@ -7,6 +7,9 @@ from elaborations.services.operations.command_executor import (
     ExecutionResultDto,
     OperationExecutor,
 )
+from elaborations.services.constants.command_constant_definition_registry import (
+    resolve_definition_path,
+)
 from elaborations.services.suite_runs.run_context import remove_context_path
 
 
@@ -18,18 +21,23 @@ class DeleteConstantOperationExecutor(OperationExecutor):
         cfg: DeleteConstantConfigurationCommandDto,
         data,
     ) -> ExecutionResultDto:
-        del session
-        target_path = f"$.{cfg.context}.constants.{cfg.name}"
+        definition, target_path = resolve_definition_path(
+            session,
+            cfg.targetConstantRef.definitionId,
+        )
         remove_context_path(target_path)
-        message = f"Deleted constant '{cfg.name}' from context '{cfg.context}'."
+        message = (
+            f"Deleted constant '{definition.name}' from context "
+            f"'{definition.context_scope}'."
+        )
         self.log(operation_id, message)
         return ExecutionResultDto(
             data=data,
             result=[
                 {
                     "message": message,
-                    "name": cfg.name,
-                    "context": cfg.context,
+                    "name": definition.name,
+                    "context": definition.context_scope,
                 }
             ],
         )

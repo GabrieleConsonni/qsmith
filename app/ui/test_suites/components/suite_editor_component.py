@@ -132,6 +132,18 @@ CONSTANT_CONTEXT_OPTIONS = ["runEnvelope", "global", "local", "result"]
 TEST_CONSTANT_CONTEXT_OPTIONS = ["local", "result", "global", "runEnvelope"]
 CONSTANT_SOURCE_OPTIONS = ["raw", "json", "jsonArray", "dataset", "sqsQueue"]
 EXPORT_DATASET_MODE_OPTIONS = ["append", "drop-create", "insert-update"]
+SOURCE_COMPATIBILITY_BY_COMMAND = {
+    "sendMessageQueue": {"raw", "json", "jsonArray", "dataset"},
+    "saveTable": {"json", "jsonArray", "dataset"},
+    "exportDataset": {"json", "jsonArray", "dataset"},
+}
+READABLE_SCOPES_BY_SECTION = {
+    "beforeAll": {"runEnvelope", "result"},
+    "beforeEach": {"runEnvelope", "global", "result"},
+    "test": {"runEnvelope", "global", "local", "result"},
+    "afterEach": {"runEnvelope", "global", "local", "result"},
+    "afterAll": {"runEnvelope", "global", "result"},
+}
 
 
 def _safe_list(value: object) -> list[dict]:
@@ -243,6 +255,204 @@ def _find_broker_id_for_queue_id(queue_id: str, brokers: list[dict]) -> str:
         if any(str(queue.get("id") or "").strip() == normalized_queue_id for queue in queues):
             return broker_id
     return ""
+
+
+def _section_type_for_item(item: dict | None) -> str:
+    if not isinstance(item, dict):
+        return "test"
+    if str(item.get("kind") or "").strip().lower() != "hook":
+        return "test"
+    mapping = {
+        "before-all": "beforeAll",
+        "before-each": "beforeEach",
+        "after-each": "afterEach",
+        "after-all": "afterAll",
+    }
+    return mapping.get(str(item.get("hook_phase") or "").strip().lower(), "test")
+
+
+def _find_hook_by_phase(draft: dict, hook_phase: str) -> dict | None:
+    hooks = draft.get("hooks") or {}
+    if not isinstance(hooks, dict):
+        return None
+    hook = hooks.get(hook_phase)
+    return hook if isinstance(hook, dict) else None
+
+
+def _operation_list(item: dict | None) -> list[dict]:
+    operations = item.get("operations") if isinstance(item, dict) else []
+    return [operation for operation in operations if isinstance(operation, dict)] if isinstance(operations, list) else []
+
+
+def _command_result_constant(configuration_json: dict) -> tuple[str, str] | None:
+    result_constant = _safe_dict(
+        configuration_json.get("resultConstant") or configuration_json.get("result_constant")
+    )
+    result_name = str(result_constant.get("name") or "").strip()
+    result_type = str(
+        result_constant.get("valueType") or result_constant.get("value_type") or "json"
+    ).strip() or "json"
+    if result_name:
+        return result_name, result_type
+
+    result_target = _normalize_context_path(
+        configuration_json.get("result_target") or configuration_json.get("resultTarget")
+    )
+    if result_target.startswith("$.result.constants."):
+        return result_target.split(".")[-1], "json"
+    return None
+
+
+def _apply_visible_constant_effect(active_definitions: list[dict], operation: dict):
+    configuration_json = _safe_dict(operation.get("configuration_json") or {})
+    command_code = _normalize_command_code(configuration_json)
+
+    if command_code == "deleteConstant":
+        target_name = str(configuration_json.get("name") or "").strip()
+        target_context = str(
+            configuration_json.get("context") or configuration_json.get("scope") or ""
+        ).strip()
+        if target_name and target_context:
+            for index in range(len(active_definitions) - 1, -1, -1):
+                definition = active_definitions[index]
+                if (
+                    str(definition.get("name") or "").strip() == target_name
+                    and str(definition.get("context") or "").strip() == target_context
+                ):
+                    active_definitions.pop(index)
+                    break
+        return
+
+    if command_code == "initConstant":
+        name = str(configuration_json.get("name") or "").strip()
+        context = str(
+            configuration_json.get("context") or configuration_json.get("scope") or ""
+        ).strip()
+        source_type = str(
+            configuration_json.get("sourceType") or configuration_json.get("source_type") or ""
+        ).strip()
+        if name and context and source_type:
+            active_definitions.append(
+                {
+                    "name": name,
+                    "context": context,
+                    "value_type": source_type,
+                    "path": f"$.{context}.constants.{name}",
+                }
+            )
+
+    result_constant = _command_result_constant(configuration_json)
+    if result_constant is not None:
+        result_name, result_type = result_constant
+        active_definitions.append(
+            {
+                "name": result_name,
+                "context": "result",
+                "value_type": result_type,
+                "path": f"$.result.constants.{result_name}",
+            }
+        )
+
+
+def _collect_visible_constants_from_operations(
+    active_definitions: list[dict],
+    item: dict | None,
+    *,
+    stop_before_index: int | None = None,
+):
+    operations = _operation_list(item)
+    for op_index, operation in enumerate(operations):
+        if stop_before_index is not None and op_index >= stop_before_index:
+            break
+        _apply_visible_constant_effect(active_definitions, operation)
+
+
+def _resolve_available_source_constants(
+    draft: dict,
+    item: dict,
+    *,
+    command_code: str,
+    stop_before_index: int | None = None,
+) -> list[dict]:
+    compatible_types = SOURCE_COMPATIBILITY_BY_COMMAND.get(str(command_code or "").strip(), set())
+    if not compatible_types:
+        return []
+
+    active_definitions: list[dict] = []
+    section_type = _section_type_for_item(item)
+
+    before_all_hook = _find_hook_by_phase(draft, "before-all")
+    before_each_hook = _find_hook_by_phase(draft, "before-each")
+
+    if section_type in {"beforeEach", "test", "afterEach", "afterAll"}:
+        _collect_visible_constants_from_operations(active_definitions, before_all_hook)
+
+    if section_type in {"beforeEach", "test", "afterEach"}:
+        _collect_visible_constants_from_operations(active_definitions, before_each_hook)
+
+    if section_type in {"beforeAll", "beforeEach", "afterEach", "afterAll", "test"}:
+        _collect_visible_constants_from_operations(
+            active_definitions,
+            item,
+            stop_before_index=stop_before_index,
+        )
+
+    filtered_definitions = [
+        definition
+        for definition in active_definitions
+        if str(definition.get("value_type") or "").strip() in compatible_types
+        and str(definition.get("context") or "").strip()
+        in READABLE_SCOPES_BY_SECTION.get(section_type, set())
+    ]
+
+    deduped_by_path: dict[str, dict] = {}
+    for definition in filtered_definitions:
+        path = str(definition.get("path") or "").strip()
+        if path:
+            deduped_by_path[path] = definition
+
+    options = list(deduped_by_path.values())
+    options.sort(
+        key=lambda item: (
+            str(item.get("context") or ""),
+            str(item.get("name") or ""),
+            str(item.get("value_type") or ""),
+        )
+    )
+    return options
+
+
+def _render_source_constant_select(
+    *,
+    label: str,
+    key: str,
+    options: list[dict],
+    help_text: str | None = None,
+):
+    option_values = [str(item.get("path") or "").strip() for item in options if str(item.get("path") or "").strip()]
+    current_value = str(st.session_state.get(key) or "").strip()
+    if current_value not in option_values:
+        st.session_state[key] = option_values[0] if option_values else ""
+
+    st.selectbox(
+        label,
+        options=option_values or [""],
+        format_func=lambda path: (
+            next(
+                (
+                    f"{item.get('name')} [{item.get('context')}] : {item.get('value_type')}"
+                    for item in options
+                    if str(item.get("path") or "").strip() == str(path or "").strip()
+                ),
+                "Nessuna costante disponibile",
+            )
+        ),
+        key=key,
+        disabled=not bool(option_values),
+        help=help_text,
+    )
+    if not option_values:
+        st.info("Nessuna costante compatibile disponibile nel punto corrente.")
 
 
 def _build_suite_command_markdown(command_item: dict) -> str:
@@ -737,19 +947,22 @@ def _build_hook_command_draft(dialog_nonce: int, command_code: str) -> tuple[dic
         }
     elif command_code == "saveTable":
         table_name = str(st.session_state.get(f"suite_add_hook_save_table_name_{dialog_nonce}") or "").strip()
+        source = _normalize_context_path(
+            st.session_state.get(f"suite_add_hook_save_table_source_{dialog_nonce}")
+        )
         if not table_name:
             return None, "Il campo Table name e' obbligatorio."
+        if not source:
+            return None, "Il campo Source constant e' obbligatorio."
         cfg = {
             "commandCode": "saveTable",
             "commandType": "action",
             "table_name": table_name,
         }
-        source = _normalize_context_path(st.session_state.get(f"suite_add_hook_save_table_source_{dialog_nonce}"))
         result_target = _normalize_context_path(
             st.session_state.get(f"suite_add_hook_save_table_result_target_{dialog_nonce}")
         )
-        if source:
-            cfg["source"] = source
+        cfg["source"] = source
         if result_target:
             cfg["result_target"] = result_target
     elif command_code == "dropTable":
@@ -781,6 +994,11 @@ def _build_hook_command_draft(dialog_nonce: int, command_code: str) -> tuple[dic
             return None, "Il campo Connection e' obbligatorio."
         if not table_name:
             return None, "Il campo Table name e' obbligatorio."
+        source = _normalize_context_path(
+            st.session_state.get(f"suite_add_hook_export_dataset_source_{dialog_nonce}")
+        )
+        if not source:
+            return None, "Il campo Source constant e' obbligatorio."
         cfg = {
             "commandCode": "exportDataset",
             "commandType": "action",
@@ -790,9 +1008,6 @@ def _build_hook_command_draft(dialog_nonce: int, command_code: str) -> tuple[dic
                 st.session_state.get(f"suite_add_hook_export_dataset_mode_{dialog_nonce}") or "append"
             ).strip(),
         }
-        source = _normalize_context_path(
-            st.session_state.get(f"suite_add_hook_export_dataset_source_{dialog_nonce}")
-        )
         dataset_id = str(
             st.session_state.get(f"suite_add_hook_export_dataset_dataset_id_{dialog_nonce}") or ""
         ).strip()
@@ -805,8 +1020,7 @@ def _build_hook_command_draft(dialog_nonce: int, command_code: str) -> tuple[dic
         mapping_keys = _parse_csv_tokens(
             st.session_state.get(f"suite_add_hook_export_dataset_mapping_keys_{dialog_nonce}")
         )
-        if source:
-            cfg["source"] = source
+        cfg["source"] = source
         if dataset_id:
             cfg["dataset_id"] = dataset_id
         if dataset_description:
@@ -917,16 +1131,18 @@ def _build_test_command_draft(dialog_nonce: int, command_ui_code: str) -> tuple[
         queue_id = str(
             st.session_state.get(f"suite_add_test_send_message_queue_id_{dialog_nonce}") or ""
         ).strip()
+        source = _normalize_context_path(
+            st.session_state.get(f"suite_add_test_send_message_source_{dialog_nonce}")
+        )
         if not queue_id:
             return None, "Il campo Queue e' obbligatorio."
+        if not source:
+            return None, "Il campo Source constant e' obbligatorio."
         cfg = {
             "commandCode": "sendMessageQueue",
             "commandType": "action",
             "queue_id": queue_id,
         }
-        source = _normalize_context_path(
-            st.session_state.get(f"suite_add_test_send_message_source_{dialog_nonce}")
-        )
         template_id = str(
             st.session_state.get(f"suite_add_test_send_message_template_id_{dialog_nonce}") or ""
         ).strip()
@@ -938,8 +1154,7 @@ def _build_test_command_draft(dialog_nonce: int, command_ui_code: str) -> tuple[
         result_target = _normalize_context_path(
             st.session_state.get(f"suite_add_test_send_message_result_target_{dialog_nonce}")
         )
-        if source:
-            cfg["source"] = source
+        cfg["source"] = source
         if template_id:
             cfg["template_id"] = template_id
         if isinstance(template_params, dict):
@@ -948,19 +1163,22 @@ def _build_test_command_draft(dialog_nonce: int, command_ui_code: str) -> tuple[
             cfg["result_target"] = result_target
     elif command_code == "saveTable":
         table_name = str(st.session_state.get(f"suite_add_test_save_table_name_{dialog_nonce}") or "").strip()
+        source = _normalize_context_path(
+            st.session_state.get(f"suite_add_test_save_table_source_{dialog_nonce}")
+        )
         if not table_name:
             return None, "Il campo Table name e' obbligatorio."
+        if not source:
+            return None, "Il campo Source constant e' obbligatorio."
         cfg = {
             "commandCode": "saveTable",
             "commandType": "action",
             "table_name": table_name,
         }
-        source = _normalize_context_path(st.session_state.get(f"suite_add_test_save_table_source_{dialog_nonce}"))
         result_target = _normalize_context_path(
             st.session_state.get(f"suite_add_test_save_table_result_target_{dialog_nonce}")
         )
-        if source:
-            cfg["source"] = source
+        cfg["source"] = source
         if result_target:
             cfg["result_target"] = result_target
     elif command_code == "dropTable":
@@ -992,6 +1210,11 @@ def _build_test_command_draft(dialog_nonce: int, command_ui_code: str) -> tuple[
             return None, "Il campo Connection e' obbligatorio."
         if not table_name:
             return None, "Il campo Table name e' obbligatorio."
+        source = _normalize_context_path(
+            st.session_state.get(f"suite_add_test_export_dataset_source_{dialog_nonce}")
+        )
+        if not source:
+            return None, "Il campo Source constant e' obbligatorio."
         cfg = {
             "commandCode": "exportDataset",
             "commandType": "action",
@@ -1001,9 +1224,6 @@ def _build_test_command_draft(dialog_nonce: int, command_ui_code: str) -> tuple[
                 st.session_state.get(f"suite_add_test_export_dataset_mode_{dialog_nonce}") or "append"
             ).strip(),
         }
-        source = _normalize_context_path(
-            st.session_state.get(f"suite_add_test_export_dataset_source_{dialog_nonce}")
-        )
         dataset_id = str(
             st.session_state.get(f"suite_add_test_export_dataset_dataset_id_{dialog_nonce}") or ""
         ).strip()
@@ -1016,8 +1236,7 @@ def _build_test_command_draft(dialog_nonce: int, command_ui_code: str) -> tuple[
         mapping_keys = _parse_csv_tokens(
             st.session_state.get(f"suite_add_test_export_dataset_mapping_keys_{dialog_nonce}")
         )
-        if source:
-            cfg["source"] = source
+        cfg["source"] = source
         if dataset_id:
             cfg["dataset_id"] = dataset_id
         if dataset_description:
@@ -1358,7 +1577,10 @@ def _render_hook_command_form(
     datasources: list[dict],
     brokers: list[dict],
     connections: list[dict],
+    draft: dict,
+    item: dict,
     *,
+    stop_before_index: int | None,
     default_context: str,
     key_prefix: str,
 ) -> str:
@@ -1453,7 +1675,17 @@ def _render_hook_command_form(
         st.session_state[delete_context_key] = default_context
     elif command_code == "saveTable":
         st.text_input("Table name", key=_command_form_key(key_prefix, dialog_nonce, "save_table_name"))
-        st.text_input("Source (optional)", key=_command_form_key(key_prefix, dialog_nonce, "save_table_source"), placeholder="$.local.constants.rows")
+        _render_source_constant_select(
+            label="Source constant",
+            key=_command_form_key(key_prefix, dialog_nonce, "save_table_source"),
+            options=_resolve_available_source_constants(
+                draft,
+                item,
+                command_code=command_code,
+                stop_before_index=stop_before_index,
+            ),
+            help_text="Costanti visibili e compatibili nel punto corrente.",
+        )
         st.text_input("Result target (optional)", key=_command_form_key(key_prefix, dialog_nonce, "save_table_result_target"), placeholder="$.result.commands.saveTable")
     elif command_code == "dropTable":
         st.text_input("Table name", key=_command_form_key(key_prefix, dialog_nonce, "drop_table_name"))
@@ -1470,7 +1702,17 @@ def _render_hook_command_form(
             disabled=not bool(connection_ids),
         )
         st.text_input("Table name", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_table_name"))
-        st.text_input("Source (optional)", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_source"), placeholder="$.local.constants.rows")
+        _render_source_constant_select(
+            label="Source constant",
+            key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_source"),
+            options=_resolve_available_source_constants(
+                draft,
+                item,
+                command_code=command_code,
+                stop_before_index=stop_before_index,
+            ),
+            help_text="Costanti visibili e compatibili nel punto corrente.",
+        )
         st.selectbox("Mode", options=EXPORT_DATASET_MODE_OPTIONS, key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_mode"))
         st.text_input("Mapping keys (optional)", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_mapping_keys"), placeholder="id, code")
         st.selectbox(
@@ -1509,7 +1751,10 @@ def _render_test_command_form(
     datasources: list[dict],
     brokers: list[dict],
     connections: list[dict],
+    draft: dict,
+    item: dict,
     *,
+    stop_before_index: int | None,
     key_prefix: str,
 ) -> str:
     if command_group == "constant":
@@ -1617,13 +1862,33 @@ def _render_test_command_form(
             key=queue_key,
             disabled=not bool(queue_ids),
         )
-        st.text_input("Source (optional)", key=_command_form_key(key_prefix, dialog_nonce, "send_message_source"), placeholder="$.local.constants.rows")
+        _render_source_constant_select(
+            label="Source constant",
+            key=_command_form_key(key_prefix, dialog_nonce, "send_message_source"),
+            options=_resolve_available_source_constants(
+                draft,
+                item,
+                command_code=command_code,
+                stop_before_index=stop_before_index,
+            ),
+            help_text="Costanti visibili e compatibili nel punto corrente.",
+        )
         st.text_input("Template id (optional)", key=_command_form_key(key_prefix, dialog_nonce, "send_message_template_id"))
         st.text_area("Template params (optional)", key=_command_form_key(key_prefix, dialog_nonce, "send_message_template_params"), height=120)
         st.text_input("Result target (optional)", key=_command_form_key(key_prefix, dialog_nonce, "send_message_result_target"), placeholder="$.result.commands.sendMessageQueue")
     elif command_code == "saveTable":
         st.text_input("Table name", key=_command_form_key(key_prefix, dialog_nonce, "save_table_name"))
-        st.text_input("Source (optional)", key=_command_form_key(key_prefix, dialog_nonce, "save_table_source"), placeholder="$.local.constants.rows")
+        _render_source_constant_select(
+            label="Source constant",
+            key=_command_form_key(key_prefix, dialog_nonce, "save_table_source"),
+            options=_resolve_available_source_constants(
+                draft,
+                item,
+                command_code=command_code,
+                stop_before_index=stop_before_index,
+            ),
+            help_text="Costanti visibili e compatibili nel punto corrente.",
+        )
         st.text_input("Result target (optional)", key=_command_form_key(key_prefix, dialog_nonce, "save_table_result_target"), placeholder="$.result.commands.saveTable")
     elif command_code == "dropTable":
         st.text_input("Table name", key=_command_form_key(key_prefix, dialog_nonce, "drop_table_name"))
@@ -1640,7 +1905,17 @@ def _render_test_command_form(
             disabled=not bool(connection_ids),
         )
         st.text_input("Table name", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_table_name"))
-        st.text_input("Source (optional)", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_source"), placeholder="$.local.constants.rows")
+        _render_source_constant_select(
+            label="Source constant",
+            key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_source"),
+            options=_resolve_available_source_constants(
+                draft,
+                item,
+                command_code=command_code,
+                stop_before_index=stop_before_index,
+            ),
+            help_text="Costanti visibili e compatibili nel punto corrente.",
+        )
         st.selectbox("Mode", options=EXPORT_DATASET_MODE_OPTIONS, key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_mode"))
         st.text_input("Mapping keys (optional)", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_mapping_keys"), placeholder="id, code")
         st.selectbox(
@@ -2006,6 +2281,9 @@ def _render_add_hook_command_dialog(draft: dict):
         datasources,
         brokers,
         connections,
+        draft,
+        hook_item,
+        stop_before_index=len(_operation_list(hook_item)),
         default_context=default_context,
         key_prefix="suite_hook_command",
     )
@@ -2071,6 +2349,9 @@ def _render_add_test_command_dialog(draft: dict):
         datasources,
         brokers,
         connections,
+        draft,
+        test_item,
+        stop_before_index=len(_operation_list(test_item)),
         key_prefix="suite_test_command",
     )
 
@@ -2207,6 +2488,9 @@ def _render_edit_command_dialog(draft: dict):
             datasources,
             brokers,
             connections,
+            draft,
+            item,
+            stop_before_index=operation_index,
             default_context=default_context,
             key_prefix="suite_edit_hook_command",
         )
@@ -2219,6 +2503,9 @@ def _render_edit_command_dialog(draft: dict):
             datasources,
             brokers,
             connections,
+            draft,
+            item,
+            stop_before_index=operation_index,
             key_prefix="suite_edit_test_command",
         )
 

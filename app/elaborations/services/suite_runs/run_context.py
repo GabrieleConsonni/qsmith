@@ -65,6 +65,7 @@ def _build_run_context_payload(
     result_scope = {
         "artifacts": {},
         "commands": {},
+        "constants": {},
     }
     return run_envelope, global_scope, local_scope, result_scope
 
@@ -402,6 +403,7 @@ def resolve_constant_value(name: str) -> Any:
         context.local_vars,
         context.global_vars,
         context.run_envelope.get("constants") if isinstance(context.run_envelope.get("constants"), dict) else {},
+        context.result_scope.get("constants") if isinstance(context.result_scope.get("constants"), dict) else {},
     ):
         if normalized_name in container:
             return container[normalized_name]
@@ -415,7 +417,7 @@ def build_run_context_scope(run_context: RunContext | None = None) -> dict[str, 
             "runEnvelope": {"run_id": "", "event": {}, "constants": {}},
             "global": {"runEnvelope": {"run_id": "", "event": {}, "constants": {}}, "constants": {}},
             "local": {"global": {"runEnvelope": {"run_id": "", "event": {}, "constants": {}}, "constants": {}}, "constants": {}},
-            "result": {"artifacts": {}, "commands": {}},
+            "result": {"artifacts": {}, "commands": {}, "constants": {}},
             "response": {},
         }
     return {
@@ -459,6 +461,6 @@ def deserialize_run_context(payload: dict[str, Any] | None) -> RunContext:
     context.local_scope["constants"] = (
         local_payload.get("constants") if isinstance(local_payload.get("constants"), dict) else {}
     )
-    context.result_scope = result_payload or {"artifacts": {}, "commands": {}}
+    context.result_scope = result_payload or {"artifacts": {}, "commands": {}, "constants": {}}
     context.last = source.get("last") if isinstance(source.get("last"), dict) else {"item_id": "", "data": None}
     return context

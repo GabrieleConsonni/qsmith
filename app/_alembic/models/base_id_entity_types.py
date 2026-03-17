@@ -1,3 +1,6 @@
+from _alembic.models.command_constant_definition_entity import (
+    CommandConstantDefinitionEntity,
+)
 from _alembic.models.json_payload_entity import JsonPayloadEntity
 from _alembic.models.log_entity import LogEntity
 from _alembic.models.mock_server_api_entity import MockServerApiEntity
@@ -24,6 +27,8 @@ from _alembic.models.test_suite_entity import TestSuiteEntity
 from _alembic.models.test_suite_execution_entity import TestSuiteExecutionEntity
 
 BaseIdEntityTypes = (
+    CommandConstantDefinitionEntity
+    |
     JsonPayloadEntity
     | LogEntity
     | MockServerEntity
@@ -47,4 +52,3 @@ BaseIdEntityTypes = (
     | TestSuiteEntity
     | TestSuiteExecutionEntity
 )
-

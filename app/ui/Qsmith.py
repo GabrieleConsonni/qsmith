@@ -54,13 +54,13 @@ _sidebar_nav_button(
     icon=":material/cell_tower:",
 )
 _sidebar_nav_button(
-    label="Database connections",
+    label="Database connections (Beta)",
     page_path="pages/DatabaseConnections.py",
     key="nav_database_connections_page",
     icon=":material/database:",
 )
 _sidebar_nav_button(
-    label="Mock servers",
+    label="Mock servers (Beta)",
     page_path="pages/MockServers.py",
     key="nav_mock_servers_page",
     icon=":material/deployed_code:",
@@ -91,25 +91,25 @@ _sidebar_nav_button(
     icon=":material/file_json:",
 )
 _sidebar_nav_button(
-    label="Datasets",
+    label="Datasets from databases (Beta)",
     page_path="pages/DatabaseDataSources.py",
     key="nav_database_datasources_page",
     icon=":material/table:",
 )
 st.sidebar.subheader("Test")
 _sidebar_nav_button(
-    label="Test suites",
+    label="Test suites (Beta)",
     page_path="pages/TestSuites.py",
     key="nav_test_suites_page",
     icon=":material/experiment:",
 )
 _sidebar_nav_button(
-    label="Test suite scheduler",
+    label="Test suite scheduler (Beta)",
     page_path="pages/TestSuiteSchedules.py",
     key="nav_test_suite_schedules_page",
     icon=":material/schedule:",
 )
-st.sidebar.subheader("Mock Servers")
+st.sidebar.subheader("Mock Servers (Beta)")
 for server in mock_servers if isinstance(mock_servers, list) else []:
     server_id = str(server.get("id") or "").strip()
     endpoint = str(server.get("endpoint") or "").strip()

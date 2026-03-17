@@ -9,15 +9,18 @@ from testcontainers.mssql import SqlServerContainer
 from testcontainers.oracle import OracleDbContainer
 from testcontainers.postgres import PostgresContainer
 
+from app._alembic.models.dataset_entity import DatasetEntity
 from app._alembic.models.json_payload_entity import JsonPayloadEntity
 from app._alembic.services.alembic_config_service import url_from_env
 from app._alembic.services.session_context_manager import managed_session
 from app.data_sources.models.database_connection_config_types import (
     convert_database_connection_config,
 )
+from app.data_sources.services.alembic.dataset_service import DatasetService
 from app.elaborations.models.dtos.configuration_command_dto import (
     AssertConfigurationCommandDto,
     ExportDatasetConfigurationCommandDto,
+    InitConstantConfigurationCommandDto,
     RunSuiteConfigurationCommandDto,
     SaveTableConfigurationCommandDto,
     SendMessageQueueConfigurationCommandDto,
@@ -30,6 +33,9 @@ from app.elaborations.services.operations.command_executor_composite import (
 )
 from app.elaborations.services.operations.export_dataset_command_executor import (
     SaveToExternalDbOperationExecutor,
+)
+from app.elaborations.services.operations.init_constant_command_executor import (
+    DataOperationExecutor,
 )
 from app.elaborations.services.operations.run_suite_command_executor import (
     RunSuiteOperationExecutor,
@@ -108,6 +114,19 @@ def _insert_json_array_payload(session, payload: list[dict] | dict) -> str:
         payload=payload,
     )
     return JsonFilesService().insert(session, entity)
+
+
+def _insert_dataset_payload(
+    session,
+    payload: dict,
+    perimeter: dict | None = None,
+) -> str:
+    entity = DatasetEntity(
+        description="test dataset",
+        configuration_json=payload,
+        perimeter=perimeter,
+    )
+    return DatasetService().insert(session, entity)
 
 
 def _count_rows(url: str, table_name: str, query: str | None = None) -> int:
@@ -373,6 +392,87 @@ def test_export_dataset_command_executor_oracle(alembic_container, external_orac
 
     assert inserted_rows == 2
     assert result.result == [{"message": f"Created 2 rows in {table_name} table"}]
+
+
+def test_init_constant_dataset_applies_perimeter(alembic_container, external_postgres_container):
+    table_name = _new_name("ext_perimeter")
+    external_engine = create_engine(external_postgres_container.get_connection_url())
+    try:
+        with external_engine.begin() as conn:
+            conn.execute(text(f"CREATE TABLE {table_name} (id INTEGER, status TEXT, note TEXT)"))
+            conn.execute(
+                text(
+                    f"""
+                    INSERT INTO {table_name} (id, status, note)
+                    VALUES
+                        (1, 'READY', 'keep-1'),
+                        (2, 'READY', 'keep-2'),
+                        (3, 'PENDING', 'drop-me')
+                    """
+                )
+            )
+    finally:
+        external_engine.dispose()
+
+    connection_payload = {
+        "database_type": "postgres",
+        "host": external_postgres_container.get_container_host_ip(),
+        "port": int(external_postgres_container.get_exposed_port(5432)),
+        "database": external_postgres_container.dbname,
+        "db_schema": "public",
+        "user": external_postgres_container.username,
+        "password": external_postgres_container.password,
+    }
+
+    with managed_session() as session:
+        connection_id = _insert_database_connection_payload(session, connection_payload)
+        dataset_id = _insert_dataset_payload(
+            session,
+            {
+                "connection_id": connection_id,
+                "schema": "public",
+                "object_name": table_name,
+                "object_type": "table",
+            },
+            perimeter={
+                "selected_columns": ["id", "status"],
+                "filter": {
+                    "logic": "AND",
+                    "conditions": [
+                        {"field": "status", "operator": "eq", "value": "READY"},
+                    ],
+                },
+                "sort": [
+                    {"field": "id", "direction": "desc"},
+                ],
+            },
+        )
+    with managed_session() as session:
+        cfg = InitConstantConfigurationCommandDto(
+            commandCode="initConstant",
+            commandType="context",
+            name="rows",
+            context="local",
+            dataset_id=dataset_id,
+        )
+        run_context = create_run_context(
+            run_id="run-dataset-perimeter",
+            event={"payload": {}},
+            initial_vars={},
+            invocation_id="inv-dataset-perimeter",
+        )
+        with bind_run_context(run_context):
+            result = DataOperationExecutor().execute(
+                session,
+                "cmd-init-dataset-perimeter",
+                cfg,
+                [],
+            )
+
+    assert result.data == [
+        {"id": 2, "status": "READY"},
+        {"id": 1, "status": "READY"},
+    ]
 
 
 def test_assert_json_not_empty_command_executor_passes(alembic_container):

@@ -1,8 +1,6 @@
 from sqlalchemy.orm import Session
 
-from _alembic.models.json_payload_entity import JsonPayloadEntity
-from data_sources.models.database_connection_config_types import DatabaseConnectionConfigTypes
-from data_sources.services.alembic.database_connection_service import load_database_connection
+from data_sources.services.dataset_query_service import DatasetQueryService
 from elaborations.models.dtos.configuration_command_dto import (
     DataFromDbConfigurationOperationDto,
 )
@@ -11,10 +9,6 @@ from elaborations.services.operations.command_executor import (
     OperationExecutor,
 )
 from elaborations.services.suite_runs.run_context import write_context_path
-from json_utils.models.enums.json_type import JsonType
-from json_utils.services.alembic.json_files_service import JsonFilesService
-from sqlalchemy_utils.database_table_reader import DatabaseTableReader, ReadTableConfig
-from sqlalchemy_utils.engine_factory.sqlalchemy_engine_factory_composite import create_sqlalchemy_engine
 
 
 class DataFromDbOperationExecutor(OperationExecutor):
@@ -26,42 +20,18 @@ class DataFromDbOperationExecutor(OperationExecutor):
         data: list[dict],
     ) -> ExecutionResultDto:
         del data
-        datasource_payload = self._load_database_datasource_payload(
+        dataset = DatasetQueryService.get_dataset_or_raise_for_runtime(
             session,
             str(cfg.dataset_id or "").strip(),
         )
-        connection_id = str(datasource_payload.get("connection_id") or "").strip()
-        object_name = str(datasource_payload.get("object_name") or "").strip()
-        schema = str(datasource_payload.get("schema") or "").strip()
-        table_name = object_name if not schema or "." in object_name else f"{schema}.{object_name}"
-        if not connection_id:
-            raise ValueError("Database datasource has no connection_id")
-        if not table_name:
-            raise ValueError("Database datasource has no object_name")
-
-        database_connection_cfg: DatabaseConnectionConfigTypes = load_database_connection(connection_id)
-        engine = create_sqlalchemy_engine(database_connection_cfg)
-        rows = DatabaseTableReader.read_full_table(
-            engine,
-            ReadTableConfig(table_name=table_name),
-        )
+        rows = DatasetQueryService.load_rows_for_runtime(dataset)
         normalized_rows = rows if isinstance(rows, list) else []
         if cfg.target:
             write_context_path(cfg.target, normalized_rows)
+        table_name = DatasetQueryService.qualified_table_name_from_dataset(dataset)
         self.log(operation_id, f"Loaded {len(rows)} row(s) from table '{table_name}'.")
         return ExecutionResultDto(
             data=normalized_rows,
             result=[{"message": f"Loaded {len(rows)} row(s) from table '{table_name}'."}],
         )
-
-    @staticmethod
-    def _load_database_datasource_payload(session: Session, data_source_id: str) -> dict:
-        json_payload_entity: JsonPayloadEntity = JsonFilesService().get_by_id(session, data_source_id)
-        if not json_payload_entity:
-            raise ValueError(f"Database datasource '{data_source_id}' not found")
-        if json_payload_entity.json_type != JsonType.DATABASE_TABLE.value:
-            raise ValueError(
-                f"Datasource '{data_source_id}' is not a database-table datasource"
-            )
-        return json_payload_entity.payload if isinstance(json_payload_entity.payload, dict) else {}
 

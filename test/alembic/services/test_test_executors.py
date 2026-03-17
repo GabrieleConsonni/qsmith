@@ -7,8 +7,10 @@ from sqlalchemy import create_engine, text
 from testcontainers.core.exceptions import ContainerStartException
 from testcontainers.postgres import PostgresContainer
 
+from app._alembic.models.dataset_entity import DatasetEntity
 from app._alembic.models.json_payload_entity import JsonPayloadEntity
 from app._alembic.services.session_context_manager import managed_session
+from app.data_sources.services.alembic.dataset_service import DatasetService
 from app.elaborations.models.dtos.configuration_test_dtos import (
     DataConfigurationTestDTO,
     DataFromDbConfigurationTestDto,
@@ -65,6 +67,15 @@ def _insert_json_payload(
         payload=payload,
     )
     return JsonFilesService().insert(session, entity)
+
+
+def _insert_dataset_payload(session, payload: dict, perimeter: dict | None = None) -> str:
+    entity = DatasetEntity(
+        description="dataset test payload",
+        configuration_json=payload,
+        perimeter=perimeter,
+    )
+    return DatasetService().insert(session, entity)
 
 
 def _patch_execute_operations_for_class(monkeypatch, clazz, captured: dict):
@@ -268,15 +279,13 @@ def test_data_from_db_test_executor_reads_from_external_postgres(
             connection_payload,
             "db_conn",
         )
-        datasource_id = _insert_json_payload(
+        datasource_id = _insert_dataset_payload(
             session,
-            JsonType.DATABASE_TABLE,
             {
                 "connection_id": connection_id,
                 "schema": "public",
                 "object_name": table_name,
             },
-            "db_ds",
         )
 
     with managed_session() as session:

@@ -17,10 +17,7 @@ mock_server_editor_page = st.Page("pages/MockServerEditor.py", title="Mock Serve
 queues_page = st.Page("pages/Queues.py", title="Queues", url_path="queues")
 queue_details = st.Page("pages/QueueDetails.py", title="Queue details")
 json_array = st.Page("pages/JsonArray.py", title="Json Array")
-database_datasources = st.Page(
-    "pages/DatabaseDataSources.py",
-    title="Database Datasources",
-)
+datasets_page = st.Page("pages/Datasets.py", title="Datasets")
 test_suites = st.Page("pages/TestSuites.py", title="Test Suites")
 suite_editor = st.Page("pages/SuiteEditor.py", title="Suite editor")
 test_suite_schedules = st.Page("pages/TestSuiteSchedules.py", title="Test Suite Scheduler")
@@ -91,8 +88,8 @@ _sidebar_nav_button(
     icon=":material/file_json:",
 )
 _sidebar_nav_button(
-    label="Datasets from databases (Beta)",
-    page_path="pages/DatabaseDataSources.py",
+    label="Datasets (Beta)",
+    page_path="pages/Datasets.py",
     key="nav_database_datasources_page",
     icon=":material/table:",
 )
@@ -142,7 +139,7 @@ pg = st.navigation(
         "Home": [home],
         "Configurations": [brokers_page, database_connections_page, mock_servers_page],
         "Brokers & Queues": [queues_page, queue_details],
-        "Data Sources": [json_array, database_datasources],
+        "Data Sources": [json_array, datasets_page],
         "Test Suites": [test_suites, suite_editor, test_suite_schedules],
         "Mock Servers": [mock_server_editor_page],
         "Logs & Tools": [logs, tools]

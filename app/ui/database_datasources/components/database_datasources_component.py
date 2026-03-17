@@ -4,6 +4,7 @@ from database_datasources.components.dialogs import (
     SELECTED_DATABASE_DATASOURCE_ID_KEY,
     add_database_datasource_dialog,
     delete_database_datasource_dialog,
+    edit_dataset_perimeter_dialog,
     edit_database_datasource_dialog,
 )
 from database_datasources.services.data_loader_service import (
@@ -36,7 +37,7 @@ def _find_selected_datasource(datasources: list[dict], selected_id: str | None) 
     )
 
 
-@st.dialog("Datasource info")
+@st.dialog("Dataset info")
 def datasource_info_dialog(selected_item: dict, connection_label: str):
     payload = selected_item.get("payload") or {}
     st.metric(
@@ -106,7 +107,7 @@ def render_database_datasources_component(
             "Add new dataset",
             key="add_database_datasource_btn",
             icon=":material/add:",
-            help="Add database datasource",
+            help="Add dataset",
             use_container_width=True,
             type="tertiary"
         ):
@@ -130,7 +131,7 @@ def render_database_datasources_component(
                         "",
                         key=f"database_datasource_info_btn_{selected_id}",
                         icon=":material/info:",
-                        help="Datasource info",
+                        help="Dataset info",
                         use_container_width=True,
                     ):
                         datasource_info_dialog(selected_item, connection_label)
@@ -149,7 +150,7 @@ def render_database_datasources_component(
                     else:
                         st.info("Nessun dato disponibile per la preview.")
 
-        tool_cols = st.columns([6, 2, 2], gap="small")
+        tool_cols = st.columns([4, 2, 2, 2], gap="small")
         with tool_cols[1]:
             if st.button(
                 "Refresh preview",
@@ -165,6 +166,17 @@ def render_database_datasources_component(
                 st.rerun()
         with tool_cols[2]:
             if st.button(
+                "Perimeter",
+                key="database_datasource_edit_perimeter_btn",
+                icon=":material/filter_alt:",
+                type="secondary",
+                use_container_width=True,
+                disabled=not bool(selected_item),
+            ):
+                if selected_item:
+                    edit_dataset_perimeter_dialog(selected_item)
+        with tool_cols[3]:
+            if st.button(
                 "Edit",
                 key="database_datasource_edit_selected_btn",
                 icon=":material/edit:",
@@ -174,5 +186,3 @@ def render_database_datasources_component(
             ):
                 if selected_item:
                     edit_database_datasource_dialog(selected_item)
-
-

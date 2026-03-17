@@ -1,15 +1,15 @@
 from sqlalchemy.orm import Session
 
+from _alembic.models.dataset_entity import DatasetEntity
 from _alembic.models.json_payload_entity import JsonPayloadEntity
 from data_sources.models.database_connection_config_types import DatabaseConnectionConfigTypes
 from data_sources.models.database_connection_config_types import convert_database_connection_config
+from data_sources.services.alembic.dataset_service import DatasetService
 from elaborations.models.dtos.configuration_command_dto import ExportDatasetConfigurationCommandDto
 from elaborations.services.operations.command_data_resolver import coerce_rows, resolve_command_input_data
 from elaborations.services.operations.command_executor import OperationExecutor, ExecutionResultDto
 from elaborations.services.suite_runs.run_context import write_context_path
-from json_utils.models.enums.json_type import JsonType
 from json_utils.services.alembic.json_files_service import JsonFilesService
-from _alembic.models.json_payload_entity import JsonPayloadEntity as DatasetEntity
 from sqlalchemy_utils.database_table_writer import DatabaseTableWriter
 from sqlalchemy_utils.database_table_manager import DatabaseTableManager
 from sqlalchemy_utils.engine_factory.sqlalchemy_engine_factory_composite import create_sqlalchemy_engine
@@ -81,21 +81,20 @@ class SaveToExternalDbOperationExecutor(OperationExecutor):
         if schema_name:
             dataset_payload["schema"] = schema_name
         if cfg.dataset_id:
-            JsonFilesService().update(
+            DatasetService().update(
                 session,
                 cfg.dataset_id,
                 description=dataset_description,
-                json_type=JsonType.DATABASE_TABLE.value,
-                payload=dataset_payload,
+                configuration_json=dataset_payload,
             )
             dataset_id = cfg.dataset_id
         else:
-            dataset_id = JsonFilesService().insert(
+            dataset_id = DatasetService().insert(
                 session,
                 DatasetEntity(
                     description=dataset_description,
-                    json_type=JsonType.DATABASE_TABLE.value,
-                    payload=dataset_payload,
+                    configuration_json=dataset_payload,
+                    perimeter=None,
                 ),
             )
 

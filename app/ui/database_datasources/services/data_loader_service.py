@@ -1,3 +1,5 @@
+from urllib.parse import quote_plus
+
 import streamlit as st
 
 from api_client import api_get
@@ -5,6 +7,7 @@ from api_client import api_get
 DATABASE_DATASOURCES_KEY = "database_datasources"
 DATABASE_CONNECTIONS_KEY = "database_connections"
 DATABASE_OBJECTS_CACHE_KEY = "database_connection_objects_cache"
+DATABASE_OBJECT_PREVIEW_CACHE_KEY = "database_connection_object_preview_cache"
 DATABASE_DATASOURCE_PREVIEW_CACHE_KEY = "database_datasource_preview_cache"
 
 
@@ -48,6 +51,43 @@ def load_database_connection_objects(connection_id: str, force: bool = False) ->
     return cache.get(cache_key) or {"tables": [], "views": [], "items": [], "schema": None}
 
 
+def load_database_object_preview(
+    connection_id: str,
+    object_name: str,
+    object_type: str = "table",
+    schema: str | None = None,
+    limit: int = 1,
+    force: bool = False,
+) -> dict | None:
+    cache = st.session_state.setdefault(DATABASE_OBJECT_PREVIEW_CACHE_KEY, {})
+    cache_key = "|".join(
+        [
+            str(connection_id or ""),
+            str(schema or ""),
+            str(object_type or "table"),
+            str(object_name or ""),
+            str(limit),
+        ]
+    )
+    if not connection_id or not object_name:
+        return None
+    if force or cache_key not in cache:
+        try:
+            query_params = (
+                f"object_name={quote_plus(str(object_name))}"
+                f"&object_type={quote_plus(str(object_type))}"
+                f"&limit={int(limit)}"
+            )
+            if schema:
+                query_params += f"&schema={quote_plus(str(schema))}"
+            result = api_get(f"/database/connection/{connection_id}/object-preview?{query_params}")
+            cache[cache_key] = result if isinstance(result, dict) else None
+        except Exception as exc:
+            st.error(f"Errore caricamento colonne oggetto database: {str(exc)}")
+            cache[cache_key] = None
+    return cache.get(cache_key)
+
+
 def load_database_datasource_preview(datasource_id: str, force: bool = False) -> dict | None:
     cache = st.session_state.setdefault(DATABASE_DATASOURCE_PREVIEW_CACHE_KEY, {})
     cache_key = str(datasource_id or "")
@@ -68,4 +108,3 @@ def invalidate_database_datasource_preview(datasource_id: str | None = None):
         cache.clear()
         return
     cache.pop(str(datasource_id), None)
-

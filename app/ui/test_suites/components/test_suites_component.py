@@ -13,13 +13,12 @@ from test_suites.services.draft_mapper import (
 )
 from test_suites.services.state_keys import (
     SELECTED_TEST_SUITE_ID_KEY,
+    SUITE_EDITOR_PAGE_PATH,
     TEST_SUITE_DRAFT_KEY,
     TEST_SUITE_FEEDBACK_KEY,
     TEST_SUITE_LAST_EXECUTION_ID_KEY,
     TEST_SUITES_KEY,
 )
-
-SUITE_EDITOR_PAGE_PATH = "pages/SuiteEditor.py"
 
 
 def _load_test_suites(force: bool = False) -> list[dict]:

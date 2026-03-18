@@ -149,3 +149,64 @@ def test_draft_to_test_suite_payload_converts_legacy_suite_editor_fields_to_qsm_
     assert send_cfg["resultConstant"]["name"] == "publishResult"
     assert send_cfg["resultConstant"]["definitionId"]
     assert assert_cfg["actualConstantRef"]["definitionId"] == send_cfg["resultConstant"]["definitionId"]
+
+
+def test_draft_to_test_suite_payload_recomputes_stale_refs_after_command_edit():
+    payload = {
+        "id": "suite-1",
+        "description": "suite",
+        "hooks": [
+            {
+                "hook_phase": "before-all",
+                "description": "before all",
+                "commands": [
+                    {
+                        "order": 1,
+                        "description": "load rows",
+                        "cfg": {
+                            "commandCode": "initConstant",
+                            "commandType": "context",
+                            "definitionId": "def-rows-original",
+                            "name": "rows",
+                            "context": "global",
+                            "sourceType": "jsonArray",
+                            "json_array_id": "json-array-1",
+                        },
+                    }
+                ],
+            }
+        ],
+        "tests": [
+            {
+                "description": "test 1",
+                "commands": [
+                    {
+                        "order": 1,
+                        "description": "send message",
+                        "cfg": {
+                            "commandCode": "sendMessageQueue",
+                            "commandType": "action",
+                            "queue_id": "queue-1",
+                            "sourceConstantRef": {"definitionId": "def-rows-original"},
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+    draft = build_test_suite_draft(payload)
+    init_cfg = draft["hooks"]["before-all"]["operations"][0]["configuration_json"]
+    send_cfg = draft["tests"][0]["operations"][0]["configuration_json"]
+
+    init_cfg.pop("definitionId", None)
+    send_cfg["sourceConstantRef"] = {"definitionId": "stale-definition-id"}
+    send_cfg["source"] = "$.global.constants.rows"
+
+    serialized_payload = draft_to_test_suite_payload(draft)
+
+    serialized_init_cfg = serialized_payload["hooks"][0]["commands"][0]["cfg"]
+    serialized_send_cfg = serialized_payload["tests"][0]["commands"][0]["cfg"]
+
+    assert serialized_init_cfg["definitionId"]
+    assert serialized_send_cfg["sourceConstantRef"]["definitionId"] == serialized_init_cfg["definitionId"]

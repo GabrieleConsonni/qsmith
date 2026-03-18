@@ -21,6 +21,10 @@ datasets_page = st.Page("pages/Datasets.py", title="Datasets")
 dataset_perimeter_editor = st.Page("pages/DatasetPerimeterEditor.py", title="Dataset perimeter editor")
 test_suites = st.Page("pages/TestSuites.py", title="Test Suites")
 suite_editor = st.Page("pages/SuiteEditor.py", title="Suite editor")
+advanced_suite_editor_settings = st.Page(
+    "pages/AdvancedSuiteEditorSettings.py",
+    title="Advanced suite editor settings",
+)
 test_suite_schedules = st.Page("pages/TestSuiteSchedules.py", title="Test Suite Scheduler")
 tools = st.Page("pages/Tools.py", title="Tools")
 logs = st.Page("pages/Logs.py", title="Logs")
@@ -141,7 +145,12 @@ pg = st.navigation(
         "Configurations": [brokers_page, database_connections_page, mock_servers_page],
         "Brokers & Queues": [queues_page, queue_details],
         "Data Sources": [json_array, datasets_page, dataset_perimeter_editor],
-        "Test Suites": [test_suites, suite_editor, test_suite_schedules],
+        "Test Suites": [
+            test_suites,
+            suite_editor,
+            advanced_suite_editor_settings,
+            test_suite_schedules,
+        ],
         "Mock Servers": [mock_server_editor_page],
         "Logs & Tools": [logs, tools]
     },

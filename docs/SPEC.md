@@ -37,7 +37,8 @@ Pagine disponibili:
     - `Dataset`
 - `Test suites`
     - `Test Suites`
-        - `Suite Editor` 
+        - `Suite Editor`
+        - `Advanced suite settings`
 - `Logs`
 - `Tools`
 
@@ -118,10 +119,11 @@ Obiettivi:
 ### 4.8 Suite Editor
 Obiettivi:
 - aggiungere test embedded e operazioni alla suite
-- configurare i 4 hook fissi `beforeAll`, `beforeEach`, `afterEach`, `afterAll`
+- configurare i 4 hook fissi `beforeAll`, `beforeEach`, `afterEach`, `afterAll` dalla pagina dedicata `Advanced suite settings`
 - eseguire singoli test o l'intera suite
 - visualizzare stato ultima esecuzione di hook/test/operazioni (check/error/idle)
 - mostrare avanzamento esecuzione suite in tempo reale (test eseguiti / totali)
+- mantenere in header `Execution history`, `Run` e accesso rapido a `Advanced settings`
 - il dialog `Add command` supporta:
   - un solo submit locale che aggiunge snapshot contestuale all'item
   - ogni command espone sempre `commandCode` e `commandType`
@@ -135,6 +137,11 @@ Modello dati suite:
 - `test_suites`, `suite_items` e `suite_item_commands` contengono i dettagli funzionali usati in esecuzione.
 - `command_constant_definitions` mantiene la symbol table persistita per suite e mock commands.
 - La suite non dipende piu da `test_id`/`command_id` in runtime e non usa cataloghi condivisi di command.
+
+Pagina `Advanced suite settings`:
+- hidden page raggiungibile dal gear del `Suite Editor`
+- contiene le sezioni hook `Before suite`, `Before each test`, `After each test`, `After suite`
+- riusa lo stesso contratto di command/hook della suite
 
 
 ### 4.9 Logs

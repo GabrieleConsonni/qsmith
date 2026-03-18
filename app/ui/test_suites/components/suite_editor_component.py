@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 
 import streamlit as st
 
@@ -78,6 +79,10 @@ COMMAND_EDIT_DIALOG_TARGET_ITEM_UI_KEY = "suite_editor_command_edit_dialog_targe
 COMMAND_EDIT_DIALOG_TARGET_COMMAND_UI_KEY = "suite_editor_command_edit_dialog_target_command_ui_key"
 COMMAND_EDIT_DIALOG_OWNER_KIND_KEY = "suite_editor_command_edit_dialog_owner_kind"
 COMMAND_EDIT_DIALOG_GROUP_KEY = "suite_editor_command_edit_dialog_group"
+COMMAND_REORDER_DIALOG_OPEN_KEY = "suite_editor_command_reorder_dialog_open"
+COMMAND_REORDER_DIALOG_NONCE_KEY = "suite_editor_command_reorder_dialog_nonce"
+COMMAND_REORDER_DIALOG_TARGET_ITEM_UI_KEY = "suite_editor_command_reorder_dialog_target_item_ui_key"
+COMMAND_REORDER_DIALOG_OPERATIONS_KEY = "suite_editor_command_reorder_dialog_operations"
 HOOK_CONTEXT_COMMAND_CODES = ["initConstant", "deleteConstant"]
 HOOK_ACTION_COMMAND_CODES = [
     "saveTable",
@@ -119,14 +124,14 @@ TEST_ACTION_COMMAND_MAPPING = {
     "cleanDataset": "cleanDataset",
 }
 HOOK_COMMAND_LABELS = {
-    "initConstant": "initConstant",
-    "deleteConstant": "deleteConstant",
-    "saveTable": "saveTable",
-    "dropTable": "dropTable",
-    "cleanTable": "cleanTable",
-    "exportDataset": "exportDataset",
-    "dropDataset": "dropDataset",
-    "cleanDataset": "cleanDataset",
+    "initConstant": "Variable",
+    "deleteConstant": "Delete variable",
+    "saveTable": "Save table",
+    "dropTable": "Drop table",
+    "cleanTable": "Clean table",
+    "exportDataset": "Export dataset",
+    "dropDataset": "Drop dataset",
+    "cleanDataset": "Clean dataset",
 }
 CONSTANT_CONTEXT_OPTIONS = ["runEnvelope", "global", "local", "result"]
 TEST_CONSTANT_CONTEXT_OPTIONS = ["local", "result", "global", "runEnvelope"]
@@ -143,6 +148,63 @@ READABLE_SCOPES_BY_SECTION = {
     "test": {"runEnvelope", "global", "local", "result"},
     "afterEach": {"runEnvelope", "global", "local", "result"},
     "afterAll": {"runEnvelope", "global", "result"},
+}
+COMMAND_ICON_DEFAULT = ":material/terminal:"
+COMMAND_ICON_BY_CODE = {
+    "deleteConstant": ":material/cleaning_services:",
+    "sleep": ":material/schedule:",
+    "sendMessageQueue": ":material/send:",
+    "saveTable": ":material/database_upload:",
+    "dropTable": ":material/database_off:",
+    "cleanTable": ":material/mop:",
+    "exportDataset": ":material/tab_move:",
+    "dropDataset": ":material/tab_close_inactive:",
+    "cleanDataset": ":material/dishwasher:",
+    "runSuite": ":material/rocket_launch:",
+}
+CONSTANT_SOURCE_ICON_BY_TYPE = {
+    "raw": ":material/raw_on:",
+    "json": ":material/file_json:",
+    "jsonArray": ":material/data_array:",
+    "dataset": ":material/table:",
+    "sqsQueue": ":material/outbox:",
+}
+ASSERT_PHRASE_BY_CODE = {
+    "jsonEquals": "json equals",
+    "jsonEmpty": "json is empty",
+    "jsonNotEmpty": "json is not empty",
+    "jsonContains": "json contains",
+    "jsonArrayEquals": "jsonArray equals",
+    "jsonArrayEmpty": "jsonArray is empty",
+    "jsonArrayNotEmpty": "jsonArray is not empty",
+    "jsonArrayContains": "jsonArray contains",
+}
+COMMAND_UI_LABELS = {
+    "initConstant": "Variable",
+    "deleteConstant": "Variable cleanup",
+    "sleep": "Sleep",
+    "sendMessageQueue": "Send message queue",
+    "saveTable": "Save table",
+    "dropTable": "Drop table",
+    "cleanTable": "Clean table",
+    "exportDataset": "Export dataset",
+    "dropDataset": "Drop dataset",
+    "cleanDataset": "Clean dataset",
+    "runSuite": "Run suite",
+}
+VARIABLE_UI_LABELS_BY_SOURCE_TYPE = {
+    "raw": "Raw variable",
+    "json": "Json variable",
+    "jsonArray": "Json array variable",
+    "dataset": "Dataset variable",
+    "sqsQueue": "Queue variable",
+}
+VARIABLE_TYPE_LABELS_BY_SOURCE_TYPE = {
+    "raw": "raw",
+    "json": "json",
+    "jsonArray": "json array",
+    "dataset": "dataset",
+    "sqsQueue": "queue",
 }
 
 
@@ -209,6 +271,21 @@ def _parse_csv_tokens(value: object) -> list[str]:
 
 def _format_lookup_label(item: dict, fallback_key: str = "id") -> str:
     return str(item.get("description") or item.get("code") or item.get(fallback_key) or "-")
+
+
+def _format_source_variable_option(item: dict) -> str:
+    name = str(item.get("name") or item.get("code") or item.get("id") or "-").strip() or "-"
+    value_type = str(item.get("value_type") or "").strip()
+    variable_type = VARIABLE_TYPE_LABELS_BY_SOURCE_TYPE.get(value_type, value_type or "generic")
+    return f"{name} : {variable_type} variable"
+
+
+def _map_by_id(items: list[dict]) -> dict[str, dict]:
+    return {
+        str(item.get("id") or "").strip(): item
+        for item in items
+        if isinstance(item, dict) and str(item.get("id") or "").strip()
+    }
 
 
 def _safe_dict(value: object) -> dict:
@@ -440,11 +517,11 @@ def _render_source_constant_select(
         format_func=lambda path: (
             next(
                 (
-                    f"{item.get('name')} [{item.get('context')}] : {item.get('value_type')}"
+                    _format_source_variable_option(item)
                     for item in options
                     if str(item.get("path") or "").strip() == str(path or "").strip()
                 ),
-                "Nessuna costante disponibile",
+                "No variable available",
             )
         ),
         key=key,
@@ -452,24 +529,232 @@ def _render_source_constant_select(
         help=help_text,
     )
     if not option_values:
-        st.info("Nessuna costante compatibile disponibile nel punto corrente.")
+        st.info("No compatible variable available at this point.")
+
+
+def _command_description_text(command_item: dict) -> str:
+    return str(command_item.get("description") or "").strip()
+
+
+def _extract_variable_name(value: object) -> str:
+    if isinstance(value, str):
+        raw = str(value).strip()
+        if ".constants." in raw:
+            return raw.split(".")[-1] or raw
+        return raw or "-"
+    if value is None:
+        return "-"
+    return _stringify_form_value(value).strip() or "-"
+
+
+def _italicize_entity(value: object) -> str:
+    text = str(value or "").strip() or "-"
+    if text == "-":
+        return text
+    return f"*{text}*"
+
+
+def _command_ui_label(command_item: dict) -> str:
+    configuration_json = _safe_dict(command_item.get("configuration_json") or {})
+    command_code = _normalize_command_code(configuration_json)
+    if command_code == "initConstant":
+        source_type = str(
+            configuration_json.get("sourceType") or configuration_json.get("source_type") or ""
+        ).strip()
+        return VARIABLE_UI_LABELS_BY_SOURCE_TYPE.get(source_type, "Variable")
+    if command_code in TEST_ASSERT_COMMAND_CODES:
+        return "Assert"
+    return COMMAND_UI_LABELS.get(command_code, command_code or "Command")
+
+
+def _command_action_label(command_item: dict) -> str:
+    return _command_ui_label(command_item).strip().lower() or "command"
+
+
+def _resolve_connection_label(connection_id: object) -> str:
+    normalized_connection_id = str(connection_id or "").strip()
+    if not normalized_connection_id:
+        return "-"
+    connections = _safe_list(st.session_state.get(DATABASE_CONNECTIONS_KEY, []))
+    connection_item = _map_by_id(connections).get(normalized_connection_id, {})
+    return _format_lookup_label(connection_item) if connection_item else normalized_connection_id
+
+
+def _resolve_dataset_summary(dataset_id: object) -> tuple[str, str]:
+    normalized_dataset_id = str(dataset_id or "").strip()
+    if not normalized_dataset_id:
+        return "-", "-"
+    datasources = _safe_list(st.session_state.get(TEST_EDITOR_DATABASE_DATASOURCES_KEY, []))
+    datasource_item = _map_by_id(datasources).get(normalized_dataset_id, {})
+    if not datasource_item:
+        return normalized_dataset_id, "-"
+    payload = _safe_dict(datasource_item.get("payload") or {})
+    connection_label = _resolve_connection_label(payload.get("connection_id"))
+    dataset_label = _format_lookup_label(datasource_item)
+    return dataset_label, connection_label
+
+
+def _resolve_test_suite_label(suite_id: object) -> str:
+    normalized_suite_id = str(suite_id or "").strip()
+    if not normalized_suite_id:
+        return "-"
+    suites = _safe_list(st.session_state.get(TEST_SUITES_KEY, []))
+    suite_item = _map_by_id(suites).get(normalized_suite_id, {})
+    return _format_lookup_label(suite_item) if suite_item else normalized_suite_id
+
+
+def _resolve_queue_label(queue_id: object) -> str:
+    normalized_queue_id = str(queue_id or "").strip()
+    if not normalized_queue_id:
+        return "-"
+    brokers = _safe_list(st.session_state.get(TEST_EDITOR_BROKERS_KEY, []))
+    for broker in brokers:
+        broker_id = str(broker.get("id") or "").strip()
+        if not broker_id:
+            continue
+        queues = load_test_editor_queues_for_broker(broker_id, force=False)
+        queue_item = _map_by_id(_safe_list(queues)).get(normalized_queue_id, {})
+        if queue_item:
+            return _format_lookup_label(queue_item)
+    return normalized_queue_id
+
+
+def _command_leading_icon(command_item: dict) -> str:
+    configuration_json = _safe_dict(command_item.get("configuration_json") or {})
+    command_code = _normalize_command_code(configuration_json)
+    if command_code == "initConstant":
+        source_type = str(
+            configuration_json.get("sourceType") or configuration_json.get("source_type") or ""
+        ).strip()
+        return CONSTANT_SOURCE_ICON_BY_TYPE.get(source_type, ":material/data_object:")
+    if command_code in TEST_ASSERT_COMMAND_CODES:
+        return ":material/frame_bug:"
+    return COMMAND_ICON_BY_CODE.get(command_code, COMMAND_ICON_DEFAULT)
+
+
+def _build_assert_summary(command_item: dict) -> str:
+    configuration_json = _safe_dict(command_item.get("configuration_json") or {})
+    command_code = _normalize_command_code(configuration_json) or "assert"
+    variable_name = _extract_variable_name(configuration_json.get("actual"))
+    phrase = ASSERT_PHRASE_BY_CODE.get(command_code, "assert")
+    parts = [command_code, f"{phrase} {_italicize_entity(variable_name)}".strip()]
+    return " ".join(part for part in parts if part).strip()
+
+
+def _build_suite_command_summary(command_item: dict) -> str:
+    configuration_json = _safe_dict(command_item.get("configuration_json") or {})
+    command_code = _normalize_command_code(configuration_json) or "-"
+
+    if command_code == "initConstant":
+        constant_name = str(configuration_json.get("name") or "").strip() or "-"
+        source_type = str(
+            configuration_json.get("sourceType") or configuration_json.get("source_type") or ""
+        ).strip()
+        variable_type_label = VARIABLE_TYPE_LABELS_BY_SOURCE_TYPE.get(source_type, "generic")
+        return f"**Initialize {variable_type_label} variable** {_italicize_entity(constant_name)}"
+    if command_code == "deleteConstant":
+        constant_name = str(configuration_json.get("name") or "").strip() or "-"
+        return _italicize_entity(constant_name)
+    if command_code == "sleep":
+        duration = _safe_int(configuration_json.get("duration"), 0)
+        duration_label = f"{duration}s" if duration else "-"
+        return duration_label
+    if command_code == "sendMessageQueue":
+        variable_name = _extract_variable_name(configuration_json.get("source"))
+        queue_label = _resolve_queue_label(
+            configuration_json.get("queue_id") or configuration_json.get("queueId")
+        )
+        return f"**send variable** {_italicize_entity(variable_name)} **to queue** {_italicize_entity(queue_label)}"
+    if command_code == "saveTable":
+        table_name = str(configuration_json.get("table_name") or configuration_json.get("tableName") or "").strip() or "-"
+        return _italicize_entity(table_name)
+    if command_code == "dropTable":
+        table_name = str(configuration_json.get("table_name") or configuration_json.get("tableName") or "").strip() or "-"
+        return _italicize_entity(table_name)
+    if command_code == "cleanTable":
+        table_name = str(configuration_json.get("table_name") or configuration_json.get("tableName") or "").strip() or "-"
+        return _italicize_entity(table_name)
+    if command_code == "exportDataset":
+        connection_label = _resolve_connection_label(
+            configuration_json.get("connection_id") or configuration_json.get("connectionId")
+        )
+        dataset_label = "-"
+        dataset_id = str(configuration_json.get("dataset_id") or configuration_json.get("datasetId") or "").strip()
+        if dataset_id:
+            dataset_label, resolved_connection_label = _resolve_dataset_summary(dataset_id)
+            if resolved_connection_label != "-":
+                connection_label = resolved_connection_label
+        if dataset_label == "-":
+            dataset_label = str(
+                configuration_json.get("table_name")
+                or configuration_json.get("tableName")
+                or configuration_json.get("dataset_description")
+                or configuration_json.get("datasetDescription")
+                or "-"
+            ).strip() or "-"
+        return f"{_italicize_entity(connection_label)} {_italicize_entity(dataset_label)}".strip()
+    if command_code == "dropDataset":
+        dataset_label, connection_label = _resolve_dataset_summary(
+            configuration_json.get("dataset_id") or configuration_json.get("datasetId")
+        )
+        return f"{_italicize_entity(connection_label)} {_italicize_entity(dataset_label)}".strip()
+    if command_code == "cleanDataset":
+        dataset_label, connection_label = _resolve_dataset_summary(
+            configuration_json.get("dataset_id") or configuration_json.get("datasetId")
+        )
+        return f"{_italicize_entity(connection_label)} {_italicize_entity(dataset_label)}".strip()
+    if command_code == "runSuite":
+        suite_label = _resolve_test_suite_label(
+            configuration_json.get("suite_id") or configuration_json.get("suiteId")
+        )
+        return _italicize_entity(suite_label)
+    if command_code in TEST_ASSERT_COMMAND_CODES:
+        return _build_assert_summary(command_item)
+    label = _command_ui_label(command_item)
+    return label
 
 
 def _build_suite_command_markdown(command_item: dict) -> str:
-    configuration_json = _safe_dict(command_item.get("configuration_json") or {})
-    command_code = _normalize_command_code(configuration_json) or "-"
-    command_type = _normalize_command_type(configuration_json)
-    description = str(command_item.get("description") or "").strip() or "-"
-    constant_name = str(configuration_json.get("name") or "").strip() or "-"
-    source_type = str(configuration_json.get("sourceType") or configuration_json.get("source_type") or "").strip() or "-"
+    return _build_suite_command_summary(command_item)
 
-    if command_type == "context":
-        if command_code == "initConstant":
-            return f"**[{command_code}] {constant_name} : {source_type}** - {description}"
-        return f"**[{command_code}] {constant_name}** - {description}"
-    if command_type in {"action", "assert"}:
-        return f"**[{command_code}]** - {description}"
-    return f"**[{command_code}]** - {description}"
+
+def _render_suite_command_card(
+    command_item: dict,
+    *,
+    key_prefix: str,
+    action_specs: list[dict] | None = None,
+) -> dict[str, bool]:
+    button_results: dict[str, bool] = {}
+    action_specs = action_specs or []
+    with st.container(border=True):
+        row_cols = st.columns([1, 5, 8, *([1] * len(action_specs))], gap="small", vertical_alignment="center")
+        with row_cols[0]:
+            button_results["command_icon"] = st.button(
+                "",
+                key=f"{key_prefix}_command_icon",
+                icon=_command_leading_icon(command_item),
+                help=_command_ui_label(command_item),
+                type="tertiary",
+                use_container_width=True,
+            )
+        with row_cols[1]:
+            st.markdown(_build_suite_command_markdown(command_item))
+        with row_cols[2]:
+            description = _command_description_text(command_item)
+            if description:
+                st.caption(description)
+        for column_index, action_spec in enumerate(action_specs, start=3):
+            with row_cols[column_index]:
+                button_results[str(action_spec.get("name") or column_index)] = st.button(
+                    "",
+                    key=str(action_spec.get("key") or f"{key_prefix}_action_{column_index}"),
+                    icon=str(action_spec.get("icon") or COMMAND_ICON_DEFAULT),
+                    help=str(action_spec.get("help") or ""),
+                    type=str(action_spec.get("type") or "tertiary"),
+                    use_container_width=bool(action_spec.get("use_container_width", True)),
+                    disabled=bool(action_spec.get("disabled", False)),
+                )
+    return button_results
 
 
 def _default_context_for_hook_phase(hook_phase: str) -> str:
@@ -648,6 +933,10 @@ def _render_execution_summary(execution: dict | None):
 
 
 def _persist_changes():
+    _persist_current_draft(success_message="Test suite updated.", rerun=True)
+
+
+def _persist_current_draft(*, success_message: str = "Test suite updated.", rerun: bool = True):
     draft = st.session_state.get(TEST_SUITE_DRAFT_KEY, {})
     if isinstance(draft, dict) and str(draft.get("id") or "").strip():
         payload = draft_to_test_suite_payload(draft)
@@ -655,10 +944,53 @@ def _persist_changes():
         update_test_suite(payload)
         _load_selected_draft()
         _load_test_suites(force=True)
-        st.session_state[TEST_SUITE_FEEDBACK_KEY] = "Test suite updated."
+        st.session_state[TEST_SUITE_FEEDBACK_KEY] = success_message
     else:
         st.session_state[TEST_SUITE_DRAFT_KEY] = draft
-    st.rerun()
+    if rerun:
+        st.rerun()
+
+
+def _extract_api_error_detail(exc: Exception) -> str:
+    response = getattr(exc, "response", None)
+    if response is not None:
+        try:
+            payload = response.json()
+        except Exception:
+            payload = None
+        if isinstance(payload, dict):
+            detail = str(payload.get("detail") or "").strip()
+            if detail:
+                return detail
+        response_text = str(getattr(response, "text", "") or "").strip()
+        if response_text:
+            return response_text
+    return str(exc)
+
+
+def _friendly_suite_validation_message(detail: str) -> str:
+    raw_detail = str(detail or "").strip()
+    lowered = raw_detail.lower()
+    if "already defined in scope" in lowered:
+        return "This order declares the same variable twice in the same scope."
+    if "cannot be deleted in section" in lowered:
+        return "This order deletes a variable from a scope that cannot be changed here."
+    if "is not writable in section" in lowered:
+        return "This order writes a variable in a scope that is not allowed here."
+    if "incompatible type" in lowered:
+        return "This order uses a variable with a type that is not compatible for the command."
+    if "constant reference" in lowered and "not visible" in lowered:
+        return "This order uses a variable before it is declared or after it has been deleted."
+    return "This order is not valid for variable dependencies in the suite."
+
+
+def _render_persist_error(exc: Exception):
+    detail = _extract_api_error_detail(exc)
+    friendly_message = _friendly_suite_validation_message(detail)
+    if friendly_message == "This order is not valid for variable dependencies in the suite." and detail:
+        st.error(detail)
+        return
+    st.error(friendly_message)
 
 
 def _render_operation_feedback():
@@ -791,12 +1123,30 @@ def _open_edit_command_dialog(item_ui_key: str, command_ui_key: str, owner_kind:
     )
 
 
+def _open_reorder_command_dialog_for_item(item: dict):
+    item_ui_key = str((item or {}).get("_ui_key") or "").strip()
+    if not item_ui_key:
+        return
+    st.session_state[COMMAND_REORDER_DIALOG_OPEN_KEY] = True
+    st.session_state[COMMAND_REORDER_DIALOG_TARGET_ITEM_UI_KEY] = item_ui_key
+    st.session_state[COMMAND_REORDER_DIALOG_OPERATIONS_KEY] = deepcopy(_operation_list(item))
+    st.session_state[COMMAND_REORDER_DIALOG_NONCE_KEY] = (
+        int(st.session_state.get(COMMAND_REORDER_DIALOG_NONCE_KEY, 0)) + 1
+    )
+
+
 def _close_edit_command_dialog():
     st.session_state[COMMAND_EDIT_DIALOG_OPEN_KEY] = False
     st.session_state.pop(COMMAND_EDIT_DIALOG_TARGET_ITEM_UI_KEY, None)
     st.session_state.pop(COMMAND_EDIT_DIALOG_TARGET_COMMAND_UI_KEY, None)
     st.session_state.pop(COMMAND_EDIT_DIALOG_OWNER_KIND_KEY, None)
     st.session_state.pop(COMMAND_EDIT_DIALOG_GROUP_KEY, None)
+
+
+def _close_reorder_command_dialog():
+    st.session_state[COMMAND_REORDER_DIALOG_OPEN_KEY] = False
+    st.session_state.pop(COMMAND_REORDER_DIALOG_TARGET_ITEM_UI_KEY, None)
+    st.session_state.pop(COMMAND_REORDER_DIALOG_OPERATIONS_KEY, None)
 
 
 def _close_hook_command_dialog():
@@ -824,6 +1174,21 @@ def _consume_edit_command_dialog_request() -> bool:
     if is_open_requested:
         st.session_state[COMMAND_EDIT_DIALOG_OPEN_KEY] = False
     return is_open_requested
+
+
+def _reorder_dialog_operations() -> list[dict]:
+    operations = st.session_state.get(COMMAND_REORDER_DIALOG_OPERATIONS_KEY, [])
+    if not isinstance(operations, list):
+        return []
+    return [operation for operation in operations if isinstance(operation, dict)]
+
+
+def _move_reorder_operation(from_index: int, to_index: int):
+    operations = list(_reorder_dialog_operations())
+    if not (0 <= from_index < len(operations)) or not (0 <= to_index < len(operations)):
+        return
+    operations[from_index], operations[to_index] = operations[to_index], operations[from_index]
+    st.session_state[COMMAND_REORDER_DIALOG_OPERATIONS_KEY] = operations
 
 
 def _find_operation_index_by_ui_key(item: dict, operation_ui_key: str) -> int:
@@ -867,12 +1232,34 @@ def _update_operation_in_item(item: dict, operation_index: int, updated_operatio
     }
 
 
+def _delete_operation_by_ui_key(item: dict, operation_ui_key: str) -> bool:
+    operation_index = _find_operation_index_by_ui_key(item, operation_ui_key)
+    operations = item.get("operations") or []
+    if not isinstance(operations, list) or not (0 <= operation_index < len(operations)):
+        return False
+    operations.pop(operation_index)
+    return True
+
+
+def _resequence_operations(operations_source: list[dict] | None) -> list[dict]:
+    resequenced: list[dict] = []
+    for index, operation in enumerate(operations_source or [], start=1):
+        if not isinstance(operation, dict):
+            continue
+        resequenced.append(
+            {
+                **operation,
+                "order": index,
+                "_ui_key": str(operation.get("_ui_key") or new_ui_key()),
+            }
+        )
+    return resequenced
+
+
 def _build_hook_command_draft(dialog_nonce: int, command_code: str) -> tuple[dict | None, str | None]:
     description = str(
         st.session_state.get(f"suite_add_hook_command_description_{dialog_nonce}") or ""
     ).strip()
-    if not description:
-        return None, "Il campo Description e' obbligatorio."
 
     cfg: dict[str, object]
     if command_code == "initConstant":
@@ -953,7 +1340,7 @@ def _build_hook_command_draft(dialog_nonce: int, command_code: str) -> tuple[dic
         if not table_name:
             return None, "Il campo Table name e' obbligatorio."
         if not source:
-            return None, "Il campo Source constant e' obbligatorio."
+            return None, "Il campo Source variable e' obbligatorio."
         cfg = {
             "commandCode": "saveTable",
             "commandType": "action",
@@ -998,7 +1385,7 @@ def _build_hook_command_draft(dialog_nonce: int, command_code: str) -> tuple[dic
             st.session_state.get(f"suite_add_hook_export_dataset_source_{dialog_nonce}")
         )
         if not source:
-            return None, "Il campo Source constant e' obbligatorio."
+            return None, "Il campo Source variable e' obbligatorio."
         cfg = {
             "commandCode": "exportDataset",
             "commandType": "action",
@@ -1065,8 +1452,6 @@ def _build_test_command_draft(dialog_nonce: int, command_ui_code: str) -> tuple[
     description = str(
         st.session_state.get(f"suite_add_test_command_description_{dialog_nonce}") or ""
     ).strip()
-    if not description:
-        return None, "Il campo Description e' obbligatorio."
 
     command_code = TEST_ACTION_COMMAND_MAPPING.get(command_ui_code, command_ui_code)
     cfg: dict[str, object]
@@ -1137,7 +1522,7 @@ def _build_test_command_draft(dialog_nonce: int, command_ui_code: str) -> tuple[
         if not queue_id:
             return None, "Il campo Queue e' obbligatorio."
         if not source:
-            return None, "Il campo Source constant e' obbligatorio."
+            return None, "Il campo Source variable e' obbligatorio."
         cfg = {
             "commandCode": "sendMessageQueue",
             "commandType": "action",
@@ -1169,7 +1554,7 @@ def _build_test_command_draft(dialog_nonce: int, command_ui_code: str) -> tuple[
         if not table_name:
             return None, "Il campo Table name e' obbligatorio."
         if not source:
-            return None, "Il campo Source constant e' obbligatorio."
+            return None, "Il campo Source variable e' obbligatorio."
         cfg = {
             "commandCode": "saveTable",
             "commandType": "action",
@@ -1214,7 +1599,7 @@ def _build_test_command_draft(dialog_nonce: int, command_ui_code: str) -> tuple[
             st.session_state.get(f"suite_add_test_export_dataset_source_{dialog_nonce}")
         )
         if not source:
-            return None, "Il campo Source constant e' obbligatorio."
+            return None, "Il campo Source variable e' obbligatorio."
         cfg = {
             "commandCode": "exportDataset",
             "commandType": "action",
@@ -1590,11 +1975,10 @@ def _render_hook_command_form(
     if current_command_code not in allowed_command_codes and allowed_command_codes:
         st.session_state[command_type_key] = allowed_command_codes[0]
 
-    st.text_input("Description", key=_command_form_key(key_prefix, dialog_nonce, "description"))
     command_code = st.selectbox(
         "Command type",
         options=allowed_command_codes,
-        format_func=lambda code: HOOK_COMMAND_LABELS.get(str(code), str(code)),
+        format_func=lambda code: _command_ui_label({"configuration_json": {"commandCode": str(code)}}),
         key=command_type_key,
     )
 
@@ -1676,7 +2060,7 @@ def _render_hook_command_form(
     elif command_code == "saveTable":
         st.text_input("Table name", key=_command_form_key(key_prefix, dialog_nonce, "save_table_name"))
         _render_source_constant_select(
-            label="Source constant",
+            label="Source variable",
             key=_command_form_key(key_prefix, dialog_nonce, "save_table_source"),
             options=_resolve_available_source_constants(
                 draft,
@@ -1684,9 +2068,9 @@ def _render_hook_command_form(
                 command_code=command_code,
                 stop_before_index=stop_before_index,
             ),
-            help_text="Costanti visibili e compatibili nel punto corrente.",
+            help_text="Visible and compatible variables at this point.",
         )
-        st.text_input("Result target (optional)", key=_command_form_key(key_prefix, dialog_nonce, "save_table_result_target"), placeholder="$.result.commands.saveTable")
+        st.text_input("Result variable", key=_command_form_key(key_prefix, dialog_nonce, "save_table_result_target"))
     elif command_code == "dropTable":
         st.text_input("Table name", key=_command_form_key(key_prefix, dialog_nonce, "drop_table_name"))
     elif command_code == "cleanTable":
@@ -1703,7 +2087,7 @@ def _render_hook_command_form(
         )
         st.text_input("Table name", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_table_name"))
         _render_source_constant_select(
-            label="Source constant",
+            label="Source variable",
             key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_source"),
             options=_resolve_available_source_constants(
                 draft,
@@ -1711,7 +2095,7 @@ def _render_hook_command_form(
                 command_code=command_code,
                 stop_before_index=stop_before_index,
             ),
-            help_text="Costanti visibili e compatibili nel punto corrente.",
+            help_text="Visible and compatible variables at this point.",
         )
         st.selectbox("Mode", options=EXPORT_DATASET_MODE_OPTIONS, key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_mode"))
         st.text_input("Mapping keys (optional)", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_mapping_keys"), placeholder="id, code")
@@ -1722,7 +2106,7 @@ def _render_hook_command_form(
             key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_dataset_id"),
         )
         st.text_input("Dataset description (optional)", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_dataset_description"))
-        st.text_input("Result target (optional)", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_result_target"), placeholder="$.result.commands.exportDataset")
+        st.text_input("Result variable", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_result_target"))
     elif command_code == "dropDataset":
         dataset_ids = [str(item.get("id")) for item in datasources if item.get("id")]
         st.selectbox(
@@ -1741,6 +2125,10 @@ def _render_hook_command_form(
             key=_command_form_key(key_prefix, dialog_nonce, "clean_dataset_id"),
             disabled=not bool(dataset_ids),
         )
+    st.text_input(
+        "Comment",
+        key=_command_form_key(key_prefix, dialog_nonce, "description"),
+    )
     return command_code
 
 
@@ -1769,11 +2157,16 @@ def _render_test_command_form(
     if current_command_ui_code not in command_options and command_options:
         st.session_state[command_type_key] = command_options[0]
 
-    st.text_input("Description", key=_command_form_key(key_prefix, dialog_nonce, "description"))
     command_ui_code = st.selectbox(
         "Command type",
         options=command_options,
-        format_func=lambda code: dict(TEST_ACTION_COMMAND_OPTIONS).get(str(code), str(code)) if command_group == "action" else str(code),
+        format_func=lambda code: (
+            _command_ui_label(
+                {"configuration_json": {"commandCode": TEST_ACTION_COMMAND_MAPPING.get(str(code), str(code))}}
+            )
+            if command_group == "action"
+            else str(code)
+        ),
         key=command_type_key,
     )
     command_code = TEST_ACTION_COMMAND_MAPPING.get(command_ui_code, command_ui_code)
@@ -1863,7 +2256,7 @@ def _render_test_command_form(
             disabled=not bool(queue_ids),
         )
         _render_source_constant_select(
-            label="Source constant",
+            label="Source variable",
             key=_command_form_key(key_prefix, dialog_nonce, "send_message_source"),
             options=_resolve_available_source_constants(
                 draft,
@@ -1871,15 +2264,15 @@ def _render_test_command_form(
                 command_code=command_code,
                 stop_before_index=stop_before_index,
             ),
-            help_text="Costanti visibili e compatibili nel punto corrente.",
+            help_text="Visible and compatible variables at this point.",
         )
         st.text_input("Template id (optional)", key=_command_form_key(key_prefix, dialog_nonce, "send_message_template_id"))
         st.text_area("Template params (optional)", key=_command_form_key(key_prefix, dialog_nonce, "send_message_template_params"), height=120)
-        st.text_input("Result target (optional)", key=_command_form_key(key_prefix, dialog_nonce, "send_message_result_target"), placeholder="$.result.commands.sendMessageQueue")
+        st.text_input("Result variable", key=_command_form_key(key_prefix, dialog_nonce, "send_message_result_target"))
     elif command_code == "saveTable":
         st.text_input("Table name", key=_command_form_key(key_prefix, dialog_nonce, "save_table_name"))
         _render_source_constant_select(
-            label="Source constant",
+            label="Source variable",
             key=_command_form_key(key_prefix, dialog_nonce, "save_table_source"),
             options=_resolve_available_source_constants(
                 draft,
@@ -1887,9 +2280,9 @@ def _render_test_command_form(
                 command_code=command_code,
                 stop_before_index=stop_before_index,
             ),
-            help_text="Costanti visibili e compatibili nel punto corrente.",
+            help_text="Visible and compatible variables at this point.",
         )
-        st.text_input("Result target (optional)", key=_command_form_key(key_prefix, dialog_nonce, "save_table_result_target"), placeholder="$.result.commands.saveTable")
+        st.text_input("Result variable", key=_command_form_key(key_prefix, dialog_nonce, "save_table_result_target"))
     elif command_code == "dropTable":
         st.text_input("Table name", key=_command_form_key(key_prefix, dialog_nonce, "drop_table_name"))
     elif command_code == "cleanTable":
@@ -1906,7 +2299,7 @@ def _render_test_command_form(
         )
         st.text_input("Table name", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_table_name"))
         _render_source_constant_select(
-            label="Source constant",
+            label="Source variable",
             key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_source"),
             options=_resolve_available_source_constants(
                 draft,
@@ -1914,7 +2307,7 @@ def _render_test_command_form(
                 command_code=command_code,
                 stop_before_index=stop_before_index,
             ),
-            help_text="Costanti visibili e compatibili nel punto corrente.",
+            help_text="Visible and compatible variables at this point.",
         )
         st.selectbox("Mode", options=EXPORT_DATASET_MODE_OPTIONS, key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_mode"))
         st.text_input("Mapping keys (optional)", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_mapping_keys"), placeholder="id, code")
@@ -1925,7 +2318,7 @@ def _render_test_command_form(
             key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_dataset_id"),
         )
         st.text_input("Dataset description (optional)", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_dataset_description"))
-        st.text_input("Result target (optional)", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_result_target"), placeholder="$.result.commands.exportDataset")
+        st.text_input("Result variable", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_result_target"))
     elif command_code == "dropDataset":
         dataset_ids = [str(item.get("id")) for item in datasources if item.get("id")]
         st.selectbox(
@@ -1959,6 +2352,10 @@ def _render_test_command_form(
             )
             st.text_input("Compare keys (optional)", key=_command_form_key(key_prefix, dialog_nonce, "assert_compare_keys"), placeholder="id, code")
 
+    st.text_input(
+        "Comment",
+        key=_command_form_key(key_prefix, dialog_nonce, "description"),
+    )
     return command_ui_code
 
 
@@ -1968,10 +2365,6 @@ def _build_hook_command_draft_with_prefix(
     *,
     key_prefix: str,
 ) -> tuple[dict | None, str | None]:
-    description = str(st.session_state.get(_command_form_key(key_prefix, dialog_nonce, "description")) or "").strip()
-    if not description:
-        return None, "Il campo Description e' obbligatorio."
-
     original_keys = []
     field_mappings = [
         ("description", f"suite_add_hook_command_description_{dialog_nonce}"),
@@ -2027,10 +2420,6 @@ def _build_test_command_draft_with_prefix(
     *,
     key_prefix: str,
 ) -> tuple[dict | None, str | None]:
-    description = str(st.session_state.get(_command_form_key(key_prefix, dialog_nonce, "description")) or "").strip()
-    if not description:
-        return None, "Il campo Description e' obbligatorio."
-
     original_keys = []
     field_mappings = [
         ("description", f"suite_add_test_command_description_{dialog_nonce}"),
@@ -2105,21 +2494,41 @@ def _render_suite_item_operation(
         if owner_kind == "hook"
         else _resolve_test_command_group(operation.get("configuration_json"))
     )
-    row_cols = st.columns([18, 1], gap="small", vertical_alignment="top")
-    with row_cols[0]:
-        with st.container(border=True):
-            st.markdown(_build_suite_command_markdown(operation))
-    with row_cols[1]:
-        if st.button(
-            "",
-            key=f"suite_editor_edit_command_{item_ui_key}_{operation_ui_key}",
-            icon=":material/more_vert:",
-            help="Modify command",
-            type="tertiary",
-            use_container_width=True,
-        ):
-            _open_edit_command_dialog(item_ui_key, operation_ui_key, owner_kind, command_group or "fallback-json")
-            st.rerun()
+    action_label = _command_action_label(operation)
+    button_results = _render_suite_command_card(
+        operation,
+        key_prefix=f"suite_editor_command_{item_ui_key}_{operation_ui_key}",
+        action_specs=[
+            {
+                "name": "modify",
+                "key": f"suite_editor_edit_command_{item_ui_key}_{operation_ui_key}",
+                "icon": ":material/settings:",
+                "help": f"Modify {action_label}",
+            },
+            {
+                "name": "reorder",
+                "key": f"suite_editor_reorder_command_{item_ui_key}_{operation_ui_key}",
+                "icon": ":material/swap_vert:",
+                "help": f"Reorder {action_label}",
+            },
+            {
+                "name": "delete",
+                "key": f"suite_editor_delete_command_{item_ui_key}_{operation_ui_key}",
+                "icon": ":material/close:",
+                "help": f"Delete {action_label}",
+            },
+        ],
+    )
+    if button_results.get("modify"):
+        _open_edit_command_dialog(item_ui_key, operation_ui_key, owner_kind, command_group or "fallback-json")
+        st.rerun()
+    if button_results.get("reorder"):
+        _open_reorder_command_dialog_for_item(item)
+        st.rerun()
+    if button_results.get("delete"):
+        if _delete_operation_by_ui_key(item, operation_ui_key):
+            st.session_state[SUITE_FEEDBACK_KEY] = "Command removed."
+            _persist_changes()
 
 
 def _render_section(section_title: str, summary: str):
@@ -2146,7 +2555,7 @@ def _render_hook_section(draft: dict, hook_phase: str, hook_label: str, executio
     add_cols = st.columns([1, 1, 1, 1], gap="small", vertical_alignment="center")
     with add_cols[1]:
         if st.button(
-            "Add context command",
+            "+ Variable",
             key=f"suite_editor_add_context_command_{hook_phase}_{str((hook or {}).get('_ui_key') or hook_phase)}",
             icon=":material/add:",
             use_container_width=True,
@@ -2155,7 +2564,7 @@ def _render_hook_section(draft: dict, hook_phase: str, hook_label: str, executio
             st.rerun()
     with add_cols[2]:
         if st.button(
-            "Add action",
+            "+ Action",
             key=f"suite_editor_add_action_command_{hook_phase}_{str((hook or {}).get('_ui_key') or hook_phase)}",
             icon=":material/add:",
             use_container_width=True,
@@ -2192,6 +2601,34 @@ def _find_test_by_ui_key(draft: dict, test_ui_key: str) -> dict | None:
     return test_item if isinstance(test_item, dict) else None
 
 
+def _delete_test_by_ui_key(draft: dict, test_ui_key: str):
+    test_index = _find_test_index_by_ui_key(draft, test_ui_key)
+    tests = draft.get("tests") or []
+    if not isinstance(tests, list) or test_index < 0 or test_index >= len(tests):
+        st.session_state[SUITE_FEEDBACK_KEY] = "Test non trovato."
+        st.rerun()
+        return
+    tests.pop(test_index)
+    st.session_state[SUITE_FEEDBACK_KEY] = "Test rimosso."
+    _persist_changes()
+
+
+def _item_command_section_label(item: dict | None) -> str:
+    if not isinstance(item, dict):
+        return "Commands"
+    if str(item.get("kind") or "").strip().lower() != "hook":
+        description = str(item.get("description") or "").strip()
+        return description or "Test commands"
+    hook_phase = str(item.get("hook_phase") or "").strip().lower()
+    hook_labels = {
+        "before-all": "Before suite",
+        "before-each": "Before each test",
+        "after-each": "After each test",
+        "after-all": "After suite",
+    }
+    return hook_labels.get(hook_phase, "Hook commands")
+
+
 def _test_label(test: dict, index: int) -> str:
     description = str(test.get("description") or "").strip()
     test_id = str(test.get("id") or "").strip()
@@ -2200,55 +2637,67 @@ def _test_label(test: dict, index: int) -> str:
 
 def _render_test_item(test: dict, index: int, execution_state: dict):
     current_test = _ensure_test_item(test, index)
-    row_cols = st.columns([20, 1], gap="small", vertical_alignment="top")
-    with row_cols[0]:
-        with st.expander(_test_label(current_test, index), expanded=True):
-            operations = current_test.get("operations") or []
-            if operations:
-                for op_idx, operation in enumerate(operations):
-                    _render_suite_item_operation(current_test, operation, op_idx, "test")
-            else:
-                st.caption("Nessun command configurato.")
+    with st.expander(_test_label(current_test, index), expanded=True):
+        operations = current_test.get("operations") or []
+        if operations:
+            for op_idx, operation in enumerate(operations):
+                _render_suite_item_operation(current_test, operation, op_idx, "test")
+        else:
+            st.caption("Nessun command configurato.")
 
-            add_cols = st.columns([1,1, 1, 1,1], gap="small", vertical_alignment="center")
-            with add_cols[1]:
-                if st.button(
-                    "Add constant",
-                    key=f"suite_editor_add_test_constant_{current_test.get('_ui_key')}",
-                    icon=":material/add:",
-                    use_container_width=True,
-                ):
-                    _open_test_command_dialog_for_item(str(current_test.get("_ui_key") or ""), "constant")
-                    st.rerun()
-            with add_cols[2]:
-                if st.button(
-                    "Add action",
-                    key=f"suite_editor_add_test_action_{current_test.get('_ui_key')}",
-                    icon=":material/add:",
-                    use_container_width=True,
-                ):
-                    _open_test_command_dialog_for_item(str(current_test.get("_ui_key") or ""), "action")
-                    st.rerun()
-            with add_cols[3]:
-                if st.button(
-                    "Add assert",
-                    key=f"suite_editor_add_test_assert_{current_test.get('_ui_key')}",
-                    icon=":material/add:",
-                    use_container_width=True,
-                ):
-                    _open_test_command_dialog_for_item(str(current_test.get("_ui_key") or ""), "assert")
-                    st.rerun()
-    with row_cols[1]:
-        if st.button(
-            "",
-            key=f"suite_editor_edit_test_{current_test.get('_ui_key')}",
-            icon=":material/more_vert:",
-            help="Modify test",
-            type="tertiary",
-            use_container_width=True,
-        ):
-            _open_edit_test_dialog(str(current_test.get("_ui_key") or ""))
-            st.rerun()
+        add_cols = st.columns([1, 3, 3, 3, 1, 1, 1], gap="small", vertical_alignment="center")
+        with add_cols[1]:
+            if st.button(
+                "+ Variable",
+                key=f"suite_editor_add_test_constant_{current_test.get('_ui_key')}",
+                icon=":material/add:",
+                use_container_width=True,
+            ):
+                _open_test_command_dialog_for_item(str(current_test.get("_ui_key") or ""), "constant")
+                st.rerun()
+        with add_cols[2]:
+            if st.button(
+                "+ Action",
+                key=f"suite_editor_add_test_action_{current_test.get('_ui_key')}",
+                icon=":material/add:",
+                use_container_width=True,
+            ):
+                _open_test_command_dialog_for_item(str(current_test.get("_ui_key") or ""), "action")
+                st.rerun()
+        with add_cols[3]:
+            if st.button(
+                "+ Assert",
+                key=f"suite_editor_add_test_assert_{current_test.get('_ui_key')}",
+                icon=":material/add:",
+                use_container_width=True,
+            ):
+                _open_test_command_dialog_for_item(str(current_test.get("_ui_key") or ""), "assert")
+                st.rerun()
+        with add_cols[4]:
+            st.write("")
+        with add_cols[5]:
+            if st.button(
+                "",
+                key=f"suite_editor_edit_test_{current_test.get('_ui_key')}",
+                icon=":material/edit:",
+                help="Modify test",
+                type="tertiary",
+                use_container_width=True,
+            ):
+                _open_edit_test_dialog(str(current_test.get("_ui_key") or ""))
+                st.rerun()
+        with add_cols[6]:
+            if st.button(
+                "",
+                key=f"suite_editor_delete_test_{current_test.get('_ui_key')}",
+                icon=":material/delete:",
+                help="Delete test",
+                type="tertiary",
+                use_container_width=True,
+            ):
+                draft = st.session_state.get(TEST_SUITE_DRAFT_KEY, {})
+                if isinstance(draft, dict):
+                    _delete_test_by_ui_key(draft, str(current_test.get("_ui_key") or ""))
 
 
 @st.dialog("Add hook command", width="large")
@@ -2394,16 +2843,14 @@ def _render_generic_command_edit_dialog(item: dict, operation: dict, operation_i
     if cfg_key not in st.session_state:
         st.session_state[cfg_key] = json.dumps(_safe_dict(operation.get("configuration_json") or {}), ensure_ascii=True, indent=2)
 
-    st.text_input("Description", key=description_key)
     st.text_area("Configuration JSON", key=cfg_key, height=240, help="Modifica i parametri del command come oggetto JSON.")
+    st.text_input("Comment", key=description_key)
 
     action_cols = st.columns([1, 1, 1], gap="small", vertical_alignment="center")
     with action_cols[0]:
         if st.button("Save", key=f"suite_generic_command_edit_save_{dialog_nonce}", icon=":material/save:", type="secondary", use_container_width=True):
+            original_draft = deepcopy(st.session_state.get(TEST_SUITE_DRAFT_KEY, {}))
             description = str(st.session_state.get(description_key) or "").strip()
-            if not description:
-                st.error("Il campo Description e' obbligatorio.")
-                return
             try:
                 configuration_json = json.loads(str(st.session_state.get(cfg_key) or "").strip() or "{}")
             except json.JSONDecodeError as exc:
@@ -2421,8 +2868,14 @@ def _render_generic_command_edit_dialog(item: dict, operation: dict, operation_i
                     "configuration_json": configuration_json,
                 },
             )
+            try:
+                _persist_current_draft(success_message="Command updated.", rerun=False)
+            except Exception as exc:
+                st.session_state[TEST_SUITE_DRAFT_KEY] = original_draft
+                _render_persist_error(exc)
+                return
             _close_edit_command_dialog()
-            _persist_changes()
+            st.rerun()
     with action_cols[1]:
         if st.button("Delete", key=f"suite_generic_command_edit_delete_{dialog_nonce}", icon=":material/delete:", type="secondary", use_container_width=True):
             operations = item.get("operations") or []
@@ -2434,6 +2887,98 @@ def _render_generic_command_edit_dialog(item: dict, operation: dict, operation_i
     with action_cols[2]:
         if st.button("Cancel", key=f"suite_generic_command_edit_cancel_{dialog_nonce}", use_container_width=True):
             _close_edit_command_dialog()
+            st.rerun()
+
+
+@st.dialog("Reorder commands", width="large")
+def _render_reorder_command_dialog(draft: dict):
+    dialog_nonce = int(st.session_state.get(COMMAND_REORDER_DIALOG_NONCE_KEY, 0))
+    item_ui_key = str(st.session_state.get(COMMAND_REORDER_DIALOG_TARGET_ITEM_UI_KEY) or "").strip()
+    item = find_draft_test_by_ui_key(draft, item_ui_key)
+
+    if not isinstance(item, dict):
+        st.error("Target section not found.")
+        if st.button(
+            "Cancel",
+            key=f"suite_reorder_command_missing_cancel_{dialog_nonce}",
+            use_container_width=True,
+        ):
+            _close_reorder_command_dialog()
+            st.rerun()
+        return
+
+    if COMMAND_REORDER_DIALOG_OPERATIONS_KEY not in st.session_state:
+        st.session_state[COMMAND_REORDER_DIALOG_OPERATIONS_KEY] = deepcopy(_operation_list(item))
+
+    operations = _reorder_dialog_operations()
+    st.caption(f"Section: {_item_command_section_label(item)}")
+
+    if not operations:
+        st.info("No commands available in this section.")
+    else:
+        for index, operation in enumerate(operations):
+            action_label = _command_action_label(operation)
+            row_cols = st.columns([14, 1, 1], gap="small", vertical_alignment="center")
+            with row_cols[0]:
+                _render_suite_command_card(
+                    operation,
+                    key_prefix=f"suite_reorder_preview_{dialog_nonce}_{index}",
+                )
+            with row_cols[1]:
+                if st.button(
+                    "",
+                    key=f"suite_reorder_command_up_{dialog_nonce}_{index}",
+                    icon=":material/arrow_drop_up:",
+                    help=f"Move {action_label} up",
+                    type="tertiary",
+                    use_container_width=True,
+                    disabled=index == 0,
+                ):
+                    _move_reorder_operation(index, index - 1)
+                    st.rerun()
+            with row_cols[2]:
+                if st.button(
+                    "",
+                    key=f"suite_reorder_command_down_{dialog_nonce}_{index}",
+                    icon=":material/arrow_drop_down:",
+                    help=f"Move {action_label} down",
+                    type="tertiary",
+                    use_container_width=True,
+                    disabled=index >= len(operations) - 1,
+                ):
+                    _move_reorder_operation(index, index + 1)
+                    st.rerun()
+
+    action_cols = st.columns([1, 1], gap="small", vertical_alignment="center")
+    with action_cols[0]:
+        if st.button(
+            "Save",
+            key=f"suite_reorder_command_save_{dialog_nonce}",
+            icon=":material/save:",
+            type="secondary",
+            use_container_width=True,
+        ):
+            original_draft = deepcopy(st.session_state.get(TEST_SUITE_DRAFT_KEY, {}))
+            current_item = find_draft_test_by_ui_key(draft, item_ui_key)
+            if not isinstance(current_item, dict):
+                st.error("Target section not found.")
+                return
+            current_item["operations"] = _resequence_operations(_reorder_dialog_operations())
+            try:
+                _persist_current_draft(success_message="Commands reordered.", rerun=False)
+            except Exception as exc:
+                st.session_state[TEST_SUITE_DRAFT_KEY] = original_draft
+                st.error(_friendly_suite_validation_message(_extract_api_error_detail(exc)))
+                return
+            _close_reorder_command_dialog()
+            st.rerun()
+    with action_cols[1]:
+        if st.button(
+            "Cancel",
+            key=f"suite_reorder_command_cancel_{dialog_nonce}",
+            use_container_width=True,
+        ):
+            _close_reorder_command_dialog()
             st.rerun()
 
 
@@ -2512,6 +3057,7 @@ def _render_edit_command_dialog(draft: dict):
     action_cols = st.columns([1, 1, 1], gap="small", vertical_alignment="center")
     with action_cols[0]:
         if st.button("Save", key=f"suite_edit_command_save_{dialog_nonce}", icon=":material/save:", type="secondary", use_container_width=True):
+            original_draft = deepcopy(st.session_state.get(TEST_SUITE_DRAFT_KEY, {}))
             if owner_kind == "hook":
                 updated_operation, validation_error = _build_hook_command_draft_with_prefix(
                     dialog_nonce,
@@ -2528,8 +3074,14 @@ def _render_edit_command_dialog(draft: dict):
                 st.error(validation_error)
                 return
             _update_operation_in_item(item, operation_index, updated_operation or {})
+            try:
+                _persist_current_draft(success_message="Command updated.", rerun=False)
+            except Exception as exc:
+                st.session_state[TEST_SUITE_DRAFT_KEY] = original_draft
+                _render_persist_error(exc)
+                return
             _close_edit_command_dialog()
-            _persist_changes()
+            st.rerun()
     with action_cols[1]:
         if st.button("Delete", key=f"suite_edit_command_delete_{dialog_nonce}", icon=":material/delete:", type="secondary", use_container_width=True):
             operations = item.get("operations") or []

@@ -60,6 +60,7 @@ Pagine principali:
 - `app/ui/pages/JsonArray.py`
 - `app/ui/pages/TestSuites.py`
 - `app/ui/pages/SuiteEditor.py`
+- `app/ui/pages/AdvancedSuiteEditorSettings.py`
 - `app/ui/pages/Logs.py`
 - `app/ui/pages/Tools.py`
 

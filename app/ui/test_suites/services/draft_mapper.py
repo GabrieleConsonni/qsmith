@@ -308,7 +308,9 @@ def _serialize_operation_cfg(cfg: dict, definitions: dict[str, dict], section_ty
     if command_code == "initConstant":
         serialized["definitionId"] = _normalize_token(serialized.get("definitionId") or serialized.get("definition_id")) or _new_definition_id()
 
-    if command_code == "deleteConstant" and not serialized.get("targetConstantRef"):
+    if command_code == "deleteConstant":
+        serialized.pop("targetConstantRef", None)
+        serialized.pop("target_constant_ref", None)
         definition = _find_definition_by_scope_name(
             definitions,
             section_type=section_type,
@@ -319,7 +321,9 @@ def _serialize_operation_cfg(cfg: dict, definitions: dict[str, dict], section_ty
         if definition is not None:
             serialized["targetConstantRef"] = {"definitionId": definition["definitionId"]}
 
-    if command_code in {"sendMessageQueue", "saveTable", "exportDataset"} and not serialized.get("sourceConstantRef"):
+    if command_code in {"sendMessageQueue", "saveTable", "exportDataset"}:
+        serialized.pop("sourceConstantRef", None)
+        serialized.pop("source_constant_ref", None)
         definition = _find_definition_by_path(
             definitions,
             section_type=section_type,
@@ -338,7 +342,9 @@ def _serialize_operation_cfg(cfg: dict, definitions: dict[str, dict], section_ty
         "jsonArrayEmpty",
         "jsonArrayNotEmpty",
         "jsonArrayContains",
-    } and not serialized.get("actualConstantRef"):
+    }:
+        serialized.pop("actualConstantRef", None)
+        serialized.pop("actual_constant_ref", None)
         definition = _find_definition_by_path(
             definitions,
             section_type=section_type,
@@ -348,7 +354,9 @@ def _serialize_operation_cfg(cfg: dict, definitions: dict[str, dict], section_ty
         if definition is not None:
             serialized["actualConstantRef"] = {"definitionId": definition["definitionId"]}
 
-    if command_code == "runSuite" and not serialized.get("constantRefs"):
+    if command_code == "runSuite":
+        serialized.pop("constantRefs", None)
+        serialized.pop("constant_refs", None)
         constant_refs: list[dict[str, str]] = []
         for constant_name in serialized.get("constants") or []:
             definition = _find_definition_by_name(

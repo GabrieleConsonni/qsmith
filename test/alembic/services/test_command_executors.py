@@ -1123,6 +1123,137 @@ def test_assert_json_equals_command_executor_resolves_context_refs(alembic_conta
     assert run_context.artifacts["asserts"][-1]["status"] == "passed"
 
 
+def test_assert_json_contains_command_executor_passes_on_selected_keys(alembic_container):
+    cfg = AssertConfigurationCommandDto(
+        commandCode="jsonContains",
+        commandType="assert",
+        evaluated_object_type="json-data",
+        actualConstantRef={"definitionId": "def-assert-contains"},
+        expected={"id": 1, "code": "A"},
+        compare_keys=["id", "code"],
+    )
+    run_context = create_run_context(run_id="run-assert-contains")
+    run_context.local_scope["constants"]["actualPayload"] = {"id": 1, "code": "A", "extra": True}
+
+    with managed_session() as session:
+        _insert_constant_definition(
+            session,
+            definition_id="def-assert-contains",
+            name="actualPayload",
+            value_type="json",
+        )
+        with bind_run_context(run_context):
+            result = AssertOperationExecutor().execute(
+                session,
+                "cmd-assert-contains",
+                cfg,
+                [{"ignored": True}],
+            )
+
+    assert result.result == [{"message": "Assert 'jsonContains' passed for 'json-data' data."}]
+
+
+def test_assert_json_contains_command_executor_resolves_expected_ref_and_fails_on_mismatch(alembic_container):
+    cfg = AssertConfigurationCommandDto(
+        commandCode="jsonContains",
+        commandType="assert",
+        evaluated_object_type="json-data",
+        actualConstantRef={"definitionId": "def-assert-contains-ref"},
+        expected={"$ref": "$.runEnvelope.event.payload.expected"},
+        compare_keys=["id", "code"],
+    )
+    run_context = create_run_context(
+        run_id="run-assert-contains-ref",
+        event={"payload": {"expected": {"id": 1, "code": "A"}}},
+        initial_vars={},
+        invocation_id=None,
+    )
+    run_context.local_scope["constants"]["actualPayload"] = {"id": 1, "code": "B", "extra": True}
+
+    with managed_session() as session:
+        _insert_constant_definition(
+            session,
+            definition_id="def-assert-contains-ref",
+            name="actualPayload",
+            context_scope="local",
+            value_type="json",
+        )
+        with bind_run_context(run_context):
+            with pytest.raises(ValueError, match="does not contain expected values"):
+                AssertOperationExecutor().execute(
+                    session,
+                    "cmd-assert-contains-ref",
+                    cfg,
+                    [{"ignored": True}],
+                )
+
+
+def test_assert_json_empty_command_executor_uses_resolved_actual_object(alembic_container):
+    cfg = AssertConfigurationCommandDto(
+        commandCode="jsonEmpty",
+        commandType="assert",
+        evaluated_object_type="json-data",
+        actualConstantRef={"definitionId": "def-assert-empty-object"},
+    )
+    run_context = create_run_context(run_id="run-assert-empty-object")
+    run_context.local_scope["constants"]["actualPayload"] = {}
+
+    with managed_session() as session:
+        _insert_constant_definition(
+            session,
+            definition_id="def-assert-empty-object",
+            name="actualPayload",
+            value_type="json",
+        )
+        with bind_run_context(run_context):
+            result = AssertOperationExecutor().execute(
+                session,
+                "cmd-assert-empty-object",
+                cfg,
+                [{"ignored": True}],
+            )
+
+    assert result.result == [{"message": "Assert 'jsonEmpty' passed for 'json-data' data."}]
+
+
+def test_assert_json_not_empty_command_executor_uses_resolved_actual_object(alembic_container):
+    cfg = AssertConfigurationCommandDto(
+        commandCode="jsonNotEmpty",
+        commandType="assert",
+        evaluated_object_type="json-data",
+        actualConstantRef={"definitionId": "def-assert-not-empty-object"},
+    )
+    run_context = create_run_context(run_id="run-assert-not-empty-object")
+    run_context.local_scope["constants"]["actualPayload"] = {}
+
+    with managed_session() as session:
+        _insert_constant_definition(
+            session,
+            definition_id="def-assert-not-empty-object",
+            name="actualPayload",
+            value_type="json",
+        )
+        with bind_run_context(run_context):
+            with pytest.raises(ValueError, match="expected actual value to be not empty"):
+                AssertOperationExecutor().execute(
+                    session,
+                    "cmd-assert-not-empty-object",
+                    cfg,
+                    [{"ignored": True}],
+                )
+
+
+def test_assert_json_contains_requires_compare_keys(alembic_container):
+    with pytest.raises(ValueError, match="compare_keys is required for jsonContains"):
+        AssertConfigurationCommandDto(
+            commandCode="jsonContains",
+            commandType="assert",
+            evaluated_object_type="json-data",
+            actualConstantRef={"definitionId": "def-assert-contains-missing-keys"},
+            expected={"id": 1},
+        )
+
+
 def test_execute_operations_rejects_legacy_operation_ids(alembic_container):
     with managed_session() as session:
         with pytest.raises(

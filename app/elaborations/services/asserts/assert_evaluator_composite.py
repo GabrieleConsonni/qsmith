@@ -13,6 +13,7 @@ from elaborations.services.asserts.json_data_assert_evaluators import (
     ContainsDataAssertEvaluator,
     EmptyDataAssertEvaluator,
     EqualsDataAssertEvaluator,
+    JsonArrayContainsDataAssertEvaluator,
     JsonArrayEqualsDataAssertEvaluator,
     NotEmptyDataAssertEvaluator,
     SchemaValidationDataAssertEvaluator,
@@ -39,6 +40,10 @@ _EVALUATOR_MAPPING: dict[tuple[str, str], type[AssertEvaluator]] = {
         AssertEvaluatedObjectType.JSON_DATA.value,
         AssertType.JSON_ARRAY_EQUALS.value,
     ): JsonArrayEqualsDataAssertEvaluator,
+    (
+        AssertEvaluatedObjectType.JSON_DATA.value,
+        AssertType.JSON_ARRAY_CONTAINS.value,
+    ): JsonArrayContainsDataAssertEvaluator,
     (
         AssertEvaluatedObjectType.JSON_DATA.value,
         AssertType.EQUALS.value,

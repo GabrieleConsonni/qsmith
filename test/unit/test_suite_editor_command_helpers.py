@@ -16,6 +16,7 @@ if str(UI_ROOT) not in sys.path:
 
 
 from ui.test_suites.components import suite_editor_component
+from ui.elaborations_shared.components import test_command_component
 
 
 def _reset_session_state():
@@ -48,7 +49,7 @@ def test_build_suite_command_summary_for_delete_constant():
         },
     }
 
-    assert suite_editor_component._build_suite_command_markdown(command) == "*rows*"
+    assert suite_editor_component._build_suite_command_markdown(command) == "**Delete variable** *rows*"
 
 
 def test_build_suite_command_summary_omits_dash_when_description_is_empty():
@@ -73,6 +74,7 @@ def test_build_suite_command_summary_for_table_commands():
             "commandCode": "saveTable",
             "commandType": "action",
             "table_name": "orders_tmp",
+            "source": "$.local.constants.rows",
         },
     }
     drop_table_command = {
@@ -92,9 +94,9 @@ def test_build_suite_command_summary_for_table_commands():
         },
     }
 
-    assert suite_editor_component._build_suite_command_markdown(save_table_command) == "*orders_tmp*"
-    assert suite_editor_component._build_suite_command_markdown(drop_table_command) == "*orders_tmp*"
-    assert suite_editor_component._build_suite_command_markdown(clean_table_command) == "*orders_tmp*"
+    assert suite_editor_component._build_suite_command_markdown(save_table_command) == "**Save variable** *rows* **to table** *orders_tmp*"
+    assert suite_editor_component._build_suite_command_markdown(drop_table_command) == "**Drop table** *orders_tmp*"
+    assert suite_editor_component._build_suite_command_markdown(clean_table_command) == "**Clean table** *orders_tmp*"
 
 
 def test_build_suite_command_summary_for_send_message_queue(monkeypatch):
@@ -119,7 +121,7 @@ def test_build_suite_command_summary_for_send_message_queue(monkeypatch):
 
     assert (
         suite_editor_component._build_suite_command_markdown(command)
-        == "**send variable** *rows* **to queue** *Orders queue*"
+        == "**Send variable** *rows* **to queue** *Orders queue*"
     )
 
 
@@ -143,6 +145,7 @@ def test_build_suite_command_summary_for_dataset_commands_uses_cache_labels():
             "connection_id": "conn-1",
             "dataset_id": "dataset-1",
             "table_name": "orders_stage",
+            "source": "$.local.constants.rows",
         },
     }
     drop_command = {
@@ -162,9 +165,9 @@ def test_build_suite_command_summary_for_dataset_commands_uses_cache_labels():
         },
     }
 
-    assert suite_editor_component._build_suite_command_markdown(export_command) == "*Orders DB* *Orders dataset*"
-    assert suite_editor_component._build_suite_command_markdown(drop_command) == "*Orders DB* *Orders dataset*"
-    assert suite_editor_component._build_suite_command_markdown(clean_command) == "*Orders DB* *Orders dataset*"
+    assert suite_editor_component._build_suite_command_markdown(export_command) == "**Export variable** *rows* **to table** *orders_stage*"
+    assert suite_editor_component._build_suite_command_markdown(drop_command) == "**Drop dataset** *Orders dataset* **from** *Orders DB* **database**"
+    assert suite_editor_component._build_suite_command_markdown(clean_command) == "**Clean dataset** *Orders dataset* **from** *Orders DB* **database**"
 
 
 def test_build_suite_command_summary_for_sleep_and_run_suite():
@@ -189,8 +192,8 @@ def test_build_suite_command_summary_for_sleep_and_run_suite():
         },
     }
 
-    assert suite_editor_component._build_suite_command_markdown(sleep_command) == "15s"
-    assert suite_editor_component._build_suite_command_markdown(run_suite_command) == "*Nightly suite*"
+    assert suite_editor_component._build_suite_command_markdown(sleep_command) == "**Sleep** *15s*"
+    assert suite_editor_component._build_suite_command_markdown(run_suite_command) == "**Run suite** *Nightly suite*"
 
 
 def test_build_suite_command_summary_for_assert_uses_variable_name():
@@ -206,7 +209,7 @@ def test_build_suite_command_summary_for_assert_uses_variable_name():
 
     assert (
         suite_editor_component._build_suite_command_markdown(command)
-        == "jsonArrayEquals jsonArray equals *rows*"
+        == "**Expected JsonArray equals to** *rows*"
     )
 
 
@@ -235,8 +238,14 @@ def test_format_source_variable_option_uses_name_and_type():
         suite_editor_component._format_source_variable_option(
             {"name": "rows", "value_type": "dataset"}
         )
-        == "rows : dataset variable"
+        == "rows:dataset"
     )
+
+
+def test_queue_variable_uses_move_to_inbox_icon():
+    command = {"configuration_json": {"commandCode": "initConstant", "sourceType": "sqsQueue"}}
+
+    assert suite_editor_component._command_leading_icon(command) == ":material/move_to_inbox:"
 
 
 def test_dataset_summary_falls_back_to_raw_ids_when_cache_is_missing():
@@ -250,7 +259,7 @@ def test_dataset_summary_falls_back_to_raw_ids_when_cache_is_missing():
         },
     }
 
-    assert suite_editor_component._build_suite_command_markdown(command) == "- *dataset-42*"
+    assert suite_editor_component._build_suite_command_markdown(command) == "**Drop dataset** *dataset-42* **from** - **database**"
 
 
 def test_resolve_hook_command_group():
@@ -500,3 +509,380 @@ def test_build_test_command_draft_allows_empty_description():
     assert error is None
     assert operation is not None
     assert operation["description"] == ""
+
+
+def test_append_operation_to_test_allows_empty_description():
+    suite_test = {"operations": []}
+    operation_item = {
+        "description": "",
+        "operation_type": "initconstant",
+        "configuration_json": {
+            "commandCode": "initConstant",
+            "commandType": "context",
+            "name": "rows",
+        },
+    }
+
+    test_command_component.append_operation_to_test(suite_test, operation_item)
+
+    assert len(suite_test["operations"]) == 1
+    assert suite_test["operations"][0]["description"] == ""
+    assert suite_test["operations"][0]["configuration_json"]["name"] == "rows"
+
+
+def test_command_group_copy_uses_type_specific_labels():
+    assert suite_editor_component._command_group_label("context") == "variable"
+    assert suite_editor_component._command_group_label("constant") == "variable"
+    assert suite_editor_component._command_group_label("action") == "action"
+    assert suite_editor_component._command_group_label("assert") == "assert"
+    assert suite_editor_component._command_group_intro_label("constant", mode="add") == "Insert new variable"
+    assert suite_editor_component._command_group_intro_label("action", mode="edit") == "Modify action"
+    assert suite_editor_component._command_group_primary_action_label("context", mode="edit") == "Save variable"
+    assert suite_editor_component._command_group_primary_action_label("assert", mode="add") == "Add assert"
+    assert suite_editor_component._command_group_added_feedback("context") == "New variable added."
+    assert suite_editor_component._command_group_updated_feedback("action") == "Action updated."
+
+
+def test_build_test_command_draft_for_json_equals_with_manual_expected():
+    _reset_session_state()
+    streamlit_module = sys.modules["streamlit"]
+    streamlit_module.session_state["suite_add_test_command_description_7"] = ""
+    streamlit_module.session_state["suite_add_test_assert_actual_7"] = "$.local.constants.actualPayload"
+    streamlit_module.session_state["suite_add_test_assert_expected_mode_7"] = "manual"
+    streamlit_module.session_state["suite_add_test_assert_expected_7"] = '{"ok": true}'
+
+    operation, error = suite_editor_component._build_test_command_draft(7, "jsonEquals")
+
+    assert error is None
+    assert operation["configuration_json"]["actual"] == "$.local.constants.actualPayload"
+    assert operation["configuration_json"]["expected"] == {"ok": True}
+
+
+def test_build_test_command_draft_for_json_equals_with_expected_variable():
+    _reset_session_state()
+    streamlit_module = sys.modules["streamlit"]
+    streamlit_module.session_state["suite_add_test_command_description_8"] = ""
+    streamlit_module.session_state["suite_add_test_assert_actual_8"] = "$.local.constants.actualPayload"
+    streamlit_module.session_state["suite_add_test_assert_expected_mode_8"] = "variable"
+    streamlit_module.session_state["suite_add_test_assert_expected_variable_8"] = "$.global.constants.expectedPayload"
+
+    operation, error = suite_editor_component._build_test_command_draft(8, "jsonEquals")
+
+    assert error is None
+    assert operation["configuration_json"]["expected"] == {
+        "$ref": "$.global.constants.expectedPayload"
+    }
+
+
+def test_build_test_command_draft_for_json_contains_uses_manual_expected_and_compare_keys():
+    _reset_session_state()
+    streamlit_module = sys.modules["streamlit"]
+    streamlit_module.session_state["suite_add_test_command_description_9"] = ""
+    streamlit_module.session_state["suite_add_test_assert_actual_9"] = "$.local.constants.actualPayload"
+    streamlit_module.session_state["suite_add_test_assert_expected_mode_9"] = "manual"
+    streamlit_module.session_state["suite_add_test_assert_expected_9"] = '{"id": 1, "code": "A"}'
+    streamlit_module.session_state["suite_add_test_assert_compare_keys_9"] = ["id", "code"]
+
+    operation, error = suite_editor_component._build_test_command_draft(9, "jsonContains")
+
+    assert error is None
+    assert operation["configuration_json"]["expected"] == {"id": 1, "code": "A"}
+    assert operation["configuration_json"]["compare_keys"] == ["id", "code"]
+
+
+def test_build_test_command_draft_for_json_array_asserts_use_multiselect_compare_keys():
+    _reset_session_state()
+    streamlit_module = sys.modules["streamlit"]
+    streamlit_module.session_state["suite_add_test_command_description_10"] = ""
+    streamlit_module.session_state["suite_add_test_assert_actual_10"] = "$.local.constants.actualRows"
+    streamlit_module.session_state["suite_add_test_assert_expected_json_array_id_10"] = "ja-1"
+    streamlit_module.session_state["suite_add_test_assert_compare_keys_10"] = ["id", "code"]
+
+    equals_operation, equals_error = suite_editor_component._build_test_command_draft(10, "jsonArrayEquals")
+    contains_operation, contains_error = suite_editor_component._build_test_command_draft(10, "jsonArrayContains")
+
+    assert equals_error is None
+    assert equals_operation["configuration_json"]["expected_json_array_id"] == "ja-1"
+    assert equals_operation["configuration_json"]["compare_keys"] == ["id", "code"]
+    assert contains_error is None
+    assert contains_operation["configuration_json"]["compare_keys"] == ["id", "code"]
+
+
+def test_build_test_command_draft_for_json_empty_requires_actual_variable():
+    _reset_session_state()
+    sys.modules["streamlit"].session_state["suite_add_test_command_description_11"] = ""
+
+    operation, error = suite_editor_component._build_test_command_draft(11, "jsonEmpty")
+
+    assert operation is None
+    assert error == "Il campo Actual variable e' obbligatorio."
+
+
+def test_resolve_available_assert_expected_constants_for_json_contains_only_returns_inspectable_json():
+    draft = {
+        "hooks": {
+            "before-all": {
+                "kind": "hook",
+                "hook_phase": "before-all",
+                "operations": [
+                    {
+                        "configuration_json": {
+                            "commandCode": "initConstant",
+                            "commandType": "context",
+                            "name": "inspectableExpected",
+                            "context": "global",
+                            "sourceType": "json",
+                            "value": {"id": 1, "code": "A"},
+                        }
+                    },
+                    {
+                        "configuration_json": {
+                            "commandCode": "initConstant",
+                            "commandType": "context",
+                            "name": "nonInspectableExpected",
+                            "context": "global",
+                            "sourceType": "json",
+                            "value": [1, 2, 3],
+                        }
+                    },
+                ],
+            }
+        },
+        "tests": [
+            {
+                "kind": "test",
+                "description": "test",
+                "operations": [],
+            }
+        ],
+    }
+
+    options = suite_editor_component._resolve_available_assert_constants(
+        draft,
+        draft["tests"][0],
+        command_code="jsonContains",
+        role="expected",
+    )
+
+    assert [item["path"] for item in options] == ["$.global.constants.inspectableExpected"]
+
+
+def test_initialize_test_command_form_hydrates_json_contains_expected_ref_and_legacy_array():
+    _reset_session_state()
+    ref_operation = {
+        "description": "",
+        "configuration_json": {
+            "commandCode": "jsonContains",
+            "commandType": "assert",
+            "actual": "$.local.constants.actualPayload",
+            "expected": {"$ref": "$.global.constants.expectedPayload"},
+            "compare_keys": ["id"],
+        },
+    }
+
+    suite_editor_component._initialize_test_command_form(
+        12,
+        ref_operation,
+        [],
+        [],
+        key_prefix="suite_edit_test_command",
+    )
+
+    session_state = sys.modules["streamlit"].session_state
+    assert session_state["suite_edit_test_command_assert_expected_mode_12"] == "variable"
+    assert (
+        session_state["suite_edit_test_command_assert_expected_variable_12"]
+        == "$.global.constants.expectedPayload"
+    )
+
+    _reset_session_state()
+    legacy_operation = {
+        "description": "",
+        "configuration_json": {
+            "commandCode": "jsonContains",
+            "commandType": "assert",
+            "actual": "$.local.constants.actualPayload",
+            "expected_json_array_id": "ja-legacy",
+            "compare_keys": ["id"],
+        },
+    }
+
+    suite_editor_component._initialize_test_command_form(
+        13,
+        legacy_operation,
+        [{"id": "ja-legacy", "payload": [{"id": 1, "code": "A"}]}],
+        [],
+        key_prefix="suite_edit_test_command",
+    )
+
+    session_state = sys.modules["streamlit"].session_state
+    assert session_state["suite_edit_test_command_assert_expected_mode_13"] == "manual"
+    assert '"id": 1' in session_state["suite_edit_test_command_assert_expected_13"]
+    assert session_state["suite_edit_test_command_assert_compare_keys_13"] == ["id"]
+
+
+def test_build_assert_summary_uses_requested_restyle_for_empty_and_contains():
+    _reset_session_state()
+    contains_command = {
+        "configuration_json": {
+            "commandCode": "jsonContains",
+            "commandType": "assert",
+            "actual": "$.local.constants.payload",
+        }
+    }
+    empty_command = {
+        "configuration_json": {
+            "commandCode": "jsonArrayNotEmpty",
+            "commandType": "assert",
+            "actual": "$.local.constants.rows",
+        }
+    }
+
+    assert suite_editor_component._build_suite_command_markdown(contains_command) == "**Expected Json contains** *payload*"
+    assert suite_editor_component._build_suite_command_markdown(empty_command) == "**JsonArray** *rows* **is not empty**"
+
+
+def test_resolve_export_dataset_mapping_key_options_for_json_json_array_and_dataset():
+    draft = {
+        "hooks": {
+            "before-all": {
+                "kind": "hook",
+                "hook_phase": "before-all",
+                "operations": [
+                    {
+                        "configuration_json": {
+                            "commandCode": "initConstant",
+                            "commandType": "context",
+                            "name": "payload",
+                            "context": "global",
+                            "sourceType": "json",
+                            "value": {"id": 1, "code": "A"},
+                        }
+                    },
+                    {
+                        "configuration_json": {
+                            "commandCode": "initConstant",
+                            "commandType": "context",
+                            "name": "rows",
+                            "context": "global",
+                            "sourceType": "jsonArray",
+                            "json_array_id": "ja-1",
+                        }
+                    },
+                    {
+                        "configuration_json": {
+                            "commandCode": "initConstant",
+                            "commandType": "context",
+                            "name": "datasetRows",
+                            "context": "global",
+                            "sourceType": "dataset",
+                            "dataset_id": "ds-1",
+                        }
+                    },
+                ],
+            }
+        },
+        "tests": [{"kind": "test", "description": "test", "operations": []}],
+    }
+    item = draft["tests"][0]
+    json_arrays = [{"id": "ja-1", "payload": [{"id": 1, "status": "OK"}]}]
+    datasources = [
+        {
+            "id": "ds-1",
+            "payload": {"connection_id": "conn-1"},
+            "perimeter": {"selected_columns": ["id", "status"]},
+        }
+    ]
+
+    json_keys, json_error = suite_editor_component._resolve_export_dataset_mapping_key_options(
+        draft,
+        item,
+        source_path="$.global.constants.payload",
+        stop_before_index=None,
+        json_arrays=json_arrays,
+        datasources=datasources,
+    )
+    json_array_keys, json_array_error = suite_editor_component._resolve_export_dataset_mapping_key_options(
+        draft,
+        item,
+        source_path="$.global.constants.rows",
+        stop_before_index=None,
+        json_arrays=json_arrays,
+        datasources=datasources,
+    )
+    dataset_keys, dataset_error = suite_editor_component._resolve_export_dataset_mapping_key_options(
+        draft,
+        item,
+        source_path="$.global.constants.datasetRows",
+        stop_before_index=None,
+        json_arrays=json_arrays,
+        datasources=datasources,
+    )
+
+    assert json_error is None
+    assert json_keys == ["id", "code"]
+    assert json_array_error is None
+    assert json_array_keys == ["id", "status"]
+    assert dataset_error is None
+    assert dataset_keys == ["id", "status"]
+
+
+def test_test_item_single_run_button_is_disabled_for_unsaved_test():
+    _reset_session_state()
+    current_test = {
+        "_ui_key": "test-ui-1",
+        "description": "Unsaved test",
+        "operations": [],
+    }
+
+    class StreamlitStub:
+        def __init__(self):
+            self.session_state = sys.modules["streamlit"].session_state
+            self.button_calls = []
+
+        def expander(self, *args, **kwargs):
+            class _Ctx:
+                def __enter__(self_inner):
+                    return None
+
+                def __exit__(self_inner, exc_type, exc, tb):
+                    return False
+
+            return _Ctx()
+
+        def columns(self, spec, **kwargs):
+            class _Col:
+                def __enter__(self_inner):
+                    return None
+
+                def __exit__(self_inner, exc_type, exc, tb):
+                    return False
+
+            return [_Col() for _ in spec]
+
+        def caption(self, *args, **kwargs):
+            return None
+
+        def button(self, *args, **kwargs):
+            self.button_calls.append(kwargs)
+            return False
+
+        def rerun(self):
+            raise AssertionError("rerun should not be called")
+
+    stub = StreamlitStub()
+    original_st = suite_editor_component.st
+    original_render_suite_item_operation = suite_editor_component._render_suite_item_operation
+    try:
+        suite_editor_component.st = stub
+        suite_editor_component._render_suite_item_operation = lambda *args, **kwargs: None
+        suite_editor_component._render_test_item(current_test, 1, {})
+    finally:
+        suite_editor_component.st = original_st
+        suite_editor_component._render_suite_item_operation = original_render_suite_item_operation
+
+    run_button_call = next(
+        call for call in stub.button_calls if call.get("key") == "suite_editor_run_test_test-ui-1"
+    )
+    assert run_button_call["disabled"] is True
+    assert run_button_call["help"] == "Save suite before running this test"

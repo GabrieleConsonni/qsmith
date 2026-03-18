@@ -28,10 +28,10 @@ def execute_test_suite_by_id(test_suite_id: str) -> dict:
     return api_get(f"/elaborations/test-suite/{test_suite_id}/execute")
 
 
-def execute_test_by_id(test_suite_id: str, suite_item_id: str, include_previous: bool) -> dict:
+def execute_test_by_id(test_suite_id: str, suite_item_id: str) -> dict:
     return api_post(
         f"/elaborations/test-suite/{test_suite_id}/test/{suite_item_id}/execute",
-        {"include_previous": bool(include_previous)},
+        {},
     )
 
 

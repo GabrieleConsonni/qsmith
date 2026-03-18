@@ -50,7 +50,6 @@ class TestSuiteExecutionInput:
     vars_init: dict[str, Any] | None = None
     invocation_id: str | None = None
     target_suite_item_id: str | None = None
-    include_previous: bool = False
 
 
 def _utc_now() -> datetime:
@@ -78,7 +77,6 @@ def log(test_suite_id: str, message: str, level: LogLevel = LogLevel.INFO, paylo
 def _resolve_tests_to_execute(
     tests: list[SuiteItemEntity],
     target_suite_item_id: str | None,
-    include_previous: bool,
 ) -> list[SuiteItemEntity]:
     if not target_suite_item_id:
         return tests
@@ -88,8 +86,6 @@ def _resolve_tests_to_execute(
     )
     if target_index < 0:
         raise QsmithAppException(f"Test with id '{target_suite_item_id}' not found in test suite")
-    if include_previous:
-        return tests[: target_index + 1]
     return [tests[target_index]]
 
 
@@ -224,7 +220,7 @@ def _execute(execution_input: TestSuiteExecutionInput):
                 status="running",
                 invocation_id=str(execution_input.invocation_id or "").strip() or None,
                 vars_init_json=execution_input.vars_init if isinstance(execution_input.vars_init, dict) else {},
-                include_previous=bool(execution_input.include_previous),
+                include_previous=False,
                 requested_test_id=str(execution_input.target_suite_item_id or "").strip() or None,
             ),
         )
@@ -246,7 +242,6 @@ def _execute(execution_input: TestSuiteExecutionInput):
         tests = _resolve_tests_to_execute(
             suite_item_service.get_all_tests_by_suite_id(session, execution_input.test_suite_id),
             execution_input.target_suite_item_id,
-            execution_input.include_previous,
         )
         requested_test = next(
             (
@@ -279,7 +274,7 @@ def _execute(execution_input: TestSuiteExecutionInput):
                         "test_suite_id": execution_input.test_suite_id,
                         "test_suite_description": execution_input.test_suite_description,
                         "target_test_id": execution_input.target_suite_item_id,
-                        "include_previous": execution_input.include_previous,
+                        "include_previous": False,
                     },
             )
             publish_execution_event(
@@ -431,7 +426,6 @@ class TestSuiteExecutorThread(threading.Thread):
         vars_init: dict | None = None,
         invocation_id: str | None = None,
         target_suite_item_id: str | None = None,
-        include_previous: bool = False,
     ):
         super().__init__(daemon=True)
         self.execution_id = str(uuid4())
@@ -440,7 +434,6 @@ class TestSuiteExecutorThread(threading.Thread):
         self.vars_init = vars_init
         self.invocation_id = invocation_id
         self.target_suite_item_id = target_suite_item_id
-        self.include_previous = include_previous
 
     def run(self):
         with managed_session() as session:
@@ -458,7 +451,6 @@ class TestSuiteExecutorThread(threading.Thread):
                 vars_init=self.vars_init,
                 invocation_id=self.invocation_id,
                 target_suite_item_id=self.target_suite_item_id,
-                include_previous=self.include_previous,
             )
         )
 

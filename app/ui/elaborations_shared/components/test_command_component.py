@@ -809,8 +809,6 @@ def append_operation_to_test(suite_test: dict, operation_item: dict):
     if not isinstance(operation_item, dict):
         return
     description, operation_type, cfg = _extract_operation_draft_fields(operation_item)
-    if not description:
-        return
     operations = suite_test.setdefault("operations", [])
     operations.append(
         _new_draft_operation(

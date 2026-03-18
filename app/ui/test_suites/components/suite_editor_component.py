@@ -26,6 +26,7 @@ from elaborations_shared.services.state_keys import (
     TEST_EDITOR_JSON_ARRAYS_KEY,
 )
 from test_suites.services.api_service import (
+    execute_test_by_id,
     execute_test_suite_by_id,
     get_all_test_suites,
     get_test_suite_by_id,
@@ -142,6 +143,25 @@ SOURCE_COMPATIBILITY_BY_COMMAND = {
     "saveTable": {"json", "jsonArray", "dataset"},
     "exportDataset": {"json", "jsonArray", "dataset"},
 }
+ASSERT_ACTUAL_COMPATIBILITY_BY_COMMAND = {
+    "jsonEquals": {"json"},
+    "jsonEmpty": {"json"},
+    "jsonNotEmpty": {"json"},
+    "jsonContains": {"json"},
+    "jsonArrayEquals": {"jsonArray"},
+    "jsonArrayEmpty": {"jsonArray"},
+    "jsonArrayNotEmpty": {"jsonArray"},
+    "jsonArrayContains": {"jsonArray"},
+}
+ASSERT_EXPECTED_COMPATIBILITY_BY_COMMAND = {
+    "jsonEquals": {"json"},
+    "jsonContains": {"json"},
+}
+ASSERT_EXPECTED_MODE_OPTIONS = ["manual", "variable"]
+ASSERT_EXPECTED_MODE_LABELS = {
+    "manual": "Manual value",
+    "variable": "Variable",
+}
 READABLE_SCOPES_BY_SECTION = {
     "beforeAll": {"runEnvelope", "result"},
     "beforeEach": {"runEnvelope", "global", "result"},
@@ -167,7 +187,7 @@ CONSTANT_SOURCE_ICON_BY_TYPE = {
     "json": ":material/file_json:",
     "jsonArray": ":material/data_array:",
     "dataset": ":material/table:",
-    "sqsQueue": ":material/outbox:",
+    "sqsQueue": ":material/move_to_inbox:",
 }
 ASSERT_PHRASE_BY_CODE = {
     "jsonEquals": "json equals",
@@ -205,6 +225,12 @@ VARIABLE_TYPE_LABELS_BY_SOURCE_TYPE = {
     "jsonArray": "json array",
     "dataset": "dataset",
     "sqsQueue": "queue",
+}
+COMMAND_GROUP_LABELS = {
+    "context": "variable",
+    "constant": "variable",
+    "action": "action",
+    "assert": "assert",
 }
 
 
@@ -269,6 +295,12 @@ def _parse_csv_tokens(value: object) -> list[str]:
     return [item.strip() for item in raw.split(",") if item and item.strip()]
 
 
+def _normalize_compare_keys_input(value: object) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return _parse_csv_tokens(value)
+
+
 def _format_lookup_label(item: dict, fallback_key: str = "id") -> str:
     return str(item.get("description") or item.get("code") or item.get(fallback_key) or "-")
 
@@ -277,7 +309,7 @@ def _format_source_variable_option(item: dict) -> str:
     name = str(item.get("name") or item.get("code") or item.get("id") or "-").strip() or "-"
     value_type = str(item.get("value_type") or "").strip()
     variable_type = VARIABLE_TYPE_LABELS_BY_SOURCE_TYPE.get(value_type, value_type or "generic")
-    return f"{name} : {variable_type} variable"
+    return f"{name}:{variable_type}"
 
 
 def _map_by_id(items: list[dict]) -> dict[str, dict]:
@@ -318,6 +350,66 @@ def _csv_from_value(value: object) -> str:
     if isinstance(value, list):
         return ", ".join(str(item).strip() for item in value if str(item).strip())
     return str(value or "").strip()
+
+
+def _assert_expected_mode_label(mode: str) -> str:
+    normalized = str(mode or "").strip().lower()
+    return ASSERT_EXPECTED_MODE_LABELS.get(normalized, normalized or "Expected source")
+
+
+def _extract_expected_ref_path(value: object) -> str:
+    if isinstance(value, dict):
+        ref = str(value.get("$ref") or "").strip()
+        if ref == "$" or ref.startswith("$."):
+            return ref
+        return ""
+    raw = str(value or "").strip()
+    if raw == "$" or raw.startswith("$."):
+        return raw
+    return ""
+
+
+def _json_object_keys(value: object) -> list[str]:
+    if not isinstance(value, dict):
+        return []
+    return [str(key).strip() for key in value.keys() if str(key).strip()]
+
+
+def _resolve_expected_json_array_payload(
+    json_arrays: list[dict],
+    expected_json_array_id: object,
+) -> tuple[object | None, str | None]:
+    normalized_id = str(expected_json_array_id or "").strip()
+    if not normalized_id:
+        return None, "Il campo Expected json-array e' obbligatorio."
+    json_array_item = next(
+        (item for item in json_arrays if str(item.get("id") or "").strip() == normalized_id),
+        None,
+    )
+    if not isinstance(json_array_item, dict):
+        return None, "Expected json-array non trovato."
+    return json_array_item.get("payload"), None
+
+
+def _resolve_expected_json_array_compare_keys(
+    json_arrays: list[dict],
+    expected_json_array_id: object,
+) -> tuple[list[str], str | None]:
+    payload, error = _resolve_expected_json_array_payload(json_arrays, expected_json_array_id)
+    if error:
+        return [], error
+    if isinstance(payload, dict):
+        keys = _json_object_keys(payload)
+        if not keys:
+            return [], "Expected json-array deve contenere un oggetto JSON con campi selezionabili."
+        return keys, None
+    if not isinstance(payload, list) or not payload:
+        return [], "Expected json-array deve contenere almeno un elemento."
+    first_item = payload[0]
+    keys = _json_object_keys(first_item)
+    if not keys:
+        return [], "Il primo elemento di Expected json-array deve essere un oggetto JSON."
+    return keys, None
 
 
 def _find_broker_id_for_queue_id(queue_id: str, brokers: list[dict]) -> str:
@@ -409,12 +501,19 @@ def _apply_visible_constant_effect(active_definitions: list[dict], operation: di
             configuration_json.get("sourceType") or configuration_json.get("source_type") or ""
         ).strip()
         if name and context and source_type:
+            preview_value = configuration_json.get("value") if source_type == "json" else None
             active_definitions.append(
                 {
                     "name": name,
                     "context": context,
                     "value_type": source_type,
                     "path": f"$.{context}.constants.{name}",
+                    "preview_value": deepcopy(preview_value),
+                    "source_reference_id": str(
+                        configuration_json.get("json_array_id")
+                        or configuration_json.get("dataset_id")
+                        or ""
+                    ).strip(),
                 }
             )
 
@@ -427,6 +526,8 @@ def _apply_visible_constant_effect(active_definitions: list[dict], operation: di
                 "context": "result",
                 "value_type": result_type,
                 "path": f"$.result.constants.{result_name}",
+                "preview_value": None,
+                "source_reference_id": "",
             }
         )
 
@@ -451,10 +552,6 @@ def _resolve_available_source_constants(
     command_code: str,
     stop_before_index: int | None = None,
 ) -> list[dict]:
-    compatible_types = SOURCE_COMPATIBILITY_BY_COMMAND.get(str(command_code or "").strip(), set())
-    if not compatible_types:
-        return []
-
     active_definitions: list[dict] = []
     section_type = _section_type_for_item(item)
 
@@ -477,8 +574,7 @@ def _resolve_available_source_constants(
     filtered_definitions = [
         definition
         for definition in active_definitions
-        if str(definition.get("value_type") or "").strip() in compatible_types
-        and str(definition.get("context") or "").strip()
+        if str(definition.get("context") or "").strip()
         in READABLE_SCOPES_BY_SECTION.get(section_type, set())
     ]
 
@@ -496,7 +592,115 @@ def _resolve_available_source_constants(
             str(item.get("value_type") or ""),
         )
     )
-    return options
+    compatible_types = SOURCE_COMPATIBILITY_BY_COMMAND.get(str(command_code or "").strip(), set())
+    if not compatible_types:
+        return []
+    return [
+        definition
+        for definition in options
+        if str(definition.get("value_type") or "").strip() in compatible_types
+    ]
+
+
+def _resolve_available_assert_constants(
+    draft: dict,
+    item: dict,
+    *,
+    command_code: str,
+    stop_before_index: int | None = None,
+    role: str = "actual",
+) -> list[dict]:
+    compatible_by_command = (
+        ASSERT_EXPECTED_COMPATIBILITY_BY_COMMAND
+        if str(role or "").strip().lower() == "expected"
+        else ASSERT_ACTUAL_COMPATIBILITY_BY_COMMAND
+    )
+    compatible_types = compatible_by_command.get(str(command_code or "").strip(), set())
+    if not compatible_types:
+        return []
+
+    visible_constants = _resolve_available_source_constants(
+        draft,
+        item,
+        command_code="sendMessageQueue",
+        stop_before_index=stop_before_index,
+    )
+    filtered = [
+        definition
+        for definition in visible_constants
+        if str(definition.get("value_type") or "").strip() in compatible_types
+    ]
+    if str(role or "").strip().lower() == "expected" and str(command_code or "").strip() == "jsonContains":
+        filtered = [
+            definition
+            for definition in filtered
+            if isinstance(definition.get("preview_value"), dict)
+    ]
+    return filtered
+
+
+def _dataset_mapping_key_options(datasource_item: dict) -> list[str]:
+    perimeter = datasource_item.get("perimeter")
+    if isinstance(perimeter, dict):
+        selected_columns = perimeter.get("selected_columns")
+        if isinstance(selected_columns, list):
+            return [str(column).strip() for column in selected_columns if str(column).strip()]
+    return []
+
+
+def _resolve_export_dataset_mapping_key_options(
+    draft: dict,
+    item: dict,
+    *,
+    source_path: object,
+    stop_before_index: int | None,
+    json_arrays: list[dict],
+    datasources: list[dict],
+) -> tuple[list[str], str | None]:
+    normalized_source = str(source_path or "").strip()
+    if not normalized_source:
+        return [], None
+
+    visible_constants = _resolve_available_source_constants(
+        draft,
+        item,
+        command_code="exportDataset",
+        stop_before_index=stop_before_index,
+    )
+    source_definition = next(
+        (
+            definition
+            for definition in visible_constants
+            if str(definition.get("path") or "").strip() == normalized_source
+        ),
+        None,
+    )
+    if not isinstance(source_definition, dict):
+        return [], None
+
+    source_type = str(source_definition.get("value_type") or "").strip()
+    if source_type == "json":
+        keys = _json_object_keys(source_definition.get("preview_value"))
+        return keys, None if keys else "La variabile json selezionata non espone campi selezionabili."
+
+    source_reference_id = str(source_definition.get("source_reference_id") or "").strip()
+    if source_type == "jsonArray":
+        keys, error = _resolve_expected_json_array_compare_keys(json_arrays, source_reference_id)
+        if error == "Il campo Expected json-array e' obbligatorio.":
+            return [], "La variabile json array selezionata non e' collegata a un json-array."
+        return keys, error
+
+    if source_type == "dataset":
+        datasource_item = next(
+            (candidate for candidate in datasources if str(candidate.get("id") or "").strip() == source_reference_id),
+            None,
+        )
+        if not isinstance(datasource_item, dict):
+            return [], "Il dataset selezionato non e' disponibile."
+        keys = _dataset_mapping_key_options(datasource_item)
+        return keys, None if keys else "Il dataset selezionato non espone colonne nel perimeter."
+
+    return [], None
 
 
 def _render_source_constant_select(
@@ -552,6 +756,18 @@ def _italicize_entity(value: object) -> str:
     if text == "-":
         return text
     return f"*{text}*"
+
+
+def _bold_entity(value: object) -> str:
+    text = str(value or "").strip() or "-"
+    if text == "-":
+        return text
+    return f"**{text}**"
+
+
+def _assert_data_label(command_code: str) -> str:
+    normalized = str(command_code or "").strip()
+    return "JsonArray" if normalized.startswith("jsonArray") else "Json"
 
 
 def _command_ui_label(command_item: dict) -> str:
@@ -632,7 +848,7 @@ def _command_leading_icon(command_item: dict) -> str:
         ).strip()
         return CONSTANT_SOURCE_ICON_BY_TYPE.get(source_type, ":material/data_object:")
     if command_code in TEST_ASSERT_COMMAND_CODES:
-        return ":material/frame_bug:"
+        return ":material/bug_report:"
     return COMMAND_ICON_BY_CODE.get(command_code, COMMAND_ICON_DEFAULT)
 
 
@@ -640,9 +856,17 @@ def _build_assert_summary(command_item: dict) -> str:
     configuration_json = _safe_dict(command_item.get("configuration_json") or {})
     command_code = _normalize_command_code(configuration_json) or "assert"
     variable_name = _extract_variable_name(configuration_json.get("actual"))
-    phrase = ASSERT_PHRASE_BY_CODE.get(command_code, "assert")
-    parts = [command_code, f"{phrase} {_italicize_entity(variable_name)}".strip()]
-    return " ".join(part for part in parts if part).strip()
+    data_label = _assert_data_label(command_code)
+    if command_code in {"jsonEquals", "jsonArrayEquals"}:
+        return f"**Expected {data_label} equals to** {_italicize_entity(variable_name)}"
+    if command_code in {"jsonContains", "jsonArrayContains"}:
+        return f"**Expected {data_label} contains** {_italicize_entity(variable_name)}"
+    if command_code in {"jsonEmpty", "jsonArrayEmpty"}:
+        return f"**{data_label}** {_italicize_entity(variable_name)} **is empty**"
+    if command_code in {"jsonNotEmpty", "jsonArrayNotEmpty"}:
+        return f"**{data_label}** {_italicize_entity(variable_name)} **is not empty**"
+    phrase = ASSERT_PHRASE_BY_CODE.get(command_code, "assert").capitalize()
+    return f"**{phrase}** {_italicize_entity(variable_name)}".strip()
 
 
 def _build_suite_command_summary(command_item: dict) -> str:
@@ -671,7 +895,8 @@ def _build_suite_command_summary(command_item: dict) -> str:
         return f"**Send variable** {_italicize_entity(variable_name)} **to queue** {_italicize_entity(queue_label)}"
     if command_code == "saveTable":
         table_name = str(configuration_json.get("table_name") or configuration_json.get("tableName") or "").strip() or "-"
-        return f"**Save table** {_italicize_entity(table_name)}"
+        variable_name = _extract_variable_name(configuration_json.get("source"))
+        return f"**Save variable** {_italicize_entity(variable_name)} **to table** {_italicize_entity(table_name)}"
     if command_code == "dropTable":
         table_name = str(configuration_json.get("table_name") or configuration_json.get("tableName") or "").strip() or "-"
         return f"**Drop table** {_italicize_entity(table_name)}"
@@ -679,34 +904,23 @@ def _build_suite_command_summary(command_item: dict) -> str:
         table_name = str(configuration_json.get("table_name") or configuration_json.get("tableName") or "").strip() or "-"
         return f"**Clean table** {_italicize_entity(table_name)}"
     if command_code == "exportDataset":
-        connection_label = _resolve_connection_label(
-            configuration_json.get("connection_id") or configuration_json.get("connectionId")
-        )
-        dataset_label = "-"
-        dataset_id = str(configuration_json.get("dataset_id") or configuration_json.get("datasetId") or "").strip()
-        if dataset_id:
-            dataset_label, resolved_connection_label = _resolve_dataset_summary(dataset_id)
-            if resolved_connection_label != "-":
-                connection_label = resolved_connection_label
-        if dataset_label == "-":
-            dataset_label = str(
-                configuration_json.get("table_name")
-                or configuration_json.get("tableName")
-                or configuration_json.get("dataset_description")
-                or configuration_json.get("datasetDescription")
-                or "-"
-            ).strip() or "-"
-        return f"**Export dataset** {_italicize_entity(connection_label)} {_italicize_entity(dataset_label)}".strip()
+        variable_name = _extract_variable_name(configuration_json.get("source"))
+        table_name = str(
+            configuration_json.get("table_name")
+            or configuration_json.get("tableName")
+            or "-"
+        ).strip() or "-"
+        return f"**Export variable** {_italicize_entity(variable_name)} **to table** {_italicize_entity(table_name)}"
     if command_code == "dropDataset":
         dataset_label, connection_label = _resolve_dataset_summary(
             configuration_json.get("dataset_id") or configuration_json.get("datasetId")
         )
-        return f"**Drop dataset** {_italicize_entity(connection_label)} {_italicize_entity(dataset_label)}".strip()
+        return f"**Drop dataset** {_italicize_entity(dataset_label)} **from** {_italicize_entity(connection_label)} **database**"
     if command_code == "cleanDataset":
         dataset_label, connection_label = _resolve_dataset_summary(
             configuration_json.get("dataset_id") or configuration_json.get("datasetId")
         )
-        return f"**Clean dataset** {_italicize_entity(connection_label)} {_italicize_entity(dataset_label)}".strip()
+        return f"**Clean dataset** {_italicize_entity(dataset_label)} **from** {_italicize_entity(connection_label)} **database**"
     if command_code == "runSuite":
         suite_label = _resolve_test_suite_label(
             configuration_json.get("suite_id") or configuration_json.get("suiteId")
@@ -796,6 +1010,33 @@ def _resolve_test_command_group(configuration_json: dict | None) -> str:
     if command_type == "assert" and command_code in TEST_ASSERT_COMMAND_CODES:
         return "assert"
     return ""
+
+
+def _command_group_label(command_group: str) -> str:
+    normalized_group = str(command_group or "").strip().lower()
+    return COMMAND_GROUP_LABELS.get(normalized_group, "command")
+
+
+def _command_group_title(command_group: str) -> str:
+    return _command_group_label(command_group).capitalize()
+
+
+def _command_group_intro_label(command_group: str, *, mode: str) -> str:
+    action = "Insert new" if str(mode or "").strip().lower() == "add" else "Modify"
+    return f"{action} {_command_group_label(command_group)}"
+
+
+def _command_group_primary_action_label(command_group: str, *, mode: str) -> str:
+    action = "Add" if str(mode or "").strip().lower() == "add" else "Save"
+    return f"{action} {_command_group_label(command_group)}"
+
+
+def _command_group_added_feedback(command_group: str) -> str:
+    return f"New {_command_group_label(command_group)} added."
+
+
+def _command_group_updated_feedback(command_group: str) -> str:
+    return f"{_command_group_title(command_group)} updated."
 
 
 def _new_suite_item(kind: str, hook_phase: str | None = None) -> dict:
@@ -1408,7 +1649,7 @@ def _build_hook_command_draft(dialog_nonce: int, command_code: str) -> tuple[dic
         result_target = _normalize_context_path(
             st.session_state.get(f"suite_add_hook_export_dataset_result_target_{dialog_nonce}")
         )
-        mapping_keys = _parse_csv_tokens(
+        mapping_keys = _normalize_compare_keys_input(
             st.session_state.get(f"suite_add_hook_export_dataset_mapping_keys_{dialog_nonce}")
         )
         cfg["source"] = source
@@ -1622,7 +1863,7 @@ def _build_test_command_draft(dialog_nonce: int, command_ui_code: str) -> tuple[
         result_target = _normalize_context_path(
             st.session_state.get(f"suite_add_test_export_dataset_result_target_{dialog_nonce}")
         )
-        mapping_keys = _parse_csv_tokens(
+        mapping_keys = _normalize_compare_keys_input(
             st.session_state.get(f"suite_add_test_export_dataset_mapping_keys_{dialog_nonce}")
         )
         cfg["source"] = source
@@ -1661,40 +1902,61 @@ def _build_test_command_draft(dialog_nonce: int, command_ui_code: str) -> tuple[
             "commandCode": command_code,
             "commandType": "assert",
         }
-        actual, parse_error = _parse_json_or_ref_input(
+        actual = _normalize_context_path(
             st.session_state.get(f"suite_add_test_assert_actual_{dialog_nonce}")
         )
-        if parse_error:
-            return None, parse_error
-        expected, expected_error = _parse_json_or_ref_input(
-            st.session_state.get(f"suite_add_test_assert_expected_{dialog_nonce}")
-        )
-        if expected_error:
-            return None, expected_error
         error_message = str(
             st.session_state.get(f"suite_add_test_assert_error_message_{dialog_nonce}") or ""
         ).strip()
-        if actual is not None:
-            cfg["actual"] = actual
-        if expected is not None:
-            cfg["expected"] = expected
+        if not actual:
+            return None, "Il campo Actual variable e' obbligatorio."
+        cfg["actual"] = actual
         if error_message:
             cfg["error_message"] = error_message
-        if command_code in {"jsonContains", "jsonArrayContains", "jsonArrayEquals"}:
+        if command_code in {"jsonEquals", "jsonContains"}:
+            expected_mode = str(
+                st.session_state.get(f"suite_add_test_assert_expected_mode_{dialog_nonce}") or "manual"
+            ).strip().lower()
+            if expected_mode == "variable":
+                expected_path = _normalize_context_path(
+                    st.session_state.get(f"suite_add_test_assert_expected_variable_{dialog_nonce}")
+                )
+                if not expected_path:
+                    return None, "Il campo Expected variable e' obbligatorio."
+                cfg["expected"] = {"$ref": expected_path}
+            else:
+                expected, expected_error = _parse_json_input(
+                    st.session_state.get(f"suite_add_test_assert_expected_{dialog_nonce}")
+                )
+                if expected_error:
+                    return None, expected_error
+                if expected is None:
+                    return None, "Il campo Expected e' obbligatorio."
+                if command_code == "jsonContains" and not isinstance(expected, dict):
+                    return None, "Expected deve essere un oggetto JSON."
+                cfg["expected"] = expected
+        if command_code == "jsonEquals" and cfg.get("expected") is None:
+            return None, "Il campo Expected e' obbligatorio."
+        if command_code == "jsonContains":
+            compare_keys = _normalize_compare_keys_input(
+                st.session_state.get(f"suite_add_test_assert_compare_keys_{dialog_nonce}")
+            )
+            if not compare_keys:
+                return None, "Il campo Compare keys e' obbligatorio."
+            cfg["compare_keys"] = compare_keys
+        if command_code in {"jsonArrayContains", "jsonArrayEquals"}:
             expected_json_array_id = str(
                 st.session_state.get(f"suite_add_test_assert_expected_json_array_id_{dialog_nonce}") or ""
             ).strip()
-            if command_code in {"jsonArrayContains", "jsonArrayEquals"} and not expected_json_array_id:
+            if not expected_json_array_id:
                 return None, "Il campo Expected json-array e' obbligatorio."
-            if expected_json_array_id:
-                cfg["expected_json_array_id"] = expected_json_array_id
-            compare_keys = _parse_csv_tokens(
+            cfg["expected_json_array_id"] = expected_json_array_id
+            compare_keys = _normalize_compare_keys_input(
                 st.session_state.get(f"suite_add_test_assert_compare_keys_{dialog_nonce}")
             )
-            if command_code in {"jsonArrayContains", "jsonArrayEquals"} and not compare_keys:
+            if not compare_keys:
                 return None, "Il campo Compare keys e' obbligatorio."
-            if compare_keys:
-                cfg["compare_keys"] = compare_keys
+            cfg["compare_keys"] = compare_keys
     else:
         return None, f"Command type non supportato: {command_ui_code}"
 
@@ -1794,7 +2056,7 @@ def _initialize_hook_command_form(
         st.session_state[_command_form_key(key_prefix, dialog_nonce, "export_dataset_mode")] = str(
             configuration_json.get("mode") or "append"
         )
-        st.session_state[_command_form_key(key_prefix, dialog_nonce, "export_dataset_mapping_keys")] = _csv_from_value(
+        st.session_state[_command_form_key(key_prefix, dialog_nonce, "export_dataset_mapping_keys")] = _normalize_compare_keys_input(
             configuration_json.get("mapping_keys")
         )
         st.session_state[_command_form_key(key_prefix, dialog_nonce, "export_dataset_dataset_id")] = str(
@@ -1821,6 +2083,7 @@ def _initialize_hook_command_form(
 def _initialize_test_command_form(
     dialog_nonce: int,
     command_item: dict,
+    json_arrays: list[dict],
     brokers: list[dict],
     *,
     key_prefix: str,
@@ -1919,7 +2182,7 @@ def _initialize_test_command_form(
         st.session_state[_command_form_key(key_prefix, dialog_nonce, "export_dataset_mode")] = str(
             configuration_json.get("mode") or "append"
         )
-        st.session_state[_command_form_key(key_prefix, dialog_nonce, "export_dataset_mapping_keys")] = _csv_from_value(
+        st.session_state[_command_form_key(key_prefix, dialog_nonce, "export_dataset_mapping_keys")] = _normalize_compare_keys_input(
             configuration_json.get("mapping_keys")
         )
         st.session_state[_command_form_key(key_prefix, dialog_nonce, "export_dataset_dataset_id")] = str(
@@ -1940,19 +2203,42 @@ def _initialize_test_command_form(
             configuration_json.get("dataset_id") or ""
         )
     elif command_code in TEST_ASSERT_COMMAND_CODES:
+        expected_value = configuration_json.get("expected")
+        expected_mode = "manual"
+        expected_variable = ""
+        expected_manual = ""
+        expected_ref = _extract_expected_ref_path(expected_value)
+        if expected_ref:
+            expected_mode = "variable"
+            expected_variable = expected_ref
+        elif expected_value is not None:
+            expected_manual = _stringify_form_value(expected_value)
+        elif command_code == "jsonContains":
+            legacy_expected_json_array_id = configuration_json.get("expected_json_array_id")
+            legacy_payload, legacy_error = _resolve_expected_json_array_payload(
+                json_arrays,
+                legacy_expected_json_array_id,
+            )
+            if legacy_error is None and isinstance(legacy_payload, dict):
+                expected_manual = _stringify_form_value(legacy_payload)
+            elif legacy_error is None and isinstance(legacy_payload, list) and legacy_payload:
+                first_item = legacy_payload[0]
+                if isinstance(first_item, dict):
+                    expected_manual = _stringify_form_value(first_item)
+
         st.session_state[_command_form_key(key_prefix, dialog_nonce, "assert_error_message")] = str(
             configuration_json.get("error_message") or ""
         )
-        st.session_state[_command_form_key(key_prefix, dialog_nonce, "assert_actual")] = _stringify_form_value(
-            configuration_json.get("actual")
+        st.session_state[_command_form_key(key_prefix, dialog_nonce, "assert_actual")] = str(
+            configuration_json.get("actual") or ""
         )
-        st.session_state[_command_form_key(key_prefix, dialog_nonce, "assert_expected")] = _stringify_form_value(
-            configuration_json.get("expected")
-        )
+        st.session_state[_command_form_key(key_prefix, dialog_nonce, "assert_expected_mode")] = expected_mode
+        st.session_state[_command_form_key(key_prefix, dialog_nonce, "assert_expected")] = expected_manual
+        st.session_state[_command_form_key(key_prefix, dialog_nonce, "assert_expected_variable")] = expected_variable
         st.session_state[_command_form_key(key_prefix, dialog_nonce, "assert_expected_json_array_id")] = str(
             configuration_json.get("expected_json_array_id") or ""
         )
-        st.session_state[_command_form_key(key_prefix, dialog_nonce, "assert_compare_keys")] = _csv_from_value(
+        st.session_state[_command_form_key(key_prefix, dialog_nonce, "assert_compare_keys")] = _normalize_compare_keys_input(
             configuration_json.get("compare_keys")
         )
 
@@ -2082,17 +2368,10 @@ def _render_hook_command_form(
     elif command_code == "exportDataset":
         connection_ids = [str(item.get("id")) for item in connections if item.get("id")]
         dataset_ids = [str(item.get("id")) for item in datasources if item.get("id")]
+        source_key = _command_form_key(key_prefix, dialog_nonce, "export_dataset_source")
         st.selectbox(
-            "Connection",
-            options=connection_ids or [""],
-            format_func=lambda item_id: _format_lookup_label(next((item for item in connections if str(item.get("id")) == str(item_id)), {})) if item_id else "Nessuna connection disponibile",
-            key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_connection_id"),
-            disabled=not bool(connection_ids),
-        )
-        st.text_input("Table name", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_table_name"))
-        _render_source_constant_select(
             label="Source variable",
-            key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_source"),
+            key=source_key,
             options=_resolve_available_source_constants(
                 draft,
                 item,
@@ -2101,8 +2380,37 @@ def _render_hook_command_form(
             ),
             help_text="Visible and compatible variables at this point.",
         )
+        st.selectbox(
+            "Connection",
+            options=connection_ids or [""],
+            format_func=lambda item_id: _format_lookup_label(next((item for item in connections if str(item.get("id")) == str(item_id)), {})) if item_id else "Nessuna connection disponibile",
+            key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_connection_id"),
+            disabled=not bool(connection_ids),
+        )
+        st.text_input("Table name", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_table_name"))
         st.selectbox("Mode", options=EXPORT_DATASET_MODE_OPTIONS, key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_mode"))
-        st.text_input("Mapping keys (optional)", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_mapping_keys"), placeholder="id, code")
+        mapping_keys_key = _command_form_key(key_prefix, dialog_nonce, "export_dataset_mapping_keys")
+        mapping_key_options, mapping_key_error = _resolve_export_dataset_mapping_key_options(
+            draft,
+            item,
+            source_path=st.session_state.get(source_key),
+            stop_before_index=stop_before_index,
+            json_arrays=json_arrays,
+            datasources=datasources,
+        )
+        st.session_state[mapping_keys_key] = [
+            key
+            for key in _normalize_compare_keys_input(st.session_state.get(mapping_keys_key))
+            if key in mapping_key_options
+        ]
+        st.multiselect(
+            "Mapping keys (optional)",
+            options=mapping_key_options,
+            key=mapping_keys_key,
+            disabled=not bool(mapping_key_options),
+        )
+        if mapping_key_error:
+            st.info(mapping_key_error)
         st.selectbox(
             "Existing dataset (optional)",
             options=[""] + dataset_ids,
@@ -2298,17 +2606,10 @@ def _render_test_command_form(
     elif command_code == "exportDataset":
         connection_ids = [str(item.get("id")) for item in connections if item.get("id")]
         dataset_ids = [str(item.get("id")) for item in datasources if item.get("id")]
-        st.selectbox(
-            "Connection",
-            options=connection_ids or [""],
-            format_func=lambda item_id: _format_lookup_label(next((item for item in connections if str(item.get("id")) == str(item_id)), {})) if item_id else "Nessuna connection disponibile",
-            key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_connection_id"),
-            disabled=not bool(connection_ids),
-        )
-        st.text_input("Table name", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_table_name"))
+        source_key = _command_form_key(key_prefix, dialog_nonce, "export_dataset_source")
         _render_source_constant_select(
             label="Source variable",
-            key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_source"),
+            key=source_key,
             options=_resolve_available_source_constants(
                 draft,
                 item,
@@ -2317,8 +2618,37 @@ def _render_test_command_form(
             ),
             help_text="Visible and compatible variables at this point.",
         )
+        st.selectbox(
+            "Connection",
+            options=connection_ids or [""],
+            format_func=lambda item_id: _format_lookup_label(next((item for item in connections if str(item.get("id")) == str(item_id)), {})) if item_id else "Nessuna connection disponibile",
+            key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_connection_id"),
+            disabled=not bool(connection_ids),
+        )
+        st.text_input("Table name", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_table_name"))
         st.selectbox("Mode", options=EXPORT_DATASET_MODE_OPTIONS, key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_mode"))
-        st.text_input("Mapping keys (optional)", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_mapping_keys"), placeholder="id, code")
+        mapping_keys_key = _command_form_key(key_prefix, dialog_nonce, "export_dataset_mapping_keys")
+        mapping_key_options, mapping_key_error = _resolve_export_dataset_mapping_key_options(
+            draft,
+            item,
+            source_path=st.session_state.get(source_key),
+            stop_before_index=stop_before_index,
+            json_arrays=json_arrays,
+            datasources=datasources,
+        )
+        st.session_state[mapping_keys_key] = [
+            key
+            for key in _normalize_compare_keys_input(st.session_state.get(mapping_keys_key))
+            if key in mapping_key_options
+        ]
+        st.multiselect(
+            "Mapping keys (optional)",
+            options=mapping_key_options,
+            key=mapping_keys_key,
+            disabled=not bool(mapping_key_options),
+        )
+        if mapping_key_error:
+            st.info(mapping_key_error)
         st.selectbox(
             "Existing dataset (optional)",
             options=[""] + dataset_ids,
@@ -2346,19 +2676,135 @@ def _render_test_command_form(
             disabled=not bool(dataset_ids),
         )
     elif command_code in TEST_ASSERT_COMMAND_CODES:
+        actual_options = _resolve_available_assert_constants(
+            draft,
+            item,
+            command_code=command_code,
+            stop_before_index=stop_before_index,
+            role="actual",
+        )
         st.text_input("Error message (optional)", key=_command_form_key(key_prefix, dialog_nonce, "assert_error_message"))
-        st.text_area("Actual (optional)", key=_command_form_key(key_prefix, dialog_nonce, "assert_actual"), height=120, help="JSON valido o path tipo `$.local.constants.rows`.")
-        if command_code == "jsonEquals":
-            st.text_area("Expected", key=_command_form_key(key_prefix, dialog_nonce, "assert_expected"), height=120, help="JSON valido o path tipo `$.runEnvelope.event.payload`.")
-        if command_code in {"jsonContains", "jsonArrayContains", "jsonArrayEquals"}:
+        _render_source_constant_select(
+            label="Actual variable",
+            key=_command_form_key(key_prefix, dialog_nonce, "assert_actual"),
+            options=actual_options,
+            help_text="Visible and compatible variables at this point.",
+        )
+        if command_code in {"jsonEquals", "jsonContains"}:
+            expected_mode_key = _command_form_key(key_prefix, dialog_nonce, "assert_expected_mode")
+            current_expected_mode = str(st.session_state.get(expected_mode_key) or "").strip().lower()
+            if current_expected_mode not in ASSERT_EXPECTED_MODE_OPTIONS:
+                st.session_state[expected_mode_key] = ASSERT_EXPECTED_MODE_OPTIONS[0]
+            expected_mode = st.segmented_control(
+                "Expected source",
+                options=ASSERT_EXPECTED_MODE_OPTIONS,
+                format_func=_assert_expected_mode_label,
+                key=expected_mode_key,
+            )
+            if expected_mode == "variable":
+                expected_options = _resolve_available_assert_constants(
+                    draft,
+                    item,
+                    command_code=command_code,
+                    stop_before_index=stop_before_index,
+                    role="expected",
+                )
+                _render_source_constant_select(
+                    label="Expected variable",
+                    key=_command_form_key(key_prefix, dialog_nonce, "assert_expected_variable"),
+                    options=expected_options,
+                    help_text="Visible and compatible variables at this point.",
+                )
+            else:
+                st.text_area(
+                    "Expected",
+                    key=_command_form_key(key_prefix, dialog_nonce, "assert_expected"),
+                    height=120,
+                    help="Inserisci JSON valido.",
+                )
+        if command_code == "jsonContains":
+            compare_keys_key = _command_form_key(key_prefix, dialog_nonce, "assert_compare_keys")
+            compare_key_options: list[str] = []
+            compare_key_error: str | None = None
+            expected_mode = str(
+                st.session_state.get(_command_form_key(key_prefix, dialog_nonce, "assert_expected_mode")) or "manual"
+            ).strip().lower()
+            if expected_mode == "variable":
+                expected_variable = str(
+                    st.session_state.get(_command_form_key(key_prefix, dialog_nonce, "assert_expected_variable")) or ""
+                ).strip()
+                expected_options = _resolve_available_assert_constants(
+                    draft,
+                    item,
+                    command_code=command_code,
+                    stop_before_index=stop_before_index,
+                    role="expected",
+                )
+                expected_definition = next(
+                    (
+                        option
+                        for option in expected_options
+                        if str(option.get("path") or "").strip() == expected_variable
+                    ),
+                    {},
+                )
+                compare_key_options = _json_object_keys(expected_definition.get("preview_value"))
+                if expected_variable and not compare_key_options:
+                    compare_key_error = "La variabile Expected selezionata non espone campi ispezionabili."
+            else:
+                expected_value, expected_error = _parse_json_input(
+                    st.session_state.get(_command_form_key(key_prefix, dialog_nonce, "assert_expected"))
+                )
+                if expected_error:
+                    compare_key_error = expected_error
+                elif expected_value is not None:
+                    compare_key_options = _json_object_keys(expected_value)
+                    if not compare_key_options:
+                        compare_key_error = "Expected deve essere un oggetto JSON."
+            selected_compare_keys = [
+                key
+                for key in _normalize_compare_keys_input(st.session_state.get(compare_keys_key))
+                if key in compare_key_options
+            ]
+            st.session_state[compare_keys_key] = selected_compare_keys
+            st.multiselect(
+                "Compare keys",
+                options=compare_key_options,
+                key=compare_keys_key,
+                disabled=not bool(compare_key_options),
+                help="Top-level keys from the expected JSON object.",
+            )
+            if compare_key_error:
+                st.info(compare_key_error)
+        if command_code in {"jsonArrayContains", "jsonArrayEquals"}:
             json_array_ids = [str(item.get("id")) for item in json_arrays if item.get("id")]
+            selected_json_array_key = _command_form_key(key_prefix, dialog_nonce, "assert_expected_json_array_id")
             st.selectbox(
                 "Expected json-array",
                 options=[""] + json_array_ids,
                 format_func=lambda item_id: _format_lookup_label(next((item for item in json_arrays if str(item.get("id")) == str(item_id)), {})) if item_id else "Nessun json-array selezionato",
-                key=_command_form_key(key_prefix, dialog_nonce, "assert_expected_json_array_id"),
+                key=selected_json_array_key,
             )
-            st.text_input("Compare keys (optional)", key=_command_form_key(key_prefix, dialog_nonce, "assert_compare_keys"), placeholder="id, code")
+            compare_keys_key = _command_form_key(key_prefix, dialog_nonce, "assert_compare_keys")
+            compare_key_options, compare_key_error = _resolve_expected_json_array_compare_keys(
+                json_arrays,
+                st.session_state.get(selected_json_array_key),
+            )
+            selected_compare_keys = [
+                key
+                for key in _normalize_compare_keys_input(st.session_state.get(compare_keys_key))
+                if key in compare_key_options
+            ]
+            st.session_state[compare_keys_key] = selected_compare_keys
+            st.multiselect(
+                "Compare keys",
+                options=compare_key_options,
+                key=compare_keys_key,
+                disabled=not bool(compare_key_options),
+                help="Top-level keys from the first expected JSON-array item.",
+            )
+            if compare_key_error and str(st.session_state.get(selected_json_array_key) or "").strip():
+                st.info(compare_key_error)
 
     st.text_input(
         "Comment",
@@ -2466,7 +2912,9 @@ def _build_test_command_draft_with_prefix(
         ("clean_dataset_id", f"suite_add_test_clean_dataset_id_{dialog_nonce}"),
         ("assert_error_message", f"suite_add_test_assert_error_message_{dialog_nonce}"),
         ("assert_actual", f"suite_add_test_assert_actual_{dialog_nonce}"),
+        ("assert_expected_mode", f"suite_add_test_assert_expected_mode_{dialog_nonce}"),
         ("assert_expected", f"suite_add_test_assert_expected_{dialog_nonce}"),
+        ("assert_expected_variable", f"suite_add_test_assert_expected_variable_{dialog_nonce}"),
         ("assert_expected_json_array_id", f"suite_add_test_assert_expected_json_array_id_{dialog_nonce}"),
         ("assert_compare_keys", f"suite_add_test_assert_compare_keys_{dialog_nonce}"),
     ]
@@ -2645,7 +3093,7 @@ def _test_label(test: dict, index: int) -> str:
 
 def _render_test_item(test: dict, index: int, execution_state: dict):
     current_test = _ensure_test_item(test, index)
-    with st.expander(_test_label(current_test, index), expanded=True):
+    with st.expander(_test_label(current_test, index), expanded=False):
         operations = current_test.get("operations") or []
         if operations:
             for op_idx, operation in enumerate(operations):
@@ -2653,7 +3101,11 @@ def _render_test_item(test: dict, index: int, execution_state: dict):
         else:
             st.caption("Nessun command configurato.")
 
-        add_cols = st.columns([1, 3, 3, 3, 1, 1, 1], gap="small", vertical_alignment="center")
+        current_test_id = str(current_test.get("id") or "").strip()
+        selected_suite_id = str(st.session_state.get(SELECTED_TEST_SUITE_ID_KEY) or "").strip()
+        can_run_single_test = bool(current_test_id and selected_suite_id)
+
+        add_cols = st.columns([1, 3, 3, 3, 1, 1, 1, 1], gap="small", vertical_alignment="center")
         with add_cols[1]:
             if st.button(
                 "+ Variable",
@@ -2682,7 +3134,24 @@ def _render_test_item(test: dict, index: int, execution_state: dict):
                 _open_test_command_dialog_for_item(str(current_test.get("_ui_key") or ""), "assert")
                 st.rerun()
         with add_cols[4]:
-            st.write("")
+            if st.button(
+                "",
+                key=f"suite_editor_run_test_{current_test.get('_ui_key')}",
+                icon=":material/play_arrow:",
+                help="Run this test"
+                if can_run_single_test
+                else "Save suite before running this test",
+                type="primary",
+                disabled=not can_run_single_test,
+                use_container_width=True,
+            ):
+                response = execute_test_by_id(selected_suite_id, current_test_id)
+                execution_id = str(response.get("execution_id") or "").strip()
+                if execution_id:
+                    st.session_state[TEST_SUITE_LAST_EXECUTION_ID_KEY] = execution_id
+                    st.session_state[PENDING_TEST_SUITE_EXECUTION_SELECTION_KEY] = execution_id
+                    register_execution_listener(execution_id, selected_suite_id)
+                    st.rerun()
         with add_cols[5]:
             if st.button(
                 "",
@@ -2714,6 +3183,8 @@ def _render_add_hook_command_dialog(draft: dict):
     hook_ui_key = str(st.session_state.get(HOOK_ADD_COMMAND_DIALOG_TARGET_UI_KEY) or "").strip()
     command_group = str(st.session_state.get(HOOK_ADD_COMMAND_DIALOG_GROUP_KEY) or "context").strip().lower()
     hook_item = find_draft_test_by_ui_key(draft, hook_ui_key)
+    command_intro_label = _command_group_intro_label(command_group, mode="add")
+    primary_action_label = _command_group_primary_action_label(command_group, mode="add")
 
     if not isinstance(hook_item, dict):
         st.error("Hook di destinazione non trovato.")
@@ -2730,7 +3201,7 @@ def _render_add_hook_command_dialog(draft: dict):
     brokers = _safe_list(st.session_state.get(TEST_EDITOR_BROKERS_KEY, []))
     connections = _safe_list(st.session_state.get(DATABASE_CONNECTIONS_KEY, []))
     default_context = _default_context_for_item(hook_item)
-    st.markdown("**Insert new one**")
+    st.markdown(f"**{command_intro_label}**")
     command_code = _render_hook_command_form(
         dialog_nonce,
         command_group,
@@ -2748,7 +3219,7 @@ def _render_add_hook_command_dialog(draft: dict):
     action_cols = st.columns([1, 1], gap="small", vertical_alignment="center")
     with action_cols[0]:
         if st.button(
-            "Add command",
+            primary_action_label,
             key=f"suite_add_hook_command_save_{dialog_nonce}",
             icon=":material/add_circle:",
             type="secondary",
@@ -2764,7 +3235,7 @@ def _render_add_hook_command_dialog(draft: dict):
                 return
             append_operation_to_test(hook_item, operation_item or {})
             _close_hook_command_dialog()
-            st.session_state[SUITE_FEEDBACK_KEY] = "Nuovo command aggiunto."
+            st.session_state[SUITE_FEEDBACK_KEY] = _command_group_added_feedback(command_group)
             _persist_changes()
     with action_cols[1]:
         if st.button(
@@ -2782,6 +3253,8 @@ def _render_add_test_command_dialog(draft: dict):
     test_ui_key = str(st.session_state.get(TEST_ADD_COMMAND_DIALOG_TARGET_UI_KEY) or "").strip()
     command_group = str(st.session_state.get(TEST_ADD_COMMAND_DIALOG_GROUP_KEY) or "constant").strip().lower()
     test_item = _find_test_by_ui_key(draft, test_ui_key)
+    command_intro_label = _command_group_intro_label(command_group, mode="add")
+    primary_action_label = _command_group_primary_action_label(command_group, mode="add")
 
     if not isinstance(test_item, dict):
         st.error("Test di destinazione non trovato.")
@@ -2798,7 +3271,7 @@ def _render_add_test_command_dialog(draft: dict):
     brokers = _safe_list(st.session_state.get(TEST_EDITOR_BROKERS_KEY, []))
     connections = _safe_list(st.session_state.get(DATABASE_CONNECTIONS_KEY, []))
 
-    st.markdown("**Insert new one**")
+    st.markdown(f"**{command_intro_label}**")
     command_ui_code = _render_test_command_form(
         dialog_nonce,
         command_group,
@@ -2815,7 +3288,7 @@ def _render_add_test_command_dialog(draft: dict):
     action_cols = st.columns([1, 1], gap="small", vertical_alignment="center")
     with action_cols[0]:
         if st.button(
-            "Add command",
+            primary_action_label,
             key=f"suite_add_test_command_save_{dialog_nonce}",
             icon=":material/add_circle:",
             type="secondary",
@@ -2831,7 +3304,7 @@ def _render_add_test_command_dialog(draft: dict):
                 return
             append_operation_to_test(test_item, operation_item or {})
             _close_test_command_dialog()
-            st.session_state[SUITE_FEEDBACK_KEY] = "Nuovo command aggiunto."
+            st.session_state[SUITE_FEEDBACK_KEY] = _command_group_added_feedback(command_group)
             _persist_changes()
     with action_cols[1]:
         if st.button(
@@ -2998,6 +3471,8 @@ def _render_edit_command_dialog(draft: dict):
     owner_kind = str(st.session_state.get(COMMAND_EDIT_DIALOG_OWNER_KIND_KEY) or "").strip().lower()
     command_group = str(st.session_state.get(COMMAND_EDIT_DIALOG_GROUP_KEY) or "").strip().lower()
     item = find_draft_test_by_ui_key(draft, item_ui_key)
+    command_intro_label = _command_group_intro_label(command_group, mode="edit")
+    primary_action_label = _command_group_primary_action_label(command_group, mode="edit")
 
     if not isinstance(item, dict):
         st.error("Elemento di destinazione non trovato.")
@@ -3008,7 +3483,7 @@ def _render_edit_command_dialog(draft: dict):
 
     operation_index, operation = _find_operation_by_ui_key(item, command_ui_key)
     if not isinstance(operation, dict):
-        st.error("Command non trovato.")
+        st.error(f"{_command_group_title(command_group)} not found.")
         if st.button("Cancel", key=f"suite_edit_command_missing_operation_cancel_{dialog_nonce}", use_container_width=True):
             _close_edit_command_dialog()
             st.rerun()
@@ -3024,6 +3499,7 @@ def _render_edit_command_dialog(draft: dict):
     datasources = _safe_list(st.session_state.get(TEST_EDITOR_DATABASE_DATASOURCES_KEY, []))
     brokers = _safe_list(st.session_state.get(TEST_EDITOR_BROKERS_KEY, []))
     connections = _safe_list(st.session_state.get(DATABASE_CONNECTIONS_KEY, []))
+    st.markdown(f"**{command_intro_label}**")
 
     if owner_kind == "hook":
         default_context = _default_context_for_item(item)
@@ -3048,7 +3524,13 @@ def _render_edit_command_dialog(draft: dict):
             key_prefix="suite_edit_hook_command",
         )
     else:
-        _initialize_test_command_form(dialog_nonce, operation, brokers, key_prefix="suite_edit_test_command")
+        _initialize_test_command_form(
+            dialog_nonce,
+            operation,
+            json_arrays,
+            brokers,
+            key_prefix="suite_edit_test_command",
+        )
         command_code = _render_test_command_form(
             dialog_nonce,
             command_group,
@@ -3064,7 +3546,7 @@ def _render_edit_command_dialog(draft: dict):
 
     action_cols = st.columns([1, 1, 1], gap="small", vertical_alignment="center")
     with action_cols[0]:
-        if st.button("Save", key=f"suite_edit_command_save_{dialog_nonce}", icon=":material/save:", type="secondary", use_container_width=True):
+        if st.button(primary_action_label, key=f"suite_edit_command_save_{dialog_nonce}", icon=":material/save:", type="secondary", use_container_width=True):
             original_draft = deepcopy(st.session_state.get(TEST_SUITE_DRAFT_KEY, {}))
             if owner_kind == "hook":
                 updated_operation, validation_error = _build_hook_command_draft_with_prefix(
@@ -3083,7 +3565,10 @@ def _render_edit_command_dialog(draft: dict):
                 return
             _update_operation_in_item(item, operation_index, updated_operation or {})
             try:
-                _persist_current_draft(success_message="Command updated.", rerun=False)
+                _persist_current_draft(
+                    success_message=_command_group_updated_feedback(command_group),
+                    rerun=False,
+                )
             except Exception as exc:
                 st.session_state[TEST_SUITE_DRAFT_KEY] = original_draft
                 _render_persist_error(exc)
@@ -3273,7 +3758,7 @@ def render_suite_editor_page():
             "Run",
             key="run_suite",
             icon=":material/play_arrow:",
-            type="secondary",
+            type="primary",
             use_container_width=True,
         ):
             response = execute_test_suite_by_id(selected_suite_id)

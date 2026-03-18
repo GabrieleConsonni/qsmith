@@ -210,3 +210,76 @@ def test_draft_to_test_suite_payload_recomputes_stale_refs_after_command_edit():
 
     assert serialized_init_cfg["definitionId"]
     assert serialized_send_cfg["sourceConstantRef"]["definitionId"] == serialized_init_cfg["definitionId"]
+
+
+def test_draft_to_test_suite_payload_preserves_expected_ref_for_json_contains_round_trip():
+    draft = {
+        "id": "suite-contains-ref",
+        "description": "suite",
+        "hooks": {
+            "before-all": {
+                "kind": "hook",
+                "hook_phase": "before-all",
+                "description": "before all",
+                "operations": [
+                    {
+                        "order": 1,
+                        "description": "expected payload",
+                        "configuration_json": {
+                            "commandCode": "initConstant",
+                            "commandType": "context",
+                            "name": "expectedPayload",
+                            "context": "global",
+                            "sourceType": "json",
+                            "value": {"id": 1, "code": "A"},
+                        },
+                    },
+                    {
+                        "order": 2,
+                        "description": "actual payload",
+                        "configuration_json": {
+                            "commandCode": "initConstant",
+                            "commandType": "context",
+                            "name": "actualPayload",
+                            "context": "global",
+                            "sourceType": "json",
+                            "value": {"id": 1, "code": "A", "extra": True},
+                        },
+                    },
+                ],
+            }
+        },
+        "tests": [
+            {
+                "kind": "test",
+                "description": "contains",
+                "operations": [
+                    {
+                        "order": 1,
+                        "description": "assert contains",
+                        "configuration_json": {
+                            "commandCode": "jsonContains",
+                            "commandType": "assert",
+                            "actual": "$.global.constants.actualPayload",
+                            "expected": {"$ref": "$.global.constants.expectedPayload"},
+                            "compare_keys": ["id", "code"],
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+    payload = draft_to_test_suite_payload(draft)
+    assert_cfg = payload["tests"][0]["commands"][0]["cfg"]
+
+    assert assert_cfg["actualConstantRef"]["definitionId"]
+    assert assert_cfg["expected"] == {"$ref": "$.global.constants.expectedPayload"}
+    assert assert_cfg["compare_keys"] == ["id", "code"]
+
+    round_trip = build_test_suite_draft(payload)
+    round_trip_cfg = round_trip["tests"][0]["operations"][0]["configuration_json"]
+
+    assert round_trip_cfg["actual"] == "$.global.constants.actualPayload"
+    assert round_trip_cfg["expected"] == {"$ref": "$.global.constants.expectedPayload"}
+    assert round_trip_cfg["compare_keys"] == ["id", "code"]

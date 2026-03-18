@@ -33,7 +33,6 @@ def test_resolve_tests_to_execute_returns_requested_item_only():
     resolved = resolve_suite_items_to_execute(
         tests,
         target_suite_item_id="t2",
-        include_previous=False,
     )
 
     assert [item.id for item in resolved] == ["t2"]
@@ -46,5 +45,4 @@ def test_resolve_tests_to_execute_raises_for_missing_target():
         resolve_suite_items_to_execute(
             tests,
             target_suite_item_id="missing",
-            include_previous=False,
         )

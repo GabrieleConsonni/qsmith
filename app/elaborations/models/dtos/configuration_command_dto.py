@@ -56,6 +56,7 @@ class AssertType(str, Enum):
     SCHEMA_VALIDATION = "schema-validation"
     CONTAINS = "contains"
     JSON_ARRAY_EQUALS = "json-array-equals"
+    JSON_ARRAY_CONTAINS = "json-array-contains"
     EQUALS = "equals"
 
 
@@ -491,6 +492,11 @@ class AssertConfigurationCommandDto(ConfigurationCommandDto):
                 raise ValueError("expected_json_array_id is required for jsonArray assert commands.")
             if not self.compare_keys:
                 raise ValueError("compare_keys is required for jsonArray assert commands.")
+        if self.commandCode == CommandCode.JSON_CONTAINS.value:
+            if self.expected is None:
+                raise ValueError("expected is required for jsonContains.")
+            if not self.compare_keys:
+                raise ValueError("compare_keys is required for jsonContains.")
         if self.commandCode == CommandCode.JSON_EQUALS.value and self.expected is None:
             raise ValueError("expected is required for jsonEquals.")
         return self
@@ -505,7 +511,7 @@ class AssertConfigurationCommandDto(ConfigurationCommandDto):
             CommandCode.JSON_ARRAY_EQUALS.value: "json-array-equals",
             CommandCode.JSON_ARRAY_EMPTY.value: "empty",
             CommandCode.JSON_ARRAY_NOT_EMPTY.value: "not-empty",
-            CommandCode.JSON_ARRAY_CONTAINS.value: "contains",
+            CommandCode.JSON_ARRAY_CONTAINS.value: "json-array-contains",
         }
         return mapping[self.commandCode]
 

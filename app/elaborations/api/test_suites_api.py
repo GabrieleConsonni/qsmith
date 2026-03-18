@@ -4,7 +4,6 @@ from _alembic.models.suite_item_entity import SuiteItemEntity
 from _alembic.models.suite_item_command_entity import SuiteItemOperationEntity
 from _alembic.models.test_suite_entity import TestSuiteEntity
 from _alembic.services.session_context_manager import managed_session
-from elaborations.models.dtos.execute_test_dto import ExecuteSuiteTestDto
 from elaborations.models.dtos.test_suite_dto import (
     CreateSuiteItemDto,
     CreateSuiteItemCommandDto,
@@ -207,11 +206,10 @@ async def execute_test_suite_api(_id: str):
 
 
 @router.post("/test-suite/{test_suite_id}/test/{suite_item_id}/execute")
-async def execute_test_api(test_suite_id: str, suite_item_id: str, dto: ExecuteSuiteTestDto):
+async def execute_test_api(test_suite_id: str, suite_item_id: str):
     execution_id = execute_test_by_id(
         test_suite_id=test_suite_id,
         suite_item_id=suite_item_id,
-        include_previous=dto.include_previous,
     )
     return {"message": "Test started", "execution_id": execution_id}
 

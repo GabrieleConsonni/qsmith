@@ -101,7 +101,7 @@ def test_dataset_api_roundtrip_and_preview(monkeypatch, alembic_container, exter
         external_engine.dispose()
 
     app = _load_main_app(monkeypatch)
-    client = TestClient(app)
+    client = TestClient(app, raise_server_exceptions=False)
     connection_payload = {
         "description": "api dataset connection",
         "payload": {
@@ -191,7 +191,7 @@ def test_dataset_api_roundtrip_and_preview(monkeypatch, alembic_container, exter
 
 def test_dataset_api_rejects_invalid_perimeter(monkeypatch, alembic_container, external_postgres_container):
     app = _load_main_app(monkeypatch)
-    client = TestClient(app)
+    client = TestClient(app, raise_server_exceptions=False)
     connection_response = client.post(
         "/database/connection",
         json={
@@ -233,3 +233,187 @@ def test_dataset_api_rejects_invalid_perimeter(monkeypatch, alembic_container, e
 
     assert response.status_code == 500
     assert "not supported" in response.json()["detail"]
+
+
+def test_dataset_api_preview_supports_parameter_defaults(monkeypatch, alembic_container, external_postgres_container):
+    table_name = "dataset_api_orders_params"
+    external_engine = create_engine(external_postgres_container.get_connection_url())
+    try:
+        with external_engine.begin() as conn:
+            conn.execute(text(f"DROP TABLE IF EXISTS {table_name}"))
+            conn.execute(
+                text(
+                    f"""
+                    CREATE TABLE {table_name} (
+                        id INTEGER,
+                        status TEXT,
+                        created_at TIMESTAMP
+                    )
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    f"""
+                    INSERT INTO {table_name} (id, status, created_at)
+                    VALUES
+                        (1, 'READY', NOW() - INTERVAL '2 day'),
+                        (2, 'READY', NOW() - INTERVAL '1 day'),
+                        (3, 'PENDING', NOW() + INTERVAL '1 day')
+                    """
+                )
+            )
+    finally:
+        external_engine.dispose()
+
+    app = _load_main_app(monkeypatch)
+    client = TestClient(app)
+    connection_response = client.post(
+        "/database/connection",
+        json={
+            "description": "api dataset params connection",
+            "payload": {
+                "database_type": "postgres",
+                "host": external_postgres_container.get_container_host_ip(),
+                "port": int(external_postgres_container.get_exposed_port(5432)),
+                "database": external_postgres_container.dbname,
+                "db_schema": "public",
+                "user": external_postgres_container.username,
+                "password": external_postgres_container.password,
+            },
+        },
+    )
+    connection_id = connection_response.json()["id"]
+
+    dataset_response = client.post(
+        "/data-source/database",
+        json={
+            "description": "orders-parameterized",
+            "payload": {
+                "connection_id": connection_id,
+                "schema": "public",
+                "object_name": table_name,
+                "object_type": "table",
+            },
+            "perimeter": {
+                "selected_columns": ["id", "status"],
+                "parameters": [
+                    {
+                        "name": "statusParam",
+                        "type": "string",
+                        "required": True,
+                        "default_value": "READY",
+                    }
+                ],
+                "filter": {
+                    "logic": "AND",
+                    "conditions": [
+                        {
+                            "field": "status",
+                            "operator": "eq",
+                            "value": {"kind": "parameter", "name": "statusParam"},
+                        },
+                    ],
+                },
+                "sort": [{"field": "id", "direction": "asc"}],
+            },
+        },
+    )
+    dataset_id = dataset_response.json()["id"]
+
+    preview_response = client.get(f"/data-source/database/{dataset_id}/preview")
+    assert preview_response.status_code == 200
+    assert preview_response.json()["rows"] == [
+        {"id": 1, "status": "READY"},
+        {"id": 2, "status": "READY"},
+    ]
+
+
+def test_dataset_api_preview_fails_when_required_parameter_is_not_resolved(
+    monkeypatch,
+    alembic_container,
+    external_postgres_container,
+):
+    table_name = "dataset_api_orders_missing_param"
+    external_engine = create_engine(external_postgres_container.get_connection_url())
+    try:
+        with external_engine.begin() as conn:
+            conn.execute(text(f"DROP TABLE IF EXISTS {table_name}"))
+            conn.execute(
+                text(
+                    f"""
+                    CREATE TABLE {table_name} (
+                        id INTEGER,
+                        pipeline_id TEXT
+                    )
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    f"""
+                    INSERT INTO {table_name} (id, pipeline_id)
+                    VALUES
+                        (1, 'PIPE-01'),
+                        (2, 'PIPE-02')
+                    """
+                )
+            )
+    finally:
+        external_engine.dispose()
+
+    app = _load_main_app(monkeypatch)
+    client = TestClient(app)
+    connection_response = client.post(
+        "/database/connection",
+        json={
+            "description": "api dataset missing param connection",
+            "payload": {
+                "database_type": "postgres",
+                "host": external_postgres_container.get_container_host_ip(),
+                "port": int(external_postgres_container.get_exposed_port(5432)),
+                "database": external_postgres_container.dbname,
+                "db_schema": "public",
+                "user": external_postgres_container.username,
+                "password": external_postgres_container.password,
+            },
+        },
+    )
+    connection_id = connection_response.json()["id"]
+
+    dataset_response = client.post(
+        "/data-source/database",
+        json={
+            "description": "orders-missing-param",
+            "payload": {
+                "connection_id": connection_id,
+                "schema": "public",
+                "object_name": table_name,
+                "object_type": "table",
+            },
+            "perimeter": {
+                "parameters": [
+                    {
+                        "name": "pipelineId",
+                        "type": "string",
+                        "required": True,
+                    }
+                ],
+                "filter": {
+                    "logic": "AND",
+                    "conditions": [
+                        {
+                            "field": "pipeline_id",
+                            "operator": "eq",
+                            "value": {"kind": "parameter", "name": "pipelineId"},
+                        },
+                    ],
+                },
+            },
+        },
+    )
+    dataset_id = dataset_response.json()["id"]
+
+    preview_response = client.get(f"/data-source/database/{dataset_id}/preview")
+    assert preview_response.status_code == 500
+    assert "DATASET_PARAMETER_RESOLUTION_FAILED" in preview_response.json()["detail"]

@@ -18,13 +18,28 @@ def resolve_command_input_data(source: str | None, data):
 
 
 def _resolve_dataset_rows(session, definition, resolved_value):
-    dataset_id = str(resolved_value or "").strip() if isinstance(resolved_value, str) else ""
+    dataset_id = ""
+    parameter_values = None
+    if isinstance(resolved_value, str):
+        dataset_id = str(resolved_value or "").strip()
+    elif isinstance(resolved_value, dict):
+        dataset_id = str(resolved_value.get("dataset_id") or resolved_value.get("datasetId") or "").strip()
+        raw_parameters = resolved_value.get("parameters")
+        if not dataset_id or not isinstance(raw_parameters, dict):
+            raise ValueError(
+                f"Dataset constant '{definition.name}' must resolve to a dataset id string or object."
+            )
+        parameter_values = raw_parameters
     if not dataset_id:
         raise ValueError(
-            f"Dataset constant '{definition.name}' must resolve to a dataset id string."
+            f"Dataset constant '{definition.name}' must resolve to a dataset id string or object."
         )
     dataset = DatasetQueryService.get_dataset_or_raise_for_runtime(session, dataset_id)
-    return DatasetQueryService.load_rows_for_runtime(dataset)
+    return DatasetQueryService.load_rows_for_runtime(
+        dataset,
+        parameter_values=parameter_values,
+        session=session,
+    )
 
 
 def resolve_definition_input_data(session, definition_id: str | None, data):

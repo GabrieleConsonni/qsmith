@@ -324,6 +324,201 @@ def _safe_dict(value: object) -> dict:
     return value if isinstance(value, dict) else {}
 
 
+def _dataset_parameter_definitions(dataset_id: object) -> list[dict]:
+    normalized_dataset_id = str(dataset_id or "").strip()
+    if not normalized_dataset_id:
+        return []
+    datasources = _safe_list(st.session_state.get(TEST_EDITOR_DATABASE_DATASOURCES_KEY, []))
+    datasource_item = next(
+        (
+            item
+            for item in datasources
+            if str(item.get("id") or "").strip() == normalized_dataset_id
+        ),
+        None,
+    )
+    perimeter = datasource_item.get("perimeter") if isinstance(datasource_item, dict) else {}
+    parameters = perimeter.get("parameters") if isinstance(perimeter, dict) else []
+    return [item for item in parameters if isinstance(item, dict) and str(item.get("name") or "").strip()]
+
+
+def _dataset_parameter_state_suffix(parameter_name: object) -> str:
+    raw = str(parameter_name or "").strip()
+    return "".join(char if char.isalnum() else "_" for char in raw) or "parameter"
+
+
+def _dataset_parameter_form_key(prefix: str, dialog_nonce: int, parameter_name: str, field: str) -> str:
+    return _command_form_key(
+        prefix,
+        dialog_nonce,
+        f"init_constant_dataset_param_{field}_{_dataset_parameter_state_suffix(parameter_name)}",
+    )
+
+
+def _ensure_dataset_parameter_binding_state(
+    key_prefix: str,
+    dialog_nonce: int,
+    dataset_id: object,
+    existing_bindings: object | None = None,
+):
+    parameter_definitions = _dataset_parameter_definitions(dataset_id)
+    bindings = existing_bindings if isinstance(existing_bindings, dict) else {}
+    for parameter_definition in parameter_definitions:
+        parameter_name = str(parameter_definition.get("name") or "").strip()
+        if not parameter_name:
+            continue
+        mode_key = _dataset_parameter_form_key(key_prefix, dialog_nonce, parameter_name, "mode")
+        literal_key = _dataset_parameter_form_key(key_prefix, dialog_nonce, parameter_name, "literal")
+        source_key = _dataset_parameter_form_key(key_prefix, dialog_nonce, parameter_name, "source")
+        built_in_key = _dataset_parameter_form_key(key_prefix, dialog_nonce, parameter_name, "built_in")
+        if mode_key in st.session_state:
+            continue
+        binding = bindings.get(parameter_name)
+        if isinstance(binding, dict):
+            binding_kind = str(binding.get("kind") or "").strip().lower()
+            if binding_kind == "constant_path":
+                st.session_state[mode_key] = "constant"
+                st.session_state[source_key] = str(binding.get("path") or "").strip()
+                st.session_state[literal_key] = ""
+                st.session_state[built_in_key] = "$now"
+                continue
+            if binding_kind == "built_in":
+                st.session_state[mode_key] = "built_in"
+                st.session_state[built_in_key] = str(binding.get("resolver") or "$now").strip() or "$now"
+                st.session_state[literal_key] = ""
+                st.session_state[source_key] = ""
+                continue
+        if binding is not None:
+            st.session_state[mode_key] = "literal"
+            st.session_state[literal_key] = _stringify_form_value(binding)
+            st.session_state[source_key] = ""
+            st.session_state[built_in_key] = "$now"
+            continue
+        st.session_state[mode_key] = "default"
+        st.session_state[literal_key] = ""
+        st.session_state[source_key] = ""
+        st.session_state[built_in_key] = "$now"
+
+
+def _build_dataset_parameter_bindings_from_state(
+    key_prefix: str,
+    dialog_nonce: int,
+    dataset_id: object,
+) -> tuple[dict | None, str | None]:
+    parameter_definitions = _dataset_parameter_definitions(dataset_id)
+    if not parameter_definitions:
+        return None, None
+    bindings: dict[str, object] = {}
+    for parameter_definition in parameter_definitions:
+        parameter_name = str(parameter_definition.get("name") or "").strip()
+        if not parameter_name:
+            continue
+        mode = str(
+            st.session_state.get(_dataset_parameter_form_key(key_prefix, dialog_nonce, parameter_name, "mode"))
+            or "default"
+        ).strip().lower()
+        if mode == "default":
+            continue
+        if mode == "literal":
+            literal_value, parse_error = _parse_json_input(
+                st.session_state.get(_dataset_parameter_form_key(key_prefix, dialog_nonce, parameter_name, "literal"))
+            )
+            if parse_error:
+                return None, f"Parameter '{parameter_name}': {parse_error}"
+            bindings[parameter_name] = literal_value
+            continue
+        if mode == "constant":
+            source_path = _normalize_context_path(
+                st.session_state.get(_dataset_parameter_form_key(key_prefix, dialog_nonce, parameter_name, "source"))
+            )
+            if not source_path:
+                return None, f"Parameter '{parameter_name}': source variable is required."
+            bindings[parameter_name] = {
+                "kind": "constant_path",
+                "path": source_path,
+            }
+            continue
+        if mode == "built_in":
+            resolver = str(
+                st.session_state.get(_dataset_parameter_form_key(key_prefix, dialog_nonce, parameter_name, "built_in"))
+                or "$now"
+            ).strip() or "$now"
+            bindings[parameter_name] = {
+                "kind": "built_in",
+                "resolver": resolver,
+            }
+            continue
+    return bindings or None, None
+
+
+def _render_dataset_parameter_bindings_section(
+    key_prefix: str,
+    dialog_nonce: int,
+    draft: dict,
+    item: dict,
+    dataset_id: object,
+    stop_before_index: int | None,
+):
+    parameter_definitions = _dataset_parameter_definitions(dataset_id)
+    if not parameter_definitions:
+        st.info("The selected dataset does not expose parameters.")
+        return
+    constant_options = [
+        definition
+        for definition in _resolve_available_source_constants(
+            draft,
+            item,
+            command_code="saveTable",
+            stop_before_index=stop_before_index,
+        )
+        if str(definition.get("value_type") or "").strip() not in {"dataset", "jsonArray"}
+    ]
+    st.caption("Parameter bindings")
+    for parameter_definition in parameter_definitions:
+        parameter_name = str(parameter_definition.get("name") or "").strip()
+        if not parameter_name:
+            continue
+        parameter_type = str(parameter_definition.get("type") or "").strip()
+        required_label = "required" if bool(parameter_definition.get("required")) else "optional"
+        with st.container(border=True):
+            st.markdown(f"**{parameter_name}** `{parameter_type}` {required_label}")
+            mode_key = _dataset_parameter_form_key(key_prefix, dialog_nonce, parameter_name, "mode")
+            literal_key = _dataset_parameter_form_key(key_prefix, dialog_nonce, parameter_name, "literal")
+            source_key = _dataset_parameter_form_key(key_prefix, dialog_nonce, parameter_name, "source")
+            built_in_key = _dataset_parameter_form_key(key_prefix, dialog_nonce, parameter_name, "built_in")
+            mode = st.selectbox(
+                "Binding mode",
+                options=["default", "literal", "constant", "built_in"],
+                key=mode_key,
+                format_func=lambda value: {
+                    "default": "Dataset default",
+                    "literal": "Literal",
+                    "constant": "Visible constant",
+                    "built_in": "Built-in",
+                }.get(str(value), str(value)),
+            )
+            if mode == "literal":
+                st.text_area(
+                    "Literal value",
+                    key=literal_key,
+                    height=100,
+                    help="Use JSON for structured values; plain text is stored as string.",
+                )
+            elif mode == "constant":
+                _render_source_constant_select(
+                    label="Visible constant",
+                    key=source_key,
+                    options=constant_options,
+                    help_text="Visible and compatible variables at this point.",
+                )
+            elif mode == "built_in":
+                st.selectbox(
+                    "Built-in",
+                    options=["$now", "$today"],
+                    key=built_in_key,
+                )
+
+
 def _command_form_key(prefix: str, dialog_nonce: int, field: str) -> str:
     return f"{prefix}_{field}_{dialog_nonce}"
 
@@ -1545,6 +1740,15 @@ def _build_hook_command_draft(dialog_nonce: int, command_code: str) -> tuple[dic
             if not dataset_id:
                 return None, "Il campo Dataset e' obbligatorio."
             cfg["dataset_id"] = dataset_id
+            parameter_bindings, parameter_error = _build_dataset_parameter_bindings_from_state(
+                "suite_hook_command",
+                dialog_nonce,
+                dataset_id,
+            )
+            if parameter_error:
+                return None, parameter_error
+            if parameter_bindings:
+                cfg["parameters"] = parameter_bindings
         elif source_type == "sqsQueue":
             queue_id = str(
                 st.session_state.get(f"suite_add_hook_init_constant_queue_id_{dialog_nonce}") or ""
@@ -1738,6 +1942,15 @@ def _build_test_command_draft(dialog_nonce: int, command_ui_code: str) -> tuple[
             if not dataset_id:
                 return None, "Il campo Dataset e' obbligatorio."
             cfg["dataset_id"] = dataset_id
+            parameter_bindings, parameter_error = _build_dataset_parameter_bindings_from_state(
+                "suite_test_command",
+                dialog_nonce,
+                dataset_id,
+            )
+            if parameter_error:
+                return None, parameter_error
+            if parameter_bindings:
+                cfg["parameters"] = parameter_bindings
         elif source_type == "sqsQueue":
             queue_id = str(
                 st.session_state.get(f"suite_add_test_init_constant_queue_id_{dialog_nonce}") or ""
@@ -2003,6 +2216,12 @@ def _initialize_hook_command_form(
         st.session_state[_command_form_key(key_prefix, dialog_nonce, "init_constant_dataset_id")] = str(
             configuration_json.get("dataset_id") or ""
         )
+        _ensure_dataset_parameter_binding_state(
+            key_prefix,
+            dialog_nonce,
+            configuration_json.get("dataset_id"),
+            configuration_json.get("parameters"),
+        )
         queue_id = str(configuration_json.get("queue_id") or "")
         st.session_state[_command_form_key(key_prefix, dialog_nonce, "init_constant_queue_id")] = queue_id
         st.session_state[_command_form_key(key_prefix, dialog_nonce, "init_constant_broker_id")] = (
@@ -2115,6 +2334,12 @@ def _initialize_test_command_form(
         )
         st.session_state[_command_form_key(key_prefix, dialog_nonce, "init_constant_dataset_id")] = str(
             configuration_json.get("dataset_id") or ""
+        )
+        _ensure_dataset_parameter_binding_state(
+            key_prefix,
+            dialog_nonce,
+            configuration_json.get("dataset_id"),
+            configuration_json.get("parameters"),
         )
         queue_id = str(configuration_json.get("queue_id") or "")
         st.session_state[_command_form_key(key_prefix, dialog_nonce, "init_constant_queue_id")] = queue_id
@@ -2309,6 +2534,20 @@ def _render_hook_command_form(
                 ) if item_id else "Nessun dataset disponibile",
                 key=_command_form_key(key_prefix, dialog_nonce, "init_constant_dataset_id"),
                 disabled=not bool(dataset_ids),
+            )
+            selected_dataset_id = st.session_state.get(_command_form_key(key_prefix, dialog_nonce, "init_constant_dataset_id"))
+            _ensure_dataset_parameter_binding_state(
+                key_prefix,
+                dialog_nonce,
+                selected_dataset_id,
+            )
+            _render_dataset_parameter_bindings_section(
+                key_prefix,
+                dialog_nonce,
+                draft,
+                item,
+                selected_dataset_id,
+                stop_before_index,
             )
         elif source_type == "sqsQueue":
             broker_ids = [str(item.get("id")) for item in brokers if item.get("id")]
@@ -2515,6 +2754,20 @@ def _render_test_command_form(
                 format_func=lambda item_id: _format_lookup_label(next((item for item in datasources if str(item.get("id")) == str(item_id)), {})) if item_id else "Nessun dataset disponibile",
                 key=_command_form_key(key_prefix, dialog_nonce, "init_constant_dataset_id"),
                 disabled=not bool(dataset_ids),
+            )
+            selected_dataset_id = st.session_state.get(_command_form_key(key_prefix, dialog_nonce, "init_constant_dataset_id"))
+            _ensure_dataset_parameter_binding_state(
+                key_prefix,
+                dialog_nonce,
+                selected_dataset_id,
+            )
+            _render_dataset_parameter_bindings_section(
+                key_prefix,
+                dialog_nonce,
+                draft,
+                item,
+                selected_dataset_id,
+                stop_before_index,
             )
         elif source_type == "sqsQueue":
             broker_ids = [str(item.get("id")) for item in brokers if item.get("id")]

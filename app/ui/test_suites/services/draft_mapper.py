@@ -239,6 +239,66 @@ def _serialize_result_constant(cfg: dict) -> dict | None:
     }
 
 
+def _hydrate_dataset_parameter_bindings(
+    bindings: object,
+    definitions: dict[str, dict],
+    section_type: str,
+    command_order: int,
+) -> dict | None:
+    if not isinstance(bindings, dict):
+        return None
+    hydrated: dict[str, object] = {}
+    for parameter_name, raw_binding in bindings.items():
+        normalized_name = _normalize_token(parameter_name)
+        if not normalized_name:
+            continue
+        if isinstance(raw_binding, dict) and _normalize_token(raw_binding.get("kind")).lower() == "constant_ref":
+            definition = _find_definition_by_id(
+                definitions,
+                section_type=section_type,
+                command_order=command_order,
+                definition_id=_normalize_token(raw_binding.get("definitionId") or raw_binding.get("definition_id")),
+            )
+            if definition is not None:
+                hydrated[normalized_name] = {
+                    "kind": "constant_path",
+                    "path": _definition_path(definition["context_scope"], definition["name"]),
+                }
+                continue
+        hydrated[normalized_name] = deepcopy(raw_binding)
+    return hydrated or None
+
+
+def _serialize_dataset_parameter_bindings(
+    bindings: object,
+    definitions: dict[str, dict],
+    section_type: str,
+    command_order: int,
+) -> dict | None:
+    if not isinstance(bindings, dict):
+        return None
+    serialized: dict[str, object] = {}
+    for parameter_name, raw_binding in bindings.items():
+        normalized_name = _normalize_token(parameter_name)
+        if not normalized_name:
+            continue
+        if isinstance(raw_binding, dict) and _normalize_token(raw_binding.get("kind")).lower() == "constant_path":
+            definition = _find_definition_by_path(
+                definitions,
+                section_type=section_type,
+                command_order=command_order,
+                path_value=raw_binding.get("path"),
+            )
+            if definition is not None:
+                serialized[normalized_name] = {
+                    "kind": "constant_ref",
+                    "definitionId": definition["definitionId"],
+                }
+                continue
+        serialized[normalized_name] = deepcopy(raw_binding)
+    return serialized or None
+
+
 def _hydrate_operation_cfg(cfg: dict, definitions: dict[str, dict], section_type: str, command_order: int) -> dict:
     hydrated = deepcopy(cfg)
     command_code = _command_code(hydrated)
@@ -297,6 +357,15 @@ def _hydrate_operation_cfg(cfg: dict, definitions: dict[str, dict], section_type
     result_constant = _serialize_result_constant(hydrated)
     if result_constant is not None and not _normalize_token(hydrated.get("result_target") or hydrated.get("resultTarget")):
         hydrated["result_target"] = _definition_path("result", result_constant["name"])
+    if command_code == "initConstant":
+        hydrated_bindings = _hydrate_dataset_parameter_bindings(
+            hydrated.get("parameters"),
+            definitions,
+            section_type,
+            command_order,
+        )
+        if hydrated_bindings is not None:
+            hydrated["parameters"] = hydrated_bindings
 
     return hydrated
 
@@ -307,6 +376,14 @@ def _serialize_operation_cfg(cfg: dict, definitions: dict[str, dict], section_ty
 
     if command_code == "initConstant":
         serialized["definitionId"] = _normalize_token(serialized.get("definitionId") or serialized.get("definition_id")) or _new_definition_id()
+        serialized_bindings = _serialize_dataset_parameter_bindings(
+            serialized.get("parameters"),
+            definitions,
+            section_type,
+            command_order,
+        )
+        if serialized_bindings is not None:
+            serialized["parameters"] = serialized_bindings
 
     if command_code == "deleteConstant":
         serialized.pop("targetConstantRef", None)

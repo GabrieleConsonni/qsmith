@@ -8,7 +8,10 @@ import pytest
 if "streamlit" not in sys.modules:
     streamlit_stub = types.ModuleType("streamlit")
     streamlit_stub.session_state = {}
+    streamlit_stub.dialog = lambda *args, **kwargs: (lambda fn: fn)
     sys.modules["streamlit"] = streamlit_stub
+elif not hasattr(sys.modules["streamlit"], "dialog"):
+    sys.modules["streamlit"].dialog = lambda *args, **kwargs: (lambda fn: fn)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 UI_ROOT = PROJECT_ROOT / "app" / "ui"
@@ -29,9 +32,22 @@ def clear_streamlit_state():
 def test_build_perimeter_payload_omits_blank_values_and_keeps_null_operators():
     payload = perimeter_service.build_perimeter_payload(
         ["id", " status ", ""],
+        [
+            {
+                "name": "statusParam",
+                "type": "string",
+                "required": True,
+                "default_value": '"READY"',
+                "description": "status",
+            }
+        ],
         "or",
         [
-            {"field": "status", "operator": "eq", "value": '"READY"'},
+            {
+                "field": "status",
+                "operator": "eq",
+                "value": {"kind": "parameter", "name": "statusParam"},
+            },
             {"field": "deleted_at", "operator": "is_null", "value": ""},
             {"field": "", "operator": "", "value": ""},
         ],
@@ -43,11 +59,29 @@ def test_build_perimeter_payload_omits_blank_values_and_keeps_null_operators():
 
     assert payload == {
         "selected_columns": ["id", "status"],
+        "parameters": [
+            {
+                "name": "statusParam",
+                "type": "string",
+                "required": True,
+                "default_value": "READY",
+                "description": "status",
+            }
+        ],
         "filter": {
             "logic": "OR",
-            "conditions": [
-                {"field": "status", "operator": "eq", "value": "READY"},
-                {"field": "deleted_at", "operator": "is_null"},
+            "items": [
+                {
+                    "kind": "condition",
+                    "field": "status",
+                    "operator": "eq",
+                    "value": {"kind": "parameter", "name": "statusParam"},
+                },
+                {
+                    "kind": "condition",
+                    "field": "deleted_at",
+                    "operator": "is_null",
+                },
             ],
         },
         "sort": [

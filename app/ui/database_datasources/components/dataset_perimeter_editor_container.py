@@ -13,16 +13,19 @@ from database_datasources.services.data_loader_service import (
 )
 from database_datasources.services.perimeter_service import (
     PERIMETER_OPERATORS,
+    PERIMETER_PARAMETER_TYPES,
     build_connection_label,
     build_dataset_summary,
     build_perimeter_payload,
     build_perimeter_scope_key,
     default_filter_items,
     default_filter_logic,
+    default_parameter_rows,
     default_selected_columns,
     default_sort_rows,
     normalize_filter_condition,
     normalize_filter_items,
+    normalize_parameter_rows,
     normalize_filter_rows,
     normalize_sort_rows,
 )
@@ -37,6 +40,7 @@ DATASETS_PAGE_PATH = "pages/Datasets.py"
 FILTER_LOGIC_OPTIONS = ["AND", "OR"]
 NULL_FILTER_OPERATORS = {"is_null", "is_not_null"}
 SORT_DIRECTION_OPTIONS = ["asc", "desc"]
+FILTER_VALUE_MODE_OPTIONS = ["literal", "parameter"]
 
 
 def _show_feedback():
@@ -261,6 +265,31 @@ def _build_filter_editor_config(available_columns: list[str]) -> dict:
     }
 
 
+def _available_parameter_names(scope_key: str) -> list[str]:
+    parameters_key = f"{scope_key}_parameters"
+    parameter_rows = normalize_parameter_rows(st.session_state.get(parameters_key) or [])
+    st.session_state[parameters_key] = parameter_rows
+    return [
+        str(item.get("name") or "").strip()
+        for item in parameter_rows
+        if str(item.get("name") or "").strip()
+    ]
+
+
+def _filter_condition_value_mode(condition: dict) -> str:
+    value = condition.get("value")
+    if isinstance(value, dict) and str(value.get("kind") or "").strip().lower() == "parameter":
+        return "parameter"
+    return "literal"
+
+
+def _filter_condition_parameter_name(condition: dict) -> str:
+    value = condition.get("value")
+    if isinstance(value, dict) and str(value.get("kind") or "").strip().lower() == "parameter":
+        return str(value.get("name") or "").strip()
+    return ""
+
+
 def _format_filter_condition_value(condition: dict) -> str:
     operator = str(condition.get("operator") or "").strip().lower()
     if operator in NULL_FILTER_OPERATORS:
@@ -268,6 +297,9 @@ def _format_filter_condition_value(condition: dict) -> str:
     value = condition.get("value")
     if value is None:
         return "-"
+    if isinstance(value, dict) and str(value.get("kind") or "").strip().lower() == "parameter":
+        parameter_name = str(value.get("name") or "").strip()
+        return f"${parameter_name}" if parameter_name else "-"
     return str(value)
 
 
@@ -277,7 +309,10 @@ def _format_filter_condition_text(condition: dict) -> str:
     if operator in NULL_FILTER_OPERATORS:
         return f"*{field}* **{operator}**"
     value = condition.get("value")
-    if isinstance(value, str):
+    if isinstance(value, dict) and str(value.get("kind") or "").strip().lower() == "parameter":
+        parameter_name = str(value.get("name") or "").strip()
+        formatted_value = f"${parameter_name}" if parameter_name else "$?"
+    elif isinstance(value, str):
         formatted_value = f"'{value}'"
     elif value is None:
         formatted_value = "null"
@@ -290,7 +325,9 @@ def _close_filter_condition_dialog(scope_key: str):
     st.session_state[f"{scope_key}_filter_condition_dialog_open"] = False
     st.session_state.pop(f"{scope_key}_filter_condition_dialog_field", None)
     st.session_state.pop(f"{scope_key}_filter_condition_dialog_operator", None)
+    st.session_state.pop(f"{scope_key}_filter_condition_dialog_value_mode", None)
     st.session_state.pop(f"{scope_key}_filter_condition_dialog_value", None)
+    st.session_state.pop(f"{scope_key}_filter_condition_dialog_parameter_name", None)
 
 
 def _close_filter_group_dialog(scope_key: str):
@@ -349,9 +386,13 @@ def _open_filter_condition_edit_dialog(
     st.session_state[f"{scope_key}_filter_condition_edit_dialog_operator"] = (
         str(condition.get("operator") or PERIMETER_OPERATORS[0]).strip().lower()
     )
+    st.session_state[f"{scope_key}_filter_condition_edit_dialog_value_mode"] = _filter_condition_value_mode(condition)
     st.session_state[f"{scope_key}_filter_condition_edit_dialog_value"] = (
-        "" if condition.get("value") is None else str(condition.get("value"))
+        ""
+        if condition.get("value") is None or _filter_condition_value_mode(condition) == "parameter"
+        else str(condition.get("value"))
     )
+    st.session_state[f"{scope_key}_filter_condition_edit_dialog_parameter_name"] = _filter_condition_parameter_name(condition)
 
 
 def _close_filter_condition_edit_dialog(scope_key: str):
@@ -360,7 +401,9 @@ def _close_filter_condition_edit_dialog(scope_key: str):
     st.session_state.pop(f"{scope_key}_filter_condition_edit_dialog_condition_index", None)
     st.session_state.pop(f"{scope_key}_filter_condition_edit_dialog_field", None)
     st.session_state.pop(f"{scope_key}_filter_condition_edit_dialog_operator", None)
+    st.session_state.pop(f"{scope_key}_filter_condition_edit_dialog_value_mode", None)
     st.session_state.pop(f"{scope_key}_filter_condition_edit_dialog_value", None)
+    st.session_state.pop(f"{scope_key}_filter_condition_edit_dialog_parameter_name", None)
 
 
 def _update_filter_condition(
@@ -394,17 +437,27 @@ def _update_filter_condition(
 
 
 @st.dialog("Add condition", width="medium")
-def _render_add_filter_condition_dialog(scope_key: str, available_columns: list[str]):
+def _render_add_filter_condition_dialog(
+    scope_key: str,
+    available_columns: list[str],
+    available_parameter_names: list[str],
+):
     field_key = f"{scope_key}_filter_condition_dialog_field"
     operator_key = f"{scope_key}_filter_condition_dialog_operator"
+    value_mode_key = f"{scope_key}_filter_condition_dialog_value_mode"
     value_key = f"{scope_key}_filter_condition_dialog_value"
+    parameter_name_key = f"{scope_key}_filter_condition_dialog_parameter_name"
 
     if field_key not in st.session_state:
         st.session_state[field_key] = ""
     if operator_key not in st.session_state:
         st.session_state[operator_key] = PERIMETER_OPERATORS[0]
+    if value_mode_key not in st.session_state:
+        st.session_state[value_mode_key] = FILTER_VALUE_MODE_OPTIONS[0]
     if value_key not in st.session_state:
         st.session_state[value_key] = ""
+    if parameter_name_key not in st.session_state:
+        st.session_state[parameter_name_key] = ""
 
     st.selectbox(
         "Field",
@@ -417,11 +470,30 @@ def _render_add_filter_condition_dialog(scope_key: str, available_columns: list[
         options=PERIMETER_OPERATORS,
         key=operator_key,
     )
-    st.text_input(
-        "Value",
-        key=value_key,
-        disabled=str(st.session_state.get(operator_key) or "").strip().lower() in NULL_FILTER_OPERATORS,
+    is_null_operator = str(st.session_state.get(operator_key) or "").strip().lower() in NULL_FILTER_OPERATORS
+    st.selectbox(
+        "Value type",
+        options=FILTER_VALUE_MODE_OPTIONS,
+        key=value_mode_key,
+        disabled=is_null_operator,
+        format_func=lambda value: "Parameter" if str(value or "").strip() == "parameter" else "Literal",
     )
+    if str(st.session_state.get(value_mode_key) or "literal").strip().lower() == "parameter":
+        st.selectbox(
+            "Parameter",
+            options=available_parameter_names or [""],
+            key=parameter_name_key,
+            disabled=is_null_operator or not bool(available_parameter_names),
+            format_func=lambda value: str(value or ""),
+        )
+        if not available_parameter_names:
+            st.info("Define at least one parameter before using parameter references in filters.")
+    else:
+        st.text_input(
+            "Value",
+            key=value_key,
+            disabled=is_null_operator,
+        )
 
     action_cols = st.columns(2, gap="small")
     with action_cols[0]:
@@ -442,17 +514,27 @@ def _render_add_filter_condition_dialog(scope_key: str, available_columns: list[
             use_container_width=True,
         ):
             operator = str(st.session_state.get(operator_key) or "").strip().lower()
-            value = st.session_state.get(value_key)
-            if operator not in NULL_FILTER_OPERATORS and not str(value or "").strip():
-                st.error("Value is required for the selected operator.")
-                return
-
             raw_condition = {
                 "field": str(st.session_state.get(field_key) or "").strip(),
                 "operator": operator,
             }
             if operator not in NULL_FILTER_OPERATORS:
-                raw_condition["value"] = value
+                value_mode = str(st.session_state.get(value_mode_key) or "literal").strip().lower()
+                if value_mode == "parameter":
+                    parameter_name = str(st.session_state.get(parameter_name_key) or "").strip()
+                    if not parameter_name:
+                        st.error("Parameter is required for the selected value type.")
+                        return
+                    raw_condition["value"] = {
+                        "kind": "parameter",
+                        "name": parameter_name,
+                    }
+                else:
+                    value = st.session_state.get(value_key)
+                    if not str(value or "").strip():
+                        st.error("Value is required for the selected operator.")
+                        return
+                    raw_condition["value"] = value
 
             condition = normalize_filter_condition(raw_condition)
             if not condition:
@@ -471,10 +553,16 @@ def _render_add_filter_condition_dialog(scope_key: str, available_columns: list[
 
 
 @st.dialog("Edit condition", width="medium")
-def _render_edit_filter_condition_dialog(scope_key: str, available_columns: list[str]):
+def _render_edit_filter_condition_dialog(
+    scope_key: str,
+    available_columns: list[str],
+    available_parameter_names: list[str],
+):
     field_key = f"{scope_key}_filter_condition_edit_dialog_field"
     operator_key = f"{scope_key}_filter_condition_edit_dialog_operator"
+    value_mode_key = f"{scope_key}_filter_condition_edit_dialog_value_mode"
     value_key = f"{scope_key}_filter_condition_edit_dialog_value"
+    parameter_name_key = f"{scope_key}_filter_condition_edit_dialog_parameter_name"
     item_index_key = f"{scope_key}_filter_condition_edit_dialog_item_index"
     condition_index_key = f"{scope_key}_filter_condition_edit_dialog_condition_index"
 
@@ -489,11 +577,30 @@ def _render_edit_filter_condition_dialog(scope_key: str, available_columns: list
         options=PERIMETER_OPERATORS,
         key=operator_key,
     )
-    st.text_input(
-        "Value",
-        key=value_key,
-        disabled=str(st.session_state.get(operator_key) or "").strip().lower() in NULL_FILTER_OPERATORS,
+    is_null_operator = str(st.session_state.get(operator_key) or "").strip().lower() in NULL_FILTER_OPERATORS
+    st.selectbox(
+        "Value type",
+        options=FILTER_VALUE_MODE_OPTIONS,
+        key=value_mode_key,
+        disabled=is_null_operator,
+        format_func=lambda value: "Parameter" if str(value or "").strip() == "parameter" else "Literal",
     )
+    if str(st.session_state.get(value_mode_key) or "literal").strip().lower() == "parameter":
+        st.selectbox(
+            "Parameter",
+            options=available_parameter_names or [""],
+            key=parameter_name_key,
+            disabled=is_null_operator or not bool(available_parameter_names),
+            format_func=lambda value: str(value or ""),
+        )
+        if not available_parameter_names:
+            st.info("Define at least one parameter before using parameter references in filters.")
+    else:
+        st.text_input(
+            "Value",
+            key=value_key,
+            disabled=is_null_operator,
+        )
 
     action_cols = st.columns(2, gap="small")
     with action_cols[0]:
@@ -514,17 +621,27 @@ def _render_edit_filter_condition_dialog(scope_key: str, available_columns: list
             use_container_width=True,
         ):
             operator = str(st.session_state.get(operator_key) or "").strip().lower()
-            value = st.session_state.get(value_key)
-            if operator not in NULL_FILTER_OPERATORS and not str(value or "").strip():
-                st.error("Value is required for the selected operator.")
-                return
-
             raw_condition = {
                 "field": str(st.session_state.get(field_key) or "").strip(),
                 "operator": operator,
             }
             if operator not in NULL_FILTER_OPERATORS:
-                raw_condition["value"] = value
+                value_mode = str(st.session_state.get(value_mode_key) or "literal").strip().lower()
+                if value_mode == "parameter":
+                    parameter_name = str(st.session_state.get(parameter_name_key) or "").strip()
+                    if not parameter_name:
+                        st.error("Parameter is required for the selected value type.")
+                        return
+                    raw_condition["value"] = {
+                        "kind": "parameter",
+                        "name": parameter_name,
+                    }
+                else:
+                    value = st.session_state.get(value_key)
+                    if not str(value or "").strip():
+                        st.error("Value is required for the selected operator.")
+                        return
+                    raw_condition["value"] = value
 
             condition = normalize_filter_condition(raw_condition)
             if not condition:
@@ -625,7 +742,38 @@ def _render_filter_condition_line(condition: dict, edit_button_key: str, delete_
     return edit_clicked, delete_clicked
 
 
-def _render_filters_editor(scope_key: str, available_columns: list[str], perimeter: dict | None) -> tuple[str, list[dict]]:
+def _render_parameters_editor(scope_key: str, perimeter: dict | None) -> list[dict]:
+    parameters_key = f"{scope_key}_parameters"
+    if parameters_key not in st.session_state:
+        st.session_state[parameters_key] = default_parameter_rows(perimeter)
+
+    edited_rows = st.data_editor(
+        pd.DataFrame(
+            normalize_parameter_rows(st.session_state.get(parameters_key) or []),
+            columns=["name", "type", "required", "default_value", "description"],
+        ),
+        key=f"{scope_key}_parameters_editor",
+        num_rows="dynamic",
+        use_container_width=True,
+        column_config={
+            "name": st.column_config.TextColumn("Name"),
+            "type": st.column_config.SelectboxColumn("Type", options=PERIMETER_PARAMETER_TYPES),
+            "required": st.column_config.CheckboxColumn("Required"),
+            "default_value": st.column_config.TextColumn("Default value"),
+            "description": st.column_config.TextColumn("Description"),
+        },
+    )
+    normalized_parameters = normalize_parameter_rows(edited_rows)
+    st.session_state[parameters_key] = normalized_parameters
+    return normalized_parameters
+
+
+def _render_filters_editor(
+    scope_key: str,
+    available_columns: list[str],
+    perimeter: dict | None,
+    available_parameter_names: list[str],
+) -> tuple[str, list[dict]]:
     filter_logic_key = f"{scope_key}_filter_logic"
     filter_items_key = f"{scope_key}_filter_items"
     filter_condition_dialog_key = f"{scope_key}_filter_condition_dialog_open"
@@ -642,9 +790,9 @@ def _render_filters_editor(scope_key: str, available_columns: list[str], perimet
     if st.session_state.get(filter_group_dialog_key):
         _render_add_filter_group_dialog(scope_key, available_columns)
     if st.session_state.get(filter_condition_dialog_key):
-        _render_add_filter_condition_dialog(scope_key, available_columns)
+        _render_add_filter_condition_dialog(scope_key, available_columns, available_parameter_names)
     if st.session_state.get(filter_condition_edit_dialog_key):
-        _render_edit_filter_condition_dialog(scope_key, available_columns)
+        _render_edit_filter_condition_dialog(scope_key, available_columns, available_parameter_names)
 
     filter_logic = st.selectbox(
         "",
@@ -864,18 +1012,34 @@ def render_dataset_perimeter_editor_container():
         st.info("Seleziona una tabella o view valida per configurare il perimetro.")
         return
 
-    selected_columns_tab, filters_tab, sort_tab = st.tabs(
-        ["📋 Selected columns", "🧩 Filters", "↕️ Sort"]
+    selected_columns_tab, parameters_tab, filters_tab, sort_tab = st.tabs(
+        ["📋 Selected columns", "🧩 Parameters", "🔎 Filters", "↕️ Sort"]
     )
     with selected_columns_tab:
         selected_columns = _render_selected_columns_editor(scope_key, available_columns, perimeter)
+    with parameters_tab:
+        parameter_rows = _render_parameters_editor(scope_key, perimeter)
+        st.caption("Use parameters to bind dataset filters at runtime.")
+    available_parameter_names = _available_parameter_names(scope_key)
     with filters_tab:
-        filter_logic, filter_items = _render_filters_editor(scope_key, available_columns, perimeter)
+        filter_logic, filter_items = _render_filters_editor(
+            scope_key,
+            available_columns,
+            perimeter,
+            available_parameter_names,
+        )
     with sort_tab:
         sort_editor = _render_sort_editor(scope_key, available_columns, perimeter)
 
     perimeter_payload = build_perimeter_payload(
         selected_columns,
+        filter_logic,
+        filter_items,
+        sort_editor,
+    )
+    perimeter_payload = build_perimeter_payload(
+        selected_columns,
+        parameter_rows,
         filter_logic,
         filter_items,
         sort_editor,

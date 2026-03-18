@@ -10,10 +10,14 @@ from brokers.services.connections.queue.queue_connection_service_factory import 
     QueueConnectionServiceFactory,
 )
 from data_sources.services.dataset_query_service import DatasetQueryService
+from data_sources.services.dataset_parameter_resolver import DatasetParameterResolver
 from elaborations.models.dtos.configuration_command_dto import (
     ConstantSourceType,
     InitConstantConfigurationCommandDto,
 )
+from elaborations.services.constants.command_constant_definition_registry import resolve_definition_path
+from elaborations.services.suite_runs.run_context import build_run_context_scope
+from elaborations.services.suite_runs.run_context_resolver import resolve_dynamic_value
 from elaborations.services.operations.command_executor import (
     ExecutionResultDto,
     OperationExecutor,
@@ -63,7 +67,7 @@ class DataOperationExecutor(OperationExecutor):
         if cfg.sourceType == ConstantSourceType.JSON_ARRAY.value:
             return self._load_json_array(session, cfg.json_array_id)
         if cfg.sourceType == ConstantSourceType.DATASET.value:
-            return self._load_dataset(session, cfg.dataset_id)
+            return self._load_dataset(session, cfg)
         if cfg.sourceType == ConstantSourceType.SQS_QUEUE.value:
             return self._load_queue_messages(session, cfg)
         return data
@@ -79,13 +83,43 @@ class DataOperationExecutor(OperationExecutor):
         payload = json_payload_entity.payload
         return payload if isinstance(payload, list) else [payload]
 
-    @staticmethod
-    def _load_dataset(session: Session, data_source_id: str | None):
+    def _load_dataset(self, session: Session, cfg: InitConstantConfigurationCommandDto):
         dataset = DatasetQueryService.get_dataset_or_raise_for_runtime(
             session,
-            str(data_source_id or "").strip(),
+            str(cfg.dataset_id or "").strip(),
         )
-        return str(dataset.id)
+        if not cfg.parameters:
+            return str(dataset.id)
+        return {
+            "dataset_id": str(dataset.id),
+            "parameters": self._resolve_dataset_parameter_bindings(session, cfg.parameters),
+        }
+
+    def _resolve_dataset_parameter_bindings(self, session: Session, parameters: dict | None) -> dict:
+        normalized_parameters = parameters if isinstance(parameters, dict) else {}
+        resolved: dict[str, object] = {}
+        for parameter_name, raw_binding in normalized_parameters.items():
+            if isinstance(raw_binding, dict):
+                binding_kind = str(raw_binding.get("kind") or "").strip().lower()
+                if binding_kind == "constant_ref":
+                    _definition, path = resolve_definition_path(
+                        session,
+                        str(raw_binding.get("definitionId") or "").strip(),
+                    )
+                    resolved_value = resolve_dynamic_value(path, build_run_context_scope())
+                    if resolved_value == path:
+                        raise ValueError(
+                            f"Dataset parameter '{parameter_name}' constant reference is not resolved."
+                        )
+                    resolved[parameter_name] = resolved_value
+                    continue
+                if binding_kind == "built_in":
+                    resolved[parameter_name] = DatasetParameterResolver.resolve_builtin(
+                        str(raw_binding.get("resolver") or "").strip()
+                    )
+                    continue
+            resolved[parameter_name] = raw_binding
+        return resolved
 
     @staticmethod
     def _load_queue_messages(session: Session, cfg: InitConstantConfigurationCommandDto):

@@ -618,6 +618,44 @@ def test_build_test_command_draft_for_json_empty_requires_actual_variable():
     assert error == "Il campo Actual variable e' obbligatorio."
 
 
+def test_build_test_command_draft_for_dataset_init_constant_includes_parameter_bindings():
+    _reset_session_state()
+    streamlit_module = sys.modules["streamlit"]
+    streamlit_module.session_state[suite_editor_component.TEST_EDITOR_DATABASE_DATASOURCES_KEY] = [
+        {
+            "id": "dataset-1",
+            "description": "Orders dataset",
+            "perimeter": {
+                "parameters": [
+                    {
+                        "name": "pipelineId",
+                        "type": "string",
+                        "required": True,
+                    }
+                ]
+            },
+        }
+    ]
+    streamlit_module.session_state["suite_add_test_command_description_12"] = ""
+    streamlit_module.session_state["suite_add_test_init_constant_name_12"] = "rows"
+    streamlit_module.session_state["suite_add_test_init_constant_context_12"] = "local"
+    streamlit_module.session_state["suite_add_test_init_constant_source_type_12"] = "dataset"
+    streamlit_module.session_state["suite_add_test_init_constant_dataset_id_12"] = "dataset-1"
+    streamlit_module.session_state["suite_test_command_init_constant_dataset_param_mode_pipelineId_12"] = "constant"
+    streamlit_module.session_state["suite_test_command_init_constant_dataset_param_source_pipelineId_12"] = "$.global.constants.pipelineId"
+
+    operation, error = suite_editor_component._build_test_command_draft(12, "initConstant")
+
+    assert error is None
+    assert operation is not None
+    assert operation["configuration_json"]["parameters"] == {
+        "pipelineId": {
+            "kind": "constant_path",
+            "path": "$.global.constants.pipelineId",
+        }
+    }
+
+
 def test_resolve_available_assert_expected_constants_for_json_contains_only_returns_inspectable_json():
     draft = {
         "hooks": {

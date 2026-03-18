@@ -17,6 +17,14 @@ PERIMETER_OPERATORS = [
     "is_null",
     "is_not_null",
 ]
+PERIMETER_PARAMETER_TYPES = [
+    "string",
+    "integer",
+    "number",
+    "boolean",
+    "date",
+    "datetime",
+]
 
 
 def build_connection_label(connection_item: dict) -> str:
@@ -121,13 +129,23 @@ def normalize_filter_condition(condition: object) -> dict | None:
         return None
     field = str(condition.get("field") or "").strip()
     operator = str(condition.get("operator") or "").strip().lower()
-    value = normalize_editor_value(condition.get("value"))
+    raw_value = condition.get("value")
+    value = normalize_editor_value(raw_value)
     if not field and not operator and value is None:
         return None
     if not field or not operator:
         return None
-    if operator not in {"is_null", "is_not_null"} and value is None:
-        return None
+    if operator not in {"is_null", "is_not_null"}:
+        if isinstance(raw_value, dict) and str(raw_value.get("kind") or "").strip().lower() == "parameter":
+            parameter_name = str(raw_value.get("name") or "").strip()
+            if not parameter_name:
+                return None
+            value = {
+                "kind": "parameter",
+                "name": parameter_name,
+            }
+        elif value is None:
+            return None
     item = {"field": field, "operator": operator}
     if operator not in {"is_null", "is_not_null"}:
         item["value"] = value
@@ -192,19 +210,65 @@ def normalize_sort_rows(rows: object) -> list[dict]:
     return normalized_rows
 
 
+def normalize_parameter_definition(parameter: object) -> dict | None:
+    if not isinstance(parameter, dict):
+        return None
+    name = str(parameter.get("name") or "").strip()
+    parameter_type = str(parameter.get("type") or "").strip().lower()
+    if not name and not parameter_type and normalize_editor_value(parameter.get("default_value")) is None:
+        return None
+    if not name or parameter_type not in PERIMETER_PARAMETER_TYPES:
+        return None
+    return {
+        "name": name,
+        "type": parameter_type,
+        "required": bool(parameter.get("required")),
+        "default_value": normalize_editor_value(parameter.get("default_value")),
+        "description": str(parameter.get("description") or "").strip() or None,
+    }
+
+
+def normalize_parameter_rows(rows: object) -> list[dict]:
+    normalized_rows: list[dict] = []
+    seen_names: set[str] = set()
+    for row in coerce_editor_rows(rows):
+        normalized = normalize_parameter_definition(row)
+        if not normalized:
+            continue
+        parameter_name = str(normalized.get("name") or "").strip()
+        if parameter_name in seen_names:
+            continue
+        seen_names.add(parameter_name)
+        normalized_rows.append(normalized)
+    return normalized_rows
+
+
 def build_perimeter_payload(
     selected_columns: list[str],
-    filter_logic: str,
-    filter_items: object,
-    sort_rows: object,
+    parameter_rows_or_filter_logic: object,
+    filter_logic_or_items: object,
+    filter_items_or_sort_rows: object,
+    sort_rows: object | None = None,
 ) -> dict | None:
     perimeter: dict = {}
+    if sort_rows is None:
+        parameter_rows = []
+        filter_logic = parameter_rows_or_filter_logic
+        filter_items = filter_logic_or_items
+        sort_rows = filter_items_or_sort_rows
+    else:
+        parameter_rows = parameter_rows_or_filter_logic
+        filter_logic = filter_logic_or_items
+        filter_items = filter_items_or_sort_rows
     normalized_columns = [str(column).strip() for column in selected_columns if str(column).strip()]
+    normalized_parameters = normalize_parameter_rows(parameter_rows)
     normalized_filter_items = normalize_filter_items(filter_items)
     normalized_sort = normalize_sort_rows(sort_rows)
 
     if normalized_columns:
         perimeter["selected_columns"] = normalized_columns
+    if normalized_parameters:
+        perimeter["parameters"] = normalized_parameters
     if normalized_filter_items:
         perimeter["filter"] = {
             "logic": str(filter_logic or "AND").strip().upper(),
@@ -248,6 +312,11 @@ def default_filter_items(perimeter: dict | None) -> list[dict]:
     ]
 
 
+def default_parameter_rows(perimeter: dict | None) -> list[dict]:
+    payload = perimeter if isinstance(perimeter, dict) else {}
+    return normalize_parameter_rows(payload.get("parameters") or [])
+
+
 def default_sort_rows(perimeter: dict | None) -> list[dict]:
     payload = perimeter if isinstance(perimeter, dict) else {}
     return payload.get("sort") or []
@@ -256,6 +325,9 @@ def default_sort_rows(perimeter: dict | None) -> list[dict]:
 def _format_perimeter_value(value: object) -> str:
     if value is None:
         return "null"
+    if isinstance(value, dict) and str(value.get("kind") or "").strip().lower() == "parameter":
+        parameter_name = str(value.get("name") or "").strip()
+        return f"${parameter_name}" if parameter_name else "$?"
     if isinstance(value, str):
         return f"'{value}'"
     if isinstance(value, bool):

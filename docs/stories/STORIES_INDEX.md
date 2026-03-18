@@ -32,3 +32,4 @@
 | [QSM-039](stories/QSM-039-DRIVEN-CONSTANTS.md) | Driven constants | In corso | Backend+migrazione+runtime completati, UI guided pending |
 | [QSM-040](stories/QSM-040-REFACTOR-UI-DATASET.md) | Refactor UI Dataset | In corso | Expander list + perimeter editor page implementati, validazione in corso |
 | [QSM-041](stories/QSM-041-REFACTOR-UI-SUITE.md) | Refactor UI Suite | Completato | 7/7 |
+| [QSM-042](stories/QSM-042-QUERY-PARAMETERS.md) | Dataset query parameters | In corso | Backend/runtime/UI core implementati, test+docs in finalizzazione |

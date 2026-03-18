@@ -67,3 +67,64 @@ def test_dataset_perimeter_compiler_binds_values_instead_of_inlining_them():
     assert malicious_value not in compiled_sql
     assert malicious_value in compiled_stmt.params.values()
     assert compilation.columns == ["id", "status"]
+
+
+def test_dataset_perimeter_compiler_supports_parameter_references():
+    table = _build_orders_table()
+
+    compilation = DatasetPerimeterCompiler.compile(
+        table,
+        {
+            "parameters": [
+                {
+                    "name": "statusParam",
+                    "type": "string",
+                    "required": True,
+                }
+            ],
+            "filter": {
+                "logic": "AND",
+                "conditions": [
+                    {
+                        "field": "status",
+                        "operator": "eq",
+                        "value": {"kind": "parameter", "name": "statusParam"},
+                    },
+                ],
+            },
+        },
+        resolved_parameters={"statusParam": "READY"},
+    )
+
+    compiled_stmt = compilation.stmt.compile()
+    assert compiled_stmt.params
+    assert "READY" in compiled_stmt.params.values()
+
+
+def test_dataset_perimeter_compiler_rejects_unknown_parameter_references():
+    table = _build_orders_table()
+
+    with pytest.raises(ValueError, match="unknown dataset parameter 'missingParam'"):
+        DatasetPerimeterCompiler.compile(
+            table,
+            {
+                "parameters": [
+                    {
+                        "name": "statusParam",
+                        "type": "string",
+                        "required": True,
+                    }
+                ],
+                "filter": {
+                    "logic": "AND",
+                    "conditions": [
+                        {
+                            "field": "status",
+                            "operator": "eq",
+                            "value": {"kind": "parameter", "name": "missingParam"},
+                        },
+                    ],
+                },
+            },
+            resolved_parameters={"statusParam": "READY"},
+        )

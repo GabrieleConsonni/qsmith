@@ -65,7 +65,13 @@ async def preview_database_data_source_api(_id: str, limit: int = 100):
         entity = DatasetQueryService.get_dataset_or_raise(session, _id)
         payload = entity.configuration_json if isinstance(entity.configuration_json, dict) else {}
         perimeter = entity.perimeter if isinstance(entity.perimeter, dict) else None
-    return DatasetQueryService.execute_dataset_query(payload, perimeter, limit=limit)
+        return DatasetQueryService.execute_dataset_query(
+            payload,
+            perimeter,
+            limit=limit,
+            dataset_id=str(entity.id or "").strip() or _id,
+            session=session,
+        )
 
 
 @router.delete("/database/{_id}")

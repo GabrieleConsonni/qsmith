@@ -2,10 +2,13 @@ from sqlalchemy import MetaData, Table, inspect
 from sqlalchemy.orm import Session
 
 from _alembic.models.dataset_entity import DatasetEntity
+from data_sources.models.database_connection_config_types import convert_database_connection_config
 from data_sources.services.alembic.dataset_service import DatasetService
+from data_sources.services.dataset_parameter_resolver import DatasetParameterResolver
 from data_sources.services.alembic.database_connection_service import load_database_connection
 from data_sources.services.dataset_perimeter_compiler import DatasetPerimeterCompiler
 from exceptions.app_exception import QsmithAppException
+from json_utils.services.alembic.json_files_service import JsonFilesService
 from sqlalchemy_utils.engine_factory.sqlalchemy_engine_factory_composite import (
     create_sqlalchemy_engine,
 )
@@ -84,11 +87,20 @@ class DatasetQueryService:
         return dataset
 
     @classmethod
-    def load_rows_for_runtime(cls, dataset: DatasetEntity, limit: int | None = None) -> list[dict]:
+    def load_rows_for_runtime(
+        cls,
+        dataset: DatasetEntity,
+        limit: int | None = None,
+        parameter_values: dict | None = None,
+        session: Session | None = None,
+    ) -> list[dict]:
         preview = cls.execute_dataset_query(
             dataset.configuration_json if isinstance(dataset.configuration_json, dict) else {},
             dataset.perimeter if isinstance(dataset.perimeter, dict) else None,
             limit=limit,
+            parameter_values=parameter_values,
+            dataset_id=str(dataset.id or "").strip() or None,
+            session=session,
         )
         return preview["rows"]
 
@@ -99,6 +111,19 @@ class DatasetQueryService:
         schema = str(payload.get("schema") or "").strip()
         return object_name if not schema or "." in object_name else f"{schema}.{object_name}"
 
+    @staticmethod
+    def load_database_connection_for_query(
+        config: dict,
+        *,
+        session: Session | None = None,
+    ):
+        connection_id = str(config.get("connection_id") or "").strip()
+        if session is not None:
+            json_payload_entity = JsonFilesService().get_by_id(session, connection_id)
+            if json_payload_entity and isinstance(json_payload_entity.payload, dict):
+                return convert_database_connection_config(json_payload_entity.payload)
+        return load_database_connection(connection_id)
+
     @classmethod
     def execute_dataset_query(
         cls,
@@ -106,23 +131,31 @@ class DatasetQueryService:
         perimeter: dict | None,
         *,
         limit: int | None = None,
+        parameter_values: dict | None = None,
+        dataset_id: str | None = None,
+        session: Session | None = None,
     ) -> dict:
         config = dict(payload or {})
         cls.validate_dataset_configuration(config)
-        normalized_perimeter = cls.normalize_perimeter(perimeter)
-
-        connection = load_database_connection(config["connection_id"])
-        if not connection:
-            raise QsmithAppException(
-                f"No database connection found with id [ {config['connection_id']} ]"
+        try:
+            normalized_perimeter = cls.normalize_perimeter(perimeter)
+            resolved_parameters = DatasetParameterResolver.resolve(
+                normalized_perimeter,
+                parameter_values,
+                dataset_id=dataset_id,
             )
 
-        schema = config.get("schema") or connection.db_schema or None
-        object_name = config["object_name"]
-        object_type = cls.normalize_object_type(config.get("object_type", "table"))
+            connection = cls.load_database_connection_for_query(config, session=session)
+            if not connection:
+                raise QsmithAppException(
+                    f"No database connection found with id [ {config['connection_id']} ]"
+                )
 
-        engine = create_sqlalchemy_engine(connection)
-        try:
+            schema = config.get("schema") or connection.db_schema or None
+            object_name = config["object_name"]
+            object_type = cls.normalize_object_type(config.get("object_type", "table"))
+
+            engine = create_sqlalchemy_engine(connection)
             inspector = inspect(engine)
             allowed_names = (
                 inspector.get_table_names(schema=schema)
@@ -145,6 +178,7 @@ class DatasetQueryService:
                 table,
                 normalized_perimeter,
                 limit=cls.safe_limit(limit) if limit is not None else None,
+                resolved_parameters=resolved_parameters,
             )
 
             with engine.connect() as db_connection:
@@ -159,10 +193,12 @@ class DatasetQueryService:
                 "rows": rows,
                 "count": len(rows),
                 "perimeter": compilation.normalized_perimeter,
+                "resolved_parameters": resolved_parameters,
             }
         except QsmithAppException:
             raise
         except ValueError as exc:
             raise QsmithAppException(str(exc)) from exc
         finally:
-            engine.dispose()
+            if "engine" in locals():
+                engine.dispose()

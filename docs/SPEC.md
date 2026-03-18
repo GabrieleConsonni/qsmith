@@ -107,6 +107,11 @@ Obiettivi:
 - preview dati tabella/view configurata
 - UI principale con expander collassati per dataset e preview inline on-demand
 - configurazione del perimeter in pagina dedicata `DatasetPerimeterEditor`
+- supporto a dataset parametrizzabili tramite `perimeter.parameters`
+- i filtri del perimeter possono usare valori literal oppure riferimenti espliciti a parametri `{ "kind": "parameter", "name": "..." }`
+- i parametri supportano i tipi `string`, `integer`, `number`, `boolean`, `date`, `datetime`
+- i parametri dataset supportano solo `default_value` come default statico; non e previsto `default_resolver`
+- la preview dataset non accetta input manuali dei parametri: funziona solo se i parametri richiesti hanno un `default_value`; in caso contrario fallisce con errore `DATASET_PARAMETER_RESOLUTION_FAILED`
 
 ### 4.7 Test Suites
 Obiettivi:
@@ -131,7 +136,10 @@ Obiettivi:
   - i command consumer usano solo referenze guidate `*ConstantRef.definitionId`
   - i command che producono output tecnici possono dichiarare `resultConstant`
   - il runtime usa `runEnvelope/global/local/result.constants` come scope risolvibili
-  - le costanti `dataset` salvano il solo `dataset_id`; `sendMessageQueue`, `saveTable` ed `exportDataset` materializzano le righe a runtime applicando il `perimeter` del dataset
+  - le costanti `dataset` restano retrocompatibili: possono salvare il solo `dataset_id` oppure `{ "dataset_id": "...", "parameters": { ... } }`
+  - `initConstant` con `sourceType=dataset` puo dichiarare `parameters` per fare binding espliciti dei parametri dataset
+  - i binding supportati sono: valore literal, `{ "kind": "constant_ref", "definitionId": "..." }`, `{ "kind": "built_in", "resolver": "$now|$today" }`
+  - `sendMessageQueue`, `saveTable` ed `exportDataset` materializzano le righe a runtime applicando il `perimeter` del dataset e gli eventuali binding risolti
 
 Modello dati suite:
 - `test_suites`, `suite_items` e `suite_item_commands` contengono i dettagli funzionali usati in esecuzione.

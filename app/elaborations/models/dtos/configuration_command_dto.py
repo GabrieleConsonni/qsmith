@@ -90,6 +90,29 @@ class ResultConstantDto(BaseModel):
         return self
 
 
+class DatasetParameterBindingDto(BaseModel):
+    kind: str
+    definitionId: str | None = None
+    resolver: str | None = None
+
+    @model_validator(mode="after")
+    def validate_binding(self):
+        self.kind = _normalize_token(self.kind).lower()
+        if self.kind == "constant_ref":
+            self.definitionId = _normalize_token(self.definitionId)
+            if not self.definitionId:
+                raise ValueError("definitionId is required for dataset parameter constant_ref bindings.")
+            self.resolver = None
+            return self
+        if self.kind == "built_in":
+            self.resolver = _normalize_token(self.resolver)
+            if self.resolver not in {"$now", "$today"}:
+                raise ValueError("resolver must be one of: $now, $today.")
+            self.definitionId = None
+            return self
+        raise ValueError("dataset parameter binding kind must be one of: constant_ref, built_in.")
+
+
 def _normalize_token(value: object) -> str:
     return str(value or "").strip()
 
@@ -165,6 +188,35 @@ def _coerce_result_constant(value: object) -> ResultConstantDto | None:
                 valueType=value_type or ConstantSourceType.JSON.value,
             )
     return None
+
+
+def _coerce_dataset_parameter_bindings(value: object) -> dict | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("parameters must be an object.")
+    normalized: dict[str, object] = {}
+    for raw_name, raw_binding in value.items():
+        parameter_name = _normalize_token(raw_name)
+        if not parameter_name:
+            raise ValueError("parameters keys must be non-empty strings.")
+        if isinstance(raw_binding, dict):
+            normalized_kind = _normalize_token(raw_binding.get("kind")).lower()
+            if normalized_kind in {"constant_ref", "built_in"}:
+                binding = DatasetParameterBindingDto(
+                    kind=normalized_kind,
+                    definitionId=_first_non_empty(raw_binding, "definitionId", "definition_id"),
+                    resolver=_first_non_empty(raw_binding, "resolver"),
+                )
+                payload = {"kind": binding.kind}
+                if binding.kind == "constant_ref":
+                    payload["definitionId"] = binding.definitionId
+                else:
+                    payload["resolver"] = binding.resolver
+                normalized[parameter_name] = payload
+                continue
+        normalized[parameter_name] = raw_binding
+    return normalized or None
 
 
 def _normalize_command_type(value: object) -> str:
@@ -271,6 +323,7 @@ class InitConstantConfigurationCommandDto(ConfigurationCommandDto):
     target: str | None = None
     key: str | None = None
     scope: str | None = None
+    parameters: dict | None = None
 
     @model_validator(mode="after")
     def validate_configuration(self):
@@ -321,6 +374,7 @@ class InitConstantConfigurationCommandDto(ConfigurationCommandDto):
         if detected_source_type not in {item.value for item in ConstantSourceType}:
             raise ValueError("Unsupported sourceType for initConstant.")
         self.sourceType = detected_source_type
+        self.parameters = _coerce_dataset_parameter_bindings(self.parameters)
 
         return self
 
@@ -565,6 +619,7 @@ def convert_to_config_command_type(data: dict):
             target=_first_non_empty(data, "target"),
             key=_first_non_empty(data, "key"),
             scope=_first_non_empty(data, "scope"),
+            parameters=_first_non_empty(data, "parameters"),
         )
     if command_code == CommandCode.DELETE_CONSTANT.value:
         return DeleteConstantConfigurationCommandDto(

@@ -920,6 +920,167 @@ def test_init_constant_dataset_applies_perimeter(alembic_container, external_pos
     assert run_context.local_scope["constants"]["rows"] == dataset_id
 
 
+def test_init_constant_dataset_with_parameter_bindings_stores_structured_payload(
+    alembic_container,
+    external_postgres_container,
+):
+    table_name = _new_name("ext_perimeter_params")
+    external_engine = create_engine(external_postgres_container.get_connection_url())
+    try:
+        with external_engine.begin() as conn:
+            conn.execute(text(f"CREATE TABLE {table_name} (id INTEGER, pipeline_id TEXT)"))
+            conn.execute(
+                text(
+                    f"""
+                    INSERT INTO {table_name} (id, pipeline_id)
+                    VALUES
+                        (1, 'PIPE-01'),
+                        (2, 'PIPE-02')
+                    """
+                )
+            )
+    finally:
+        external_engine.dispose()
+
+    with managed_session() as session:
+        connection_id = _insert_database_connection_payload(
+            session,
+            _postgres_connection_payload(external_postgres_container),
+        )
+        dataset_id = _insert_dataset_payload(
+            session,
+            {
+                "connection_id": connection_id,
+                "schema": "public",
+                "object_name": table_name,
+                "object_type": "table",
+            },
+            perimeter={
+                "parameters": [
+                    {
+                        "name": "pipelineId",
+                        "type": "string",
+                        "required": True,
+                    }
+                ]
+            },
+        )
+        _insert_constant_definition(
+            session,
+            definition_id="def-pipeline-id",
+            name="pipelineId",
+            context_scope="global",
+            value_type="raw",
+        )
+        cfg = InitConstantConfigurationCommandDto(
+            commandCode="initConstant",
+            commandType="context",
+            definitionId="def-dataset",
+            name="rows",
+            context="local",
+            dataset_id=dataset_id,
+            parameters={
+                "pipelineId": {
+                    "kind": "constant_ref",
+                    "definitionId": "def-pipeline-id",
+                }
+            },
+        )
+        run_context = create_run_context(run_id="run-dataset-params")
+        run_context.global_scope["constants"]["pipelineId"] = "PIPE-01"
+        with bind_run_context(run_context):
+            result = DataOperationExecutor().execute(
+                session,
+                "cmd-init-dataset-params",
+                cfg,
+                [],
+            )
+
+    assert result.data == {
+        "dataset_id": dataset_id,
+        "parameters": {"pipelineId": "PIPE-01"},
+    }
+    assert run_context.local_scope["constants"]["rows"] == result.data
+
+
+def test_resolve_definition_input_data_loads_rows_from_parameterized_dataset_constant(
+    alembic_container,
+    external_postgres_container,
+):
+    from app.elaborations.services.operations.command_data_resolver import (
+        resolve_definition_input_data,
+    )
+
+    table_name = _new_name("dataset_param_rows")
+    external_engine = create_engine(external_postgres_container.get_connection_url())
+    try:
+        with external_engine.begin() as conn:
+            conn.execute(text(f"CREATE TABLE {table_name} (id INTEGER, status TEXT)"))
+            conn.execute(
+                text(
+                    f"""
+                    INSERT INTO {table_name} (id, status)
+                    VALUES
+                        (1, 'READY'),
+                        (2, 'PENDING')
+                    """
+                )
+            )
+    finally:
+        external_engine.dispose()
+
+    with managed_session() as session:
+        connection_id = _insert_database_connection_payload(
+            session,
+            _postgres_connection_payload(external_postgres_container),
+        )
+        dataset_id = _insert_dataset_payload(
+            session,
+            {
+                "connection_id": connection_id,
+                "schema": "public",
+                "object_name": table_name,
+                "object_type": "table",
+            },
+            perimeter={
+                "selected_columns": ["id", "status"],
+                "parameters": [
+                    {
+                        "name": "statusParam",
+                        "type": "string",
+                        "required": True,
+                    }
+                ],
+                "filter": {
+                    "logic": "AND",
+                    "conditions": [
+                        {
+                            "field": "status",
+                            "operator": "eq",
+                            "value": {"kind": "parameter", "name": "statusParam"},
+                        }
+                    ],
+                },
+            },
+        )
+        _insert_constant_definition(
+            session,
+            definition_id="def-parameterized-dataset",
+            name="rowsDataset",
+            value_type="dataset",
+        )
+        run_context = create_run_context(run_id="run-parameterized-dataset")
+        run_context.local_scope["constants"]["rowsDataset"] = {
+            "dataset_id": dataset_id,
+            "parameters": {"statusParam": "READY"},
+        }
+
+        with bind_run_context(run_context):
+            rows = resolve_definition_input_data(session, "def-parameterized-dataset", [])
+
+    assert rows == [{"id": 1, "status": "READY"}]
+
+
 def test_resolve_definition_input_data_raises_for_invalid_dataset_constant_value(alembic_container):
     from app.elaborations.services.operations.command_data_resolver import (
         resolve_definition_input_data,
@@ -938,7 +1099,7 @@ def test_resolve_definition_input_data_raises_for_invalid_dataset_constant_value
         with bind_run_context(run_context):
             with pytest.raises(
                 ValueError,
-                match="must resolve to a dataset id string",
+                match="must resolve to a dataset id string or object",
             ):
                 resolve_definition_input_data(session, "def-invalid-dataset", [])
 

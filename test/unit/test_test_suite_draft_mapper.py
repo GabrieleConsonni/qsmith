@@ -283,3 +283,79 @@ def test_draft_to_test_suite_payload_preserves_expected_ref_for_json_contains_ro
     assert round_trip_cfg["actual"] == "$.global.constants.actualPayload"
     assert round_trip_cfg["expected"] == {"$ref": "$.global.constants.expectedPayload"}
     assert round_trip_cfg["compare_keys"] == ["id", "code"]
+
+
+def test_draft_mapper_round_trips_dataset_parameter_constant_bindings():
+    payload = {
+        "id": "suite-dataset-params",
+        "description": "suite",
+        "hooks": [
+            {
+                "hook_phase": "before-all",
+                "description": "before all",
+                "commands": [
+                    {
+                        "order": 1,
+                        "description": "pipeline id",
+                        "cfg": {
+                            "commandCode": "initConstant",
+                            "commandType": "context",
+                            "definitionId": "def-pipeline",
+                            "name": "pipelineId",
+                            "context": "global",
+                            "sourceType": "raw",
+                            "value": "PIPE-01",
+                        },
+                    }
+                ],
+            }
+        ],
+        "tests": [
+            {
+                "description": "test 1",
+                "commands": [
+                    {
+                        "order": 1,
+                        "description": "dataset rows",
+                        "cfg": {
+                            "commandCode": "initConstant",
+                            "commandType": "context",
+                            "definitionId": "def-dataset",
+                            "name": "rows",
+                            "context": "local",
+                            "sourceType": "dataset",
+                            "dataset_id": "dataset-1",
+                            "parameters": {
+                                "pipelineId": {
+                                    "kind": "constant_ref",
+                                    "definitionId": "def-pipeline",
+                                },
+                                "snapshotAt": {
+                                    "kind": "built_in",
+                                    "resolver": "$now",
+                                },
+                            },
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+    draft = build_test_suite_draft(payload)
+    round_trip_cfg = draft["tests"][0]["operations"][0]["configuration_json"]
+    assert round_trip_cfg["parameters"]["pipelineId"] == {
+        "kind": "constant_path",
+        "path": "$.global.constants.pipelineId",
+    }
+
+    serialized_payload = draft_to_test_suite_payload(draft)
+    serialized_cfg = serialized_payload["tests"][0]["commands"][0]["cfg"]
+    assert serialized_cfg["parameters"]["pipelineId"] == {
+        "kind": "constant_ref",
+        "definitionId": "def-pipeline",
+    }
+    assert serialized_cfg["parameters"]["snapshotAt"] == {
+        "kind": "built_in",
+        "resolver": "$now",
+    }

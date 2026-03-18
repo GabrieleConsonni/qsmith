@@ -124,8 +124,8 @@ TEST_ACTION_COMMAND_MAPPING = {
     "cleanDataset": "cleanDataset",
 }
 HOOK_COMMAND_LABELS = {
-    "initConstant": "Variable",
-    "deleteConstant": "Delete variable",
+    "initConstant": "Initialize variable",
+    "deleteConstant": "Variable cleanup",
     "saveTable": "Save table",
     "dropTable": "Drop table",
     "cleanTable": "Clean table",
@@ -571,6 +571,10 @@ def _command_action_label(command_item: dict) -> str:
     return _command_ui_label(command_item).strip().lower() or "command"
 
 
+def _hook_command_type_label(command_code: str) -> str:
+    return HOOK_COMMAND_LABELS.get(str(command_code or "").strip(), str(command_code or "").strip())
+
+
 def _resolve_connection_label(connection_id: object) -> str:
     normalized_connection_id = str(connection_id or "").strip()
     if not normalized_connection_id:
@@ -654,26 +658,26 @@ def _build_suite_command_summary(command_item: dict) -> str:
         return f"**Initialize {variable_type_label} variable** {_italicize_entity(constant_name)}"
     if command_code == "deleteConstant":
         constant_name = str(configuration_json.get("name") or "").strip() or "-"
-        return _italicize_entity(constant_name)
+        return f"**Delete variable** {_italicize_entity(constant_name)}"
     if command_code == "sleep":
         duration = _safe_int(configuration_json.get("duration"), 0)
         duration_label = f"{duration}s" if duration else "-"
-        return duration_label
+        return f"**Sleep** {_italicize_entity(duration_label)}"
     if command_code == "sendMessageQueue":
         variable_name = _extract_variable_name(configuration_json.get("source"))
         queue_label = _resolve_queue_label(
             configuration_json.get("queue_id") or configuration_json.get("queueId")
         )
-        return f"**send variable** {_italicize_entity(variable_name)} **to queue** {_italicize_entity(queue_label)}"
+        return f"**Send variable** {_italicize_entity(variable_name)} **to queue** {_italicize_entity(queue_label)}"
     if command_code == "saveTable":
         table_name = str(configuration_json.get("table_name") or configuration_json.get("tableName") or "").strip() or "-"
-        return _italicize_entity(table_name)
+        return f"**Save table** {_italicize_entity(table_name)}"
     if command_code == "dropTable":
         table_name = str(configuration_json.get("table_name") or configuration_json.get("tableName") or "").strip() or "-"
-        return _italicize_entity(table_name)
+        return f"**Drop table** {_italicize_entity(table_name)}"
     if command_code == "cleanTable":
         table_name = str(configuration_json.get("table_name") or configuration_json.get("tableName") or "").strip() or "-"
-        return _italicize_entity(table_name)
+        return f"**Clean table** {_italicize_entity(table_name)}"
     if command_code == "exportDataset":
         connection_label = _resolve_connection_label(
             configuration_json.get("connection_id") or configuration_json.get("connectionId")
@@ -692,22 +696,22 @@ def _build_suite_command_summary(command_item: dict) -> str:
                 or configuration_json.get("datasetDescription")
                 or "-"
             ).strip() or "-"
-        return f"{_italicize_entity(connection_label)} {_italicize_entity(dataset_label)}".strip()
+        return f"**Export dataset** {_italicize_entity(connection_label)} {_italicize_entity(dataset_label)}".strip()
     if command_code == "dropDataset":
         dataset_label, connection_label = _resolve_dataset_summary(
             configuration_json.get("dataset_id") or configuration_json.get("datasetId")
         )
-        return f"{_italicize_entity(connection_label)} {_italicize_entity(dataset_label)}".strip()
+        return f"**Drop dataset** {_italicize_entity(connection_label)} {_italicize_entity(dataset_label)}".strip()
     if command_code == "cleanDataset":
         dataset_label, connection_label = _resolve_dataset_summary(
             configuration_json.get("dataset_id") or configuration_json.get("datasetId")
         )
-        return f"{_italicize_entity(connection_label)} {_italicize_entity(dataset_label)}".strip()
+        return f"**Clean dataset** {_italicize_entity(connection_label)} {_italicize_entity(dataset_label)}".strip()
     if command_code == "runSuite":
         suite_label = _resolve_test_suite_label(
             configuration_json.get("suite_id") or configuration_json.get("suiteId")
         )
-        return _italicize_entity(suite_label)
+        return f"**Run suite** {_italicize_entity(suite_label)}"
     if command_code in TEST_ASSERT_COMMAND_CODES:
         return _build_assert_summary(command_item)
     label = _command_ui_label(command_item)
@@ -1978,7 +1982,7 @@ def _render_hook_command_form(
     command_code = st.selectbox(
         "Command type",
         options=allowed_command_codes,
-        format_func=lambda code: _command_ui_label({"configuration_json": {"commandCode": str(code)}}),
+        format_func=_hook_command_type_label,
         key=command_type_key,
     )
 
@@ -2157,18 +2161,22 @@ def _render_test_command_form(
     if current_command_ui_code not in command_options and command_options:
         st.session_state[command_type_key] = command_options[0]
 
-    command_ui_code = st.selectbox(
-        "Command type",
-        options=command_options,
-        format_func=lambda code: (
-            _command_ui_label(
-                {"configuration_json": {"commandCode": TEST_ACTION_COMMAND_MAPPING.get(str(code), str(code))}}
-            )
-            if command_group == "action"
-            else str(code)
-        ),
-        key=command_type_key,
-    )
+    if command_group == "constant":
+        command_ui_code = command_options[0] if command_options else ""
+        st.session_state[command_type_key] = command_ui_code
+    else:
+        command_ui_code = st.selectbox(
+            "Command type",
+            options=command_options,
+            format_func=lambda code: (
+                _command_ui_label(
+                    {"configuration_json": {"commandCode": TEST_ACTION_COMMAND_MAPPING.get(str(code), str(code))}}
+                )
+                if command_group == "action"
+                else str(code)
+            ),
+            key=command_type_key,
+        )
     command_code = TEST_ACTION_COMMAND_MAPPING.get(command_ui_code, command_ui_code)
 
     if command_code == "initConstant":
@@ -3276,8 +3284,6 @@ def render_suite_editor_page():
                 register_execution_listener(execution_id, selected_suite_id)
                 st.rerun()
 
-    st.divider()
-
     execution_state = get_execution_state(str(st.session_state.get(TEST_SUITE_LAST_EXECUTION_ID_KEY) or ""))
     if execution_state:
         st.info(
@@ -3309,8 +3315,6 @@ def render_suite_editor_page():
                 _render_test_item(test, index, execution_state_map)
         else:
             st.caption("Nessun test configurato.")
-        
-        st.divider()
         
         add_cols = st.columns([8, 2], gap="small", vertical_alignment="center")
         with add_cols[1]:

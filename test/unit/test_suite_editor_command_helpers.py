@@ -218,6 +218,18 @@ def test_command_labels_use_variable_wording():
     assert suite_editor_component._command_action_label(command) == "dataset variable"
 
 
+def test_hook_command_type_labels_use_advanced_wording():
+    assert suite_editor_component._hook_command_type_label("initConstant") == "Initialize variable"
+    assert suite_editor_component._hook_command_type_label("deleteConstant") == "Variable cleanup"
+
+
+def test_suite_editor_constant_group_uses_implicit_command_type():
+    command_options = suite_editor_component.TEST_CONSTANT_COMMAND_CODES
+    command_ui_code = command_options[0] if command_options else ""
+
+    assert command_ui_code == "initConstant"
+
+
 def test_format_source_variable_option_uses_name_and_type():
     assert (
         suite_editor_component._format_source_variable_option(

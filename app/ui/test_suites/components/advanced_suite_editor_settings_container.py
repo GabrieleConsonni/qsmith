@@ -9,10 +9,10 @@ from test_suites.services.state_keys import (
 )
 
 HOOK_SECTIONS = [
-    ("beforeAll", "Before suite"),
-    ("beforeEach", "Before each test"),
-    ("afterEach", "After each test"),
-    ("afterAll", "After suite"),
+    ("beforeAll", "Before suite start commands settings"),
+    ("beforeEach", "Before each test start commands settings"),
+    ("afterEach", "After each test end commands settings"),
+    ("afterAll", "After suite end commands settings"),
 ]
 
 
@@ -40,29 +40,23 @@ def render_advanced_suite_editor_settings_container():
     suite_description = str(draft.get("description") or "").strip() or "Test suite"
     back_label = str(st.session_state.get(ADVANCED_SUITE_EDITOR_RETURN_LABEL_KEY) or "Back to suite").strip()
 
-    header_cols = st.columns([2, 6], gap="small", vertical_alignment="center")
-    with header_cols[0]:
-        if st.button(
-            back_label,
-            key="advanced_suite_editor_back_btn",
-            icon=":material/arrow_back:",
-            type="secondary",
-            use_container_width=True,
-        ):
-            _go_back()
-    with header_cols[1]:
-        st.markdown("### Advanced settings")
-        st.caption(f"Suite: {suite_description}")
+    if st.button(
+        back_label,
+        key="advanced_suite_editor_back_btn",
+        icon=":material/arrow_back:",
+        type="secondary",
+    ):
+        _go_back()
+
+    st.markdown("### Advanced settings")
+    st.caption(f"Suite: {suite_description}")
 
     st.divider()
     shared._render_operation_feedback()
 
-    for index, (hook_phase, section_title) in enumerate(HOOK_SECTIONS):
-        with st.container(border=True):
-            st.markdown(f"#### {section_title}")
+    for hook_phase, section_title in HOOK_SECTIONS:
+        with st.expander(section_title, expanded=True):
             shared._render_hook_section(draft, hook_phase, section_title, {})
-        if index < len(HOOK_SECTIONS) - 1:
-            st.write("")
 
     if shared._consume_add_operation_dialog_request():
         shared._render_add_operation_dialog(draft)

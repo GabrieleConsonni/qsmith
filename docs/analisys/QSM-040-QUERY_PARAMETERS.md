@@ -1,7 +1,3 @@
-Ecco il file Markdown pronto per Codex 👇
-
----
-
 # Dataset Parameters – Technical Design & Implementation Plan
 
 ## 🎯 Obiettivo

@@ -28,3 +28,4 @@
 | [QSM-035](stories/QSM-035-OPERATIONS.md) | Operations (suite+mock) | In corso | Contratto/policy runtime + mock-response family in avanzamento |
 | [QSM-036](stories/QSM-036-COMMANDS-E-CONSTANTS.md) | Commands e constants | In corso | Hard cut commands + runtime/UI/backend in corso |
 | [QSM-039](stories/QSM-039-DRIVEN-CONSTANTS.md) | Driven constants | In corso | Backend+migrazione+runtime completati, UI guided pending |
+| [QSM-040](stories/QSM-040-REFACTOR-UI-DATASET.md) | Refactor UI Dataset | In corso | Expander list + perimeter editor page implementati, validazione in corso |

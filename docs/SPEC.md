@@ -104,6 +104,8 @@ Obiettivi:
 - CRUD datasource database
 - scelta tabella/view da connessione tramite dialog con tree tables/views
 - preview dati tabella/view configurata
+- UI principale con expander collassati per dataset e preview inline on-demand
+- configurazione del perimeter in pagina dedicata `DatasetPerimeterEditor`
 
 ### 4.7 Test Suites
 Obiettivi:

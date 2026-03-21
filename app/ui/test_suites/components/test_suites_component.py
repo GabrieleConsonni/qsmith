@@ -279,9 +279,18 @@ def _render_suite_detail_panel(selected_suite_id: str):
     with header_cols[1]:
         if st.button(
             "",
+            key="suite_panel_advanced_settings",
+            icon=":material/settings:",
+            type="secondary",
+            use_container_width=True,
+        ):
+            _open_advanced_settings()
+    with header_cols[2]:
+        if st.button(
+            "",
             key="run_suite",
             icon=":material/play_arrow:",
-            type="secondary",
+            type="primary",
             use_container_width=True,
         ):
             response = execute_test_suite_by_id(selected_suite_id)
@@ -291,15 +300,7 @@ def _render_suite_detail_panel(selected_suite_id: str):
                 st.session_state[shared.PENDING_TEST_SUITE_EXECUTION_SELECTION_KEY] = execution_id
                 register_execution_listener(execution_id, selected_suite_id)
                 st.rerun()
-    with header_cols[2]:
-        if st.button(
-            "",
-            key="suite_panel_advanced_settings",
-            icon=":material/settings:",
-            type="secondary",
-            use_container_width=True,
-        ):
-            _open_advanced_settings()
+
 
     tests = draft.get("tests") or []
     if tests:

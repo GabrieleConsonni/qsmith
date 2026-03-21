@@ -59,7 +59,7 @@ Pagine principali:
 - `app/ui/pages/QueueDetails.py`
 - `app/ui/pages/JsonArray.py`
 - `app/ui/pages/TestSuites.py`
-- `app/ui/pages/SuiteEditor.py`
+- `app/ui/pages/TestEditor.py`
 - `app/ui/pages/AdvancedSuiteEditorSettings.py`
 - `app/ui/pages/Logs.py`
 - `app/ui/pages/Tools.py`
@@ -73,6 +73,12 @@ Organizzazione UI modulare gia presente in package dedicati:
 - `app/ui/suites` (componenti operation legacy/shared)
 - `app/ui/test_suites`
 - `app/ui/queues`
+
+Note UI test suite:
+- `app/ui/pages/TestEditor.py` e la pagina attiva per il dettaglio/edit del singolo test.
+- `app/ui/pages/SuiteEditor.py` resta alias legacy di compatibilita e non deve ricevere nuova logica.
+- Il rendering page-specific del test editor vive in `app/ui/test_suites/components/test_editor_component.py`.
+- `app/ui/test_suites/components/suite_editor_component.py` contiene helper condivisi della feature, non rendering dedicato a una pagina specifica.
 
 ## Router API principali
 - `/broker`

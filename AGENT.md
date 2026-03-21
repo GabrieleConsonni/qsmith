@@ -50,6 +50,12 @@ Per nuovo codice UI usare:
 
 Nota compatibilita: in moduli esistenti sono ammessi nomi storici (`dialogs.py`, `*_component.py`) ma nuove aggiunte devono convergere allo standard.
 
+### 4.1) Collocazione page-specific obbligatoria
+- Il rendering page-specific deve stare nel modulo della pagina/feature corrispondente.
+- Esempio vincolante: il codice del `TestEditor` va in `app/ui/test_suites/components/test_editor_component.py` o nel suo container, non in `suite_editor_component.py`.
+- `suite_editor_component.py` puo contenere solo helper condivisi tra piu pagine della feature oppure logica legacy ancora in fase di split esplicitamente motivata.
+- `app/ui/pages/SuiteEditor.py` e solo alias compat legacy del `TestEditor`: non introdurre nuova logica dedicata li.
+
 ### 5) Error handling UI
 - I service restituiscono dati o errori tipizzati (es. risultato + messaggio), non emettono toast/error UI direttamente.
 - La UI mappa gli errori in messaggi user-safe.

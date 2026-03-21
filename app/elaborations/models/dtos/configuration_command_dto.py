@@ -93,6 +93,57 @@ class ResultConstantDto(BaseModel):
         return self
 
 
+class SendMessageTemplateConstantDto(BaseModel):
+    name: str
+    kind: str
+    value: object | None = None
+
+    @model_validator(mode="after")
+    def validate_constant(self):
+        self.name = _normalize_token(self.name)
+        self.kind = _normalize_token(self.kind).lower()
+        if self.kind == "str":
+            self.kind = "string"
+        if self.kind == "booleano":
+            self.kind = "boolean"
+        if not self.name:
+            raise ValueError("messageTemplate.constants[].name is required.")
+        if self.kind not in {"string", "number", "date", "datetime", "boolean", "variable", "function"}:
+            raise ValueError(
+                "messageTemplate.constants[].kind must be one of: string, number, date, datetime, boolean, variable, function."
+            )
+        if self.kind == "variable":
+            normalized_value = str(self.value or "").strip()
+            if not normalized_value:
+                raise ValueError("messageTemplate.constants[].value is required for variable constants.")
+            self.value = normalized_value
+        if self.kind == "function":
+            normalized_value = _normalize_token(self.value).lower()
+            if normalized_value not in {"now", "today"}:
+                raise ValueError("messageTemplate.constants[].value must be one of: now, today.")
+            self.value = normalized_value
+        return self
+
+
+class SendMessageTemplateDto(BaseModel):
+    forEach: str | None = None
+    fields: list[str] = Field(default_factory=list)
+    constants: list[SendMessageTemplateConstantDto] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_template(self):
+        normalized_fields: list[str] = []
+        for field in self.fields:
+            normalized = str(field or "").strip()
+            if normalized and normalized not in normalized_fields:
+                normalized_fields.append(normalized)
+        self.fields = normalized_fields
+        self.forEach = str(self.forEach or "").strip() or None
+        if not self.fields and not self.constants:
+            raise ValueError("messageTemplate requires at least one field or constant.")
+        return self
+
+
 class DatasetParameterBindingDto(BaseModel):
     kind: str
     definitionId: str | None = None
@@ -192,6 +243,20 @@ def _coerce_result_constant(value: object) -> ResultConstantDto | None:
                 valueType=value_type or ConstantSourceType.JSON.value,
             )
     return None
+
+
+def _coerce_send_message_template(value: object) -> SendMessageTemplateDto | None:
+    if value is None:
+        return None
+    if isinstance(value, SendMessageTemplateDto):
+        return value
+    if isinstance(value, dict):
+        return SendMessageTemplateDto(
+            forEach=_first_non_empty(value, "forEach", "for_each"),
+            fields=value.get("fields") or [],
+            constants=value.get("constants") or [],
+        )
+    raise ValueError("messageTemplate must be an object.")
 
 
 def _coerce_dataset_parameter_bindings(value: object) -> dict | None:
@@ -407,6 +472,7 @@ class SendMessageQueueConfigurationCommandDto(ConfigurationCommandDto):
     commandType: str = CommandType.ACTION.value
     queue_id: str
     sourceConstantRef: ConstantRefDto | None = None
+    message_template: SendMessageTemplateDto | None = None
     template_id: str | None = None
     template_params: dict | None = None
     resultConstant: ResultConstantDto | None = None
@@ -414,6 +480,7 @@ class SendMessageQueueConfigurationCommandDto(ConfigurationCommandDto):
     @model_validator(mode="after")
     def validate_configuration(self):
         self.sourceConstantRef = _coerce_constant_ref(self.sourceConstantRef)
+        self.message_template = _coerce_send_message_template(self.message_template)
         self.resultConstant = _coerce_result_constant(self.resultConstant)
         if self.sourceConstantRef is None:
             raise ValueError("sourceConstantRef is required for sendMessageQueue.")
@@ -643,6 +710,7 @@ def convert_to_config_command_type(data: dict):
             commandType=command_type or CommandType.ACTION.value,
             queue_id=_first_non_empty(data, "queue_id", "queueId"),
             sourceConstantRef=_first_non_empty(data, "sourceConstantRef", "source_constant_ref"),
+            message_template=_first_non_empty(data, "message_template", "messageTemplate"),
             template_id=_first_non_empty(data, "template_id", "templateId"),
             template_params=_first_non_empty(data, "template_params", "templateParams"),
             resultConstant=_first_non_empty(data, "resultConstant", "result_constant"),

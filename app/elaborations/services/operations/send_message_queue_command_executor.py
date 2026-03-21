@@ -9,11 +9,17 @@ from brokers.services.connections.queue.queue_connection_service_factory import 
 from elaborations.models.dtos.configuration_command_dto import (
     SendMessageQueueConfigurationCommandDto,
 )
+from elaborations.services.constants.command_constant_definition_registry import (
+    resolve_definition_path,
+)
 from elaborations.services.operations.command_data_resolver import (
     resolve_definition_input_data,
     write_result_constant,
 )
 from elaborations.services.operations.command_executor import OperationExecutor, ExecutionResultDto
+from elaborations.services.operations.send_message_template_service import (
+    build_send_message_payloads,
+)
 from json_utils.services.json_service import make_json_safe
 
 
@@ -24,12 +30,13 @@ class PublishToQueueOperationExecutor(OperationExecutor):
             raise ValueError(f"Queue '{cfg.queue_id}' not found")
         connection_config: BrokerConnectionConfigTypes = load_broker_connection(queue.broker_id)
         service = QueueConnectionServiceFactory().get_service(connection_config)
-        input_data = resolve_definition_input_data(
-            session,
-            cfg.sourceConstantRef.definitionId,
-            data,
+        source_definition, _path = resolve_definition_path(session, cfg.sourceConstantRef.definitionId)
+        input_data = resolve_definition_input_data(session, cfg.sourceConstantRef.definitionId, data)
+        payload = build_send_message_payloads(
+            input_data,
+            source_type=str(getattr(source_definition, "value_type", "") or ""),
+            message_template=cfg.message_template,
         )
-        payload = input_data if isinstance(input_data, list) else [input_data]
         msg = [make_json_safe(item) for item in payload]
         service.publish_messages(connection_config, cfg.queue_id, msg)
         message=f"Published {len(payload)} message(s) to queue '{queue.code}'"
@@ -37,6 +44,7 @@ class PublishToQueueOperationExecutor(OperationExecutor):
             "queue_id": cfg.queue_id,
             "queue_code": str(queue.code or ""),
             "published": len(payload),
+            "renderedPayloads": msg,
         }
         if cfg.resultConstant:
             write_result_constant(session, cfg.resultConstant, result_payload)

@@ -1,6 +1,7 @@
 import streamlit as st
 
 from elaborations_shared.services.data_loader_service import load_test_editor_context
+from test_suites.components import test_editor_component as editor
 from test_suites.components import suite_editor_component as shared
 from test_suites.services.state_keys import TEST_SUITES_PAGE_PATH
 
@@ -48,10 +49,7 @@ def render_test_editor_main_container():
     st.caption(f"Suite: {suite_description}")
     st.divider()
 
-    shared._render_test_editor_item(selected_test, selected_index, draft, {})
+    editor._render_test_editor_item(selected_test, selected_index, draft, {})
 
-    if shared._consume_test_command_dialog_request():
-        shared._render_add_test_command_dialog(draft)
-
-    if shared._consume_edit_test_dialog_request():
-        shared._render_edit_test_dialog(draft)
+    if editor._consume_test_command_dialog_request():
+        editor._render_add_test_command_dialog(draft)

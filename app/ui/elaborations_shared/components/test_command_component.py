@@ -723,54 +723,16 @@ def render_operation_component(
     operation_label = operation_description or f"Operation {op_idx + 1}"
     operation_type = _operation_type_label(str(operation.get("operation_type") or ""))
     target_label, target_value = _resolve_operation_target_summary(operation)
-    operation_action_cols = (
-        st.columns([18, 1], gap="small", vertical_alignment="top")
-        if not show_status_indicator
-        else st.columns([1, 18, 1], gap="small", vertical_alignment="top")
-    )
-
-    content_col_idx = 0
-    actions_col_idx = 1
-    if show_status_indicator:
-        with operation_action_cols[0]:
-            st.button(
-                "",
-                key=f"suite_{nonce}_test_{test_ui_key}_operation_status_{operation_ui_key}",
-                icon=_operation_status_icon(operation_status),
-                type="tertiary",
-                disabled=True,
-                use_container_width=True,
-            )
-        content_col_idx = 1
-        actions_col_idx = 2
-
-    with operation_action_cols[content_col_idx]:
-        with st.container(border=True):
-            if show_status_indicator:
-                summary_cols = st.columns(3, gap="small", vertical_alignment="top")
-                with summary_cols[0]:
-                    st.caption("Type")
-                    st.write(operation_type or "-")
-                with summary_cols[1]:
-                    st.caption(target_label)
-                    st.write(target_value or "-")
-                with summary_cols[2]:
-                    st.caption("Description")
-                    st.write(operation_description or "-")
-            else:
-                st.caption("Type")
-                st.write(operation_type or "-")
-                st.caption(target_label)
-                st.write(target_value or "-")
-                st.caption("Description")
-                st.write(operation_description or "-")
-            if not summary_only:
-                st.caption(operation_label)
-                _render_operation_details(operation)
-            if operation_error_message:
-                st.caption(f"Error: {operation_error_message}")
-    with operation_action_cols[actions_col_idx]:
-        if st.button(
+    
+    with st.container(border=True):
+        st.caption("Type")
+        st.write(operation_type or "-")
+        st.caption(target_label)
+        st.write(target_value or "-")
+        st.caption("Description")
+        st.write(operation_description or "-")
+        
+    if st.button(
             "",
             key=f"suite_{nonce}_test_{test_ui_key}_operation_more_actions_{operation_ui_key}",
             icon=":material/more_vert:",
@@ -786,6 +748,7 @@ def render_operation_component(
                 nonce=nonce,
                 persist_suite_changes_fn=persist_suite_changes_fn,
             )
+        
 
 
 def find_draft_test_by_ui_key(draft: dict, test_ui_key: str) -> dict | None:

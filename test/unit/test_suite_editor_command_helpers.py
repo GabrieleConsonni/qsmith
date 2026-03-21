@@ -15,7 +15,7 @@ if str(UI_ROOT) not in sys.path:
     sys.path.insert(0, str(UI_ROOT))
 
 
-from ui.test_suites.components import suite_editor_component
+from ui.test_suites.components import suite_editor_component, test_editor_component
 from ui.elaborations_shared.components import test_command_component
 
 
@@ -511,6 +511,35 @@ def test_build_test_command_draft_allows_empty_description():
     assert operation["description"] == ""
 
 
+def test_build_test_command_draft_for_send_message_queue_includes_message_template():
+    _reset_session_state()
+    streamlit_module = sys.modules["streamlit"]
+    streamlit_module.session_state["suite_add_test_command_description_13"] = ""
+    streamlit_module.session_state["suite_add_test_send_message_broker_id_13"] = "broker-1"
+    streamlit_module.session_state["suite_add_test_send_message_queue_id_13"] = "queue-1"
+    streamlit_module.session_state["suite_add_test_send_message_source_13"] = "$.local.constants.payload"
+    streamlit_module.session_state["suite_add_test_send_message_template_enabled_13"] = True
+    streamlit_module.session_state["suite_add_test_send_message_template_for_each_13"] = "$.body"
+    streamlit_module.session_state["suite_add_test_send_message_template_fields_13"] = ["payload"]
+    streamlit_module.session_state["suite_add_test_send_message_template_constants_rows_13"] = [
+        {"field": "channel", "type": "string", "value": "sms"},
+        {"field": "enabled", "type": "boolean", "value": "true"},
+    ]
+
+    operation, error = suite_editor_component._build_test_command_draft(13, "sendMessageQueue")
+
+    assert error is None
+    assert operation is not None
+    assert operation["configuration_json"]["message_template"] == {
+        "forEach": "$.body",
+        "fields": ["payload"],
+        "constants": [
+            {"name": "channel", "kind": "string", "value": "sms"},
+            {"name": "enabled", "kind": "boolean", "value": "true"},
+        ],
+    }
+
+
 def test_append_operation_to_test_allows_empty_description():
     suite_test = {"operations": []}
     operation_item = {
@@ -925,8 +954,12 @@ def test_test_item_summary_view_only_exposes_modify_button():
     modify_button_call = next(
         call for call in stub.button_calls if call.get("key") == "test_suite_open_test_editor_test-ui-1"
     )
-    assert modify_button_call["label"] == "Modify"
-    assert len(stub.button_calls) == 1
+    assert modify_button_call["label"] == ""
+    delete_button_call = next(
+        call for call in stub.button_calls if call.get("key") == "test_suite_delete_test_test-ui-1"
+    )
+    assert delete_button_call["label"] == ""
+    assert len(stub.button_calls) == 2
 
 
 def test_ensure_selected_test_position_clamps_to_last_available():
@@ -1017,12 +1050,12 @@ def test_test_editor_item_read_mode_exposes_inline_command_actions():
             raise AssertionError("rerun should not be called")
 
     stub = StreamlitStub()
-    original_st = suite_editor_component.st
+    original_st = test_editor_component.st
     try:
-        suite_editor_component.st = stub
-        suite_editor_component._render_test_editor_item(current_test, 1, draft, {})
+        test_editor_component.st = stub
+        test_editor_component._render_test_editor_item(current_test, 1, draft, {})
     finally:
-        suite_editor_component.st = original_st
+        test_editor_component.st = original_st
 
     keys = {call.get("key") for call in stub.button_calls}
     assert "test_editor_inline_command_modify_test-ui-1_op-ui-1" in keys

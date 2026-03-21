@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from datetime import date
 from uuid import uuid4
 
 import pytest
@@ -249,6 +250,198 @@ def test_send_message_queue_command_executor_sends_flat_messages(monkeypatch, al
     assert published_calls[0]["queue_id"] == "queue-1"
     assert published_calls[0]["messages"] == run_context.local_scope["constants"]["payload"]
     assert result.result == [{"message": "Published 2 message(s) to queue 'orders'"}]
+
+
+def test_send_message_queue_command_executor_applies_message_template_to_json_payload(
+    monkeypatch,
+    alembic_container,
+):
+    import app.elaborations.services.operations.send_message_queue_command_executor as publish_module
+
+    published_calls: list[dict] = []
+
+    class FakeQueueConnectionService:
+        def publish_messages(self, connection_config, queue_id, messages):
+            published_calls.append(
+                {
+                    "connection_config": connection_config,
+                    "queue_id": queue_id,
+                    "messages": messages,
+                }
+            )
+            return [{"status": "ok"}]
+
+    fake_connection_cfg = object()
+    fake_queue = SimpleNamespace(code="orders", broker_id="broker-1")
+
+    monkeypatch.setattr(
+        publish_module.QueueService,
+        "get_by_id",
+        lambda _self, _session, _queue_id: fake_queue,
+    )
+    monkeypatch.setattr(
+        publish_module,
+        "load_broker_connection",
+        lambda _broker_id: fake_connection_cfg,
+    )
+    monkeypatch.setattr(
+        publish_module.QueueConnectionServiceFactory,
+        "get_service",
+        lambda _self, _cfg: FakeQueueConnectionService(),
+    )
+
+    cfg = SendMessageQueueConfigurationCommandDto(
+        commandCode="sendMessageQueue",
+        commandType="action",
+        queue_id="queue-1",
+        sourceConstantRef={"definitionId": "def-json-payload"},
+        message_template={
+            "forEach": "$.body",
+            "fields": ["payload"],
+            "constants": [
+                {"name": "channel", "kind": "string", "value": "sms"},
+                {"name": "enabled", "kind": "boolean", "value": "true"},
+            ],
+        },
+    )
+    run_context = create_run_context(run_id="run-publish-template-json")
+    run_context.local_scope["constants"]["payload"] = {
+        "body": {
+            "envelope": {"campaign": "west"},
+            "payload": [{"id": "xxx", "desc": "desc"}],
+        }
+    }
+
+    with managed_session() as session:
+        _insert_constant_definition(
+            session,
+            definition_id="def-json-payload",
+            name="payload",
+            value_type="json",
+        )
+        with bind_run_context(run_context):
+            PublishToQueueOperationExecutor().execute(session, "cmd-publish-template-json", cfg, [])
+
+    assert published_calls[0]["messages"] == [
+        {
+            "payload": [{"id": "xxx", "desc": "desc"}],
+            "channel": "sms",
+            "enabled": True,
+        }
+    ]
+
+
+def test_send_message_queue_command_executor_applies_nested_template_and_runtime_constants(
+    monkeypatch,
+    alembic_container,
+):
+    import app.elaborations.services.operations.send_message_queue_command_executor as publish_module
+
+    published_calls: list[dict] = []
+
+    class FakeQueueConnectionService:
+        def publish_messages(self, connection_config, queue_id, messages):
+            published_calls.append(
+                {
+                    "connection_config": connection_config,
+                    "queue_id": queue_id,
+                    "messages": messages,
+                }
+            )
+            return [{"status": "ok"}]
+
+    fake_connection_cfg = object()
+    fake_queue = SimpleNamespace(code="orders", broker_id="broker-1")
+
+    monkeypatch.setattr(
+        publish_module.QueueService,
+        "get_by_id",
+        lambda _self, _session, _queue_id: fake_queue,
+    )
+    monkeypatch.setattr(
+        publish_module,
+        "load_broker_connection",
+        lambda _broker_id: fake_connection_cfg,
+    )
+    monkeypatch.setattr(
+        publish_module.QueueConnectionServiceFactory,
+        "get_service",
+        lambda _self, _cfg: FakeQueueConnectionService(),
+    )
+
+    cfg = SendMessageQueueConfigurationCommandDto(
+        commandCode="sendMessageQueue",
+        commandType="action",
+        queue_id="queue-1",
+        sourceConstantRef={"definitionId": "def-json-nested"},
+        message_template={
+            "forEach": "$.payload[*].nested[*]",
+            "fields": ["payload.field", "field2"],
+            "constants": [
+                {
+                    "name": "requestedBy",
+                    "kind": "variable",
+                    "value": "$.global.constants.requestedBy",
+                },
+                {
+                    "name": "todayValue",
+                    "kind": "function",
+                    "value": "today",
+                },
+            ],
+        },
+    )
+    run_context = create_run_context(run_id="run-publish-template-nested")
+    run_context.global_scope["constants"]["requestedBy"] = "qa-user"
+    run_context.local_scope["constants"]["payload"] = {
+        "payload": [
+            {
+                "field": "xxx",
+                "nested": [{"field2": "yyy"}, {"field2": "zzz"}],
+            },
+            {
+                "field": "aaa",
+                "nested": [{"field2": "bbb"}, {"field2": "ccc"}],
+            },
+        ]
+    }
+
+    with managed_session() as session:
+        _insert_constant_definition(
+            session,
+            definition_id="def-json-nested",
+            name="payload",
+            value_type="json",
+        )
+        with bind_run_context(run_context):
+            PublishToQueueOperationExecutor().execute(session, "cmd-publish-template-nested", cfg, [])
+
+    assert published_calls[0]["messages"] == [
+        {
+            "payload.field": "xxx",
+            "field2": "yyy",
+            "requestedBy": "qa-user",
+            "todayValue": date.today().isoformat(),
+        },
+        {
+            "payload.field": "xxx",
+            "field2": "zzz",
+            "requestedBy": "qa-user",
+            "todayValue": date.today().isoformat(),
+        },
+        {
+            "payload.field": "aaa",
+            "field2": "bbb",
+            "requestedBy": "qa-user",
+            "todayValue": date.today().isoformat(),
+        },
+        {
+            "payload.field": "aaa",
+            "field2": "ccc",
+            "requestedBy": "qa-user",
+            "todayValue": date.today().isoformat(),
+        },
+    ]
 
 
 def test_send_message_queue_command_executor_loads_rows_from_dataset(

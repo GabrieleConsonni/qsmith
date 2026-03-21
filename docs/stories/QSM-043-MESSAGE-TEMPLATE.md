@@ -1,3 +1,12 @@
+# QSM-043 - SendMessageQueue Message Template
+
+## Stato
+- Stato: Implementato parziale
+- Scope consegnato: DTO/runtime `sendMessageQueue`, UI form base, preview campi, test automatici
+- Note: `template_id` / `template_params` legacy restano supportati; il nuovo `message_template` ha precedenza quando presente
+
+---
+
 # 📄 QSM – SendMessageQueue: JSON Field Filtering
 
 ## 🎯 Obiettivo

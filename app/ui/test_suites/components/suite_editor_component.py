@@ -26,8 +26,6 @@ from elaborations_shared.services.state_keys import (
     TEST_EDITOR_JSON_ARRAYS_KEY,
 )
 from test_suites.services.api_service import (
-    execute_test_by_id,
-    execute_test_suite_by_id,
     get_all_test_suites,
     get_test_suite_by_id,
     get_test_suite_executions,
@@ -37,10 +35,6 @@ from test_suites.services.draft_mapper import (
     build_test_suite_draft,
     draft_to_test_suite_payload,
     new_ui_key,
-)
-from test_suites.services.execution_stream_service import (
-    get_execution_state,
-    register_execution_listener,
 )
 from test_suites.services.state_keys import (
     SELECTED_TEST_POSITION_KEY,
@@ -57,14 +51,6 @@ SELECTED_TEST_SUITE_EXECUTION_ID_KEY = "selected_test_suite_execution_id"
 PENDING_TEST_SUITE_EXECUTION_SELECTION_KEY = "pending_test_suite_execution_selection"
 ADD_TEST_DIALOG_OPEN_KEY = "test_suite_add_test_dialog_open"
 ADD_TEST_DIALOG_NONCE_KEY = "test_suite_add_test_dialog_nonce"
-ACTIVE_SUITE_SECTION_KEY = "active_suite_section"
-SUITE_SECTION_PHASES = [
-    ("before-all", "beforeAll"),
-    ("before-each", "beforeEach"),
-    ("tests", "test"),
-    ("after-each", "afterEach"),
-    ("after-all", "afterAll"),
-]
 HOOK_ADD_COMMAND_DIALOG_OPEN_KEY = "suite_editor_hook_add_command_dialog_open"
 HOOK_ADD_COMMAND_DIALOG_NONCE_KEY = "suite_editor_hook_add_command_dialog_nonce"
 HOOK_ADD_COMMAND_DIALOG_TARGET_UI_KEY = "suite_editor_hook_add_command_dialog_target_ui_key"
@@ -75,9 +61,6 @@ TEST_ADD_COMMAND_DIALOG_TARGET_UI_KEY = "suite_editor_test_add_command_dialog_ta
 TEST_ADD_COMMAND_DIALOG_GROUP_KEY = "suite_editor_test_add_command_dialog_group"
 TEST_EDITOR_INLINE_COMMAND_UI_KEY = "test_editor_inline_command_ui_key"
 TEST_EDITOR_INLINE_COMMAND_NONCE_KEY = "test_editor_inline_command_nonce"
-TEST_EDIT_DIALOG_OPEN_KEY = "suite_editor_test_edit_dialog_open"
-TEST_EDIT_DIALOG_NONCE_KEY = "suite_editor_test_edit_dialog_nonce"
-TEST_EDIT_DIALOG_TARGET_UI_KEY = "suite_editor_test_edit_dialog_target_ui_key"
 COMMAND_EDIT_DIALOG_OPEN_KEY = "suite_editor_command_edit_dialog_open"
 COMMAND_EDIT_DIALOG_NONCE_KEY = "suite_editor_command_edit_dialog_nonce"
 COMMAND_EDIT_DIALOG_TARGET_ITEM_UI_KEY = "suite_editor_command_edit_dialog_target_item_ui_key"
@@ -567,6 +550,19 @@ def _extract_expected_ref_path(value: object) -> str:
     return ""
 
 
+def _normalize_json_path_input(value: object) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    if raw == "$":
+        return raw
+    if raw.startswith("$."):
+        return raw
+    if raw.startswith("$"):
+        return f"$.{raw[1:].lstrip('.')}"
+    return f"$.{raw.lstrip('.')}"
+
+
 def _json_object_keys(value: object) -> list[str]:
     if not isinstance(value, dict):
         return []
@@ -899,6 +895,244 @@ def _resolve_export_dataset_mapping_key_options(
         return keys, None if keys else "Il dataset selezionato non espone colonne nel perimeter."
 
     return [], None
+
+
+def _resolve_send_message_source_definition(
+    source_options: list[dict],
+    source_path: object,
+) -> dict | None:
+    normalized_source_path = str(source_path or "").strip()
+    if not normalized_source_path:
+        return None
+    return next(
+        (
+            item
+            for item in source_options
+            if str(item.get("path") or "").strip() == normalized_source_path
+        ),
+        None,
+    )
+
+
+def _parse_message_template_constants(value: object) -> tuple[list[dict], str | None]:
+    if value is None:
+        return [], None
+    if not isinstance(value, list):
+        return [], "Message template constants must be a table of rows."
+
+    parsed_constants: list[dict] = []
+    for raw_item in value:
+        if not isinstance(raw_item, dict):
+            return [], "Each message template constant row must be an object."
+        field_name = str(raw_item.get("field") or raw_item.get("name") or "").strip()
+        field_type = str(raw_item.get("type") or raw_item.get("kind") or "").strip().lower()
+        field_value = raw_item.get("value")
+        if not field_name and not field_type and (field_value is None or str(field_value).strip() == ""):
+            continue
+        if field_type == "booleano":
+            field_type = "boolean"
+        if not field_name:
+            return [], "Template constant field is required."
+        if field_type not in {"string", "number", "date", "datetime", "boolean"}:
+            return [], "Template constant type is not supported."
+        parsed_constants.append(
+            {
+                "name": field_name,
+                "kind": field_type,
+                "value": field_value,
+            }
+        )
+    return parsed_constants, None
+
+
+def _resolve_send_message_template_preview_rows(
+    source_definition: dict | None,
+    *,
+    for_each: object,
+    json_arrays: list[dict],
+    datasources: list[dict],
+) -> tuple[list[dict], list[str], str | None]:
+    if not isinstance(source_definition, dict):
+        return [], [], None
+
+    source_type = str(source_definition.get("value_type") or "").strip()
+    source_reference_id = str(source_definition.get("source_reference_id") or "").strip()
+    if source_type == "dataset":
+        datasource_item = next(
+            (
+                item
+                for item in datasources
+                if str(item.get("id") or "").strip() == source_reference_id
+            ),
+            None,
+        )
+        if not isinstance(datasource_item, dict):
+            return [], [], "Selected dataset is not available."
+        field_options = _dataset_mapping_key_options(datasource_item)
+        preview_rows = [{field_name: f"<{field_name}>" for field_name in field_options[:10]}] if field_options else []
+        return preview_rows, field_options, None if field_options else "Selected dataset does not expose perimeter columns."
+
+    preview_source = source_definition.get("preview_value")
+    if source_type == "jsonArray":
+        preview_source, error = _resolve_expected_json_array_payload(json_arrays, source_reference_id)
+        if error:
+            return [], [], error
+    if source_type not in {"json", "jsonArray"}:
+        return [], [], "Message template preview is available only for json, jsonArray and dataset sources."
+
+    preview_rows = preview_send_message_template_rows(
+        preview_source,
+        source_type=source_type,
+        for_each=for_each,
+    )
+    field_options = sorted(
+        {
+            str(field_name).strip()
+            for row in preview_rows
+            for field_name in row.keys()
+            if str(field_name).strip()
+        }
+    )
+    if not preview_rows:
+        return [], [], "No preview rows available for the selected forEach path."
+    return preview_rows, field_options, None
+
+
+def _send_message_template_constant_rows(value: object) -> list[dict]:
+    constants = value if isinstance(value, list) else []
+    rows: list[dict] = []
+    for constant in constants:
+        if not isinstance(constant, dict):
+            continue
+        raw_kind = str(constant.get("kind") or constant.get("type") or "").strip().lower()
+        normalized_kind = "boolean" if raw_kind in {"booleano", "boolean"} else raw_kind
+        rows.append(
+            {
+                "field": str(constant.get("name") or constant.get("field") or "").strip(),
+                "type": normalized_kind or "string",
+                "value": constant.get("value"),
+            }
+        )
+    return rows
+
+
+def _render_send_message_template_section(
+    *,
+    key_prefix: str,
+    dialog_nonce: int,
+    source_options: list[dict],
+    json_arrays: list[dict],
+    datasources: list[dict],
+):
+    enabled_key = _command_form_key(key_prefix, dialog_nonce, "send_message_template_enabled")
+    for_each_key = _command_form_key(key_prefix, dialog_nonce, "send_message_template_for_each")
+    fields_key = _command_form_key(key_prefix, dialog_nonce, "send_message_template_fields")
+    constants_key = _command_form_key(key_prefix, dialog_nonce, "send_message_template_constants_rows")
+    source_key = _command_form_key(key_prefix, dialog_nonce, "send_message_source")
+
+    source_definition = _resolve_send_message_source_definition(
+        source_options,
+        st.session_state.get(source_key),
+    )
+    source_type = str((source_definition or {}).get("value_type") or "").strip()
+    template_supported = source_type in {"json", "jsonArray", "dataset"}
+
+    st.checkbox("Enable message template", key=enabled_key)
+    if not bool(st.session_state.get(enabled_key)):
+        return
+
+    if not template_supported:
+        st.info("Message template is available only for json, jsonArray and dataset sources.")
+        return
+
+    current_for_each = str(st.session_state.get(for_each_key) or "").strip()
+    if source_type != "dataset" and not current_for_each:
+        st.session_state[for_each_key] = "$"
+
+    preview_rows, field_options, preview_error = _resolve_send_message_template_preview_rows(
+        source_definition,
+        for_each=st.session_state.get(for_each_key),
+        json_arrays=json_arrays,
+        datasources=datasources,
+    )
+    current_fields = _normalize_compare_keys_input(st.session_state.get(fields_key))
+    st.session_state[fields_key] = [
+        field_name for field_name in current_fields if field_name in field_options
+    ]
+
+    st.caption("Message extract preview")
+    if preview_rows:
+        st.json(preview_rows[:3], expanded=True)
+    elif preview_error:
+        st.info(preview_error)
+
+    if source_type == "dataset":
+        st.text_input("forEach", key=for_each_key, disabled=True, help="Not used for dataset sources.")
+    else:
+        st.text_input(
+            "forEach",
+            key=for_each_key,
+            placeholder="$.payload[*]",
+            help="JSON path root used to split or extract source records.",
+        )
+
+    st.multiselect(
+        "Template fields",
+        options=field_options,
+        key=fields_key,
+        disabled=not bool(field_options),
+    )
+    field_action_cols = st.columns([1, 1], gap="small", vertical_alignment="center")
+    with field_action_cols[0]:
+        if st.button(
+            "Add all fields",
+            key=f"{fields_key}_add_all",
+            use_container_width=True,
+            disabled=not bool(field_options),
+        ):
+            st.session_state[fields_key] = list(field_options)
+            st.rerun()
+    with field_action_cols[1]:
+        if st.button(
+            "Remove all fields",
+            key=f"{fields_key}_remove_all",
+            use_container_width=True,
+            disabled=not bool(st.session_state.get(fields_key)),
+        ):
+            st.session_state[fields_key] = []
+            st.rerun()
+
+    st.caption("Template constants")
+    st.data_editor(
+        st.session_state.get(constants_key, []),
+        key=constants_key,
+        num_rows="dynamic",
+        hide_index=True,
+        use_container_width=True,
+        column_config={
+            "field": st.column_config.TextColumn("Field", required=True),
+            "type": st.column_config.SelectboxColumn(
+                "Type",
+                options=["string", "number", "date", "datetime", "boolean"],
+                required=True,
+            ),
+            "value": st.column_config.TextColumn("Value"),
+        },
+    )
+
+    preview_constants, _error = _parse_message_template_constants(st.session_state.get(constants_key))
+    preview_payload = {
+        field_name: preview_rows[0].get(field_name)
+        for field_name in st.session_state.get(fields_key, [])
+        if preview_rows and field_name in preview_rows[0]
+    }
+    for constant in preview_constants:
+        constant_name = str(constant.get("name") or "").strip()
+        if constant_name:
+            preview_payload[constant_name] = constant.get("value")
+    if preview_payload:
+        st.caption("Message to send preview")
+        st.json(preview_payload, expanded=True)
 
 
 def _render_source_constant_select(
@@ -1550,12 +1784,6 @@ def _ensure_hook_item(draft: dict, hook_phase: str) -> dict:
     hooks[hook_phase] = hook
     return hook
 
-
-def _open_add_operation_dialog_for_hook(draft: dict, hook_phase: str):
-    hook = _ensure_hook_item(draft, hook_phase)
-    _open_add_operation_dialog_for_item(str(hook.get("_ui_key") or ""))
-
-
 def _open_add_operation_dialog_for_item(item_ui_key: str):
     st.session_state[ADD_TEST_OPERATION_DIALOG_OPEN_KEY] = True
     st.session_state[ADD_TEST_OPERATION_DIALOG_TARGET_TEST_UI_KEY] = str(item_ui_key or "")
@@ -1609,26 +1837,6 @@ def _is_inline_test_command_active(operation_ui_key: str) -> bool:
     return bool(active_operation_ui_key and active_operation_ui_key == str(operation_ui_key or "").strip())
 
 
-def _consume_test_command_dialog_request() -> bool:
-    is_open_requested = bool(st.session_state.get(TEST_ADD_COMMAND_DIALOG_OPEN_KEY, False))
-    if is_open_requested:
-        st.session_state[TEST_ADD_COMMAND_DIALOG_OPEN_KEY] = False
-    return is_open_requested
-
-
-def _open_edit_test_dialog(item_ui_key: str):
-    st.session_state[TEST_EDIT_DIALOG_OPEN_KEY] = True
-    st.session_state[TEST_EDIT_DIALOG_TARGET_UI_KEY] = str(item_ui_key or "")
-    st.session_state[TEST_EDIT_DIALOG_NONCE_KEY] = (
-        int(st.session_state.get(TEST_EDIT_DIALOG_NONCE_KEY, 0)) + 1
-    )
-
-
-def _close_edit_test_dialog():
-    st.session_state[TEST_EDIT_DIALOG_OPEN_KEY] = False
-    st.session_state.pop(TEST_EDIT_DIALOG_TARGET_UI_KEY, None)
-
-
 def _open_edit_command_dialog(item_ui_key: str, command_ui_key: str, owner_kind: str, command_group: str):
     st.session_state[COMMAND_EDIT_DIALOG_OPEN_KEY] = True
     st.session_state[COMMAND_EDIT_DIALOG_TARGET_ITEM_UI_KEY] = str(item_ui_key or "")
@@ -1676,13 +1884,6 @@ def _consume_hook_command_dialog_request() -> bool:
     is_open_requested = bool(st.session_state.get(HOOK_ADD_COMMAND_DIALOG_OPEN_KEY, False))
     if is_open_requested:
         st.session_state[HOOK_ADD_COMMAND_DIALOG_OPEN_KEY] = False
-    return is_open_requested
-
-
-def _consume_edit_test_dialog_request() -> bool:
-    is_open_requested = bool(st.session_state.get(TEST_EDIT_DIALOG_OPEN_KEY, False))
-    if is_open_requested:
-        st.session_state[TEST_EDIT_DIALOG_OPEN_KEY] = False
     return is_open_requested
 
 
@@ -2074,22 +2275,33 @@ def _build_test_command_draft(dialog_nonce: int, command_ui_code: str) -> tuple[
             "commandType": "action",
             "queue_id": queue_id,
         }
-        template_id = str(
-            st.session_state.get(f"suite_add_test_send_message_template_id_{dialog_nonce}") or ""
-        ).strip()
-        template_params, parse_error = _parse_json_input(
-            st.session_state.get(f"suite_add_test_send_message_template_params_{dialog_nonce}")
+        template_enabled = bool(
+            st.session_state.get(f"suite_add_test_send_message_template_enabled_{dialog_nonce}")
         )
-        if parse_error:
-            return None, parse_error
+        template_for_each = _normalize_json_path_input(
+            st.session_state.get(f"suite_add_test_send_message_template_for_each_{dialog_nonce}")
+        )
+        template_fields = _normalize_compare_keys_input(
+            st.session_state.get(f"suite_add_test_send_message_template_fields_{dialog_nonce}")
+        )
+        template_constants, template_constants_error = _parse_message_template_constants(
+            st.session_state.get(f"suite_add_test_send_message_template_constants_rows_{dialog_nonce}")
+        )
+        if template_constants_error:
+            return None, template_constants_error
         result_target = _normalize_context_path(
             st.session_state.get(f"suite_add_test_send_message_result_target_{dialog_nonce}")
         )
         cfg["source"] = source
-        if template_id:
-            cfg["template_id"] = template_id
-        if isinstance(template_params, dict):
-            cfg["template_params"] = template_params
+        if template_enabled:
+            if not template_fields and not template_constants:
+                return None, "Message template requires at least one field or constant."
+            cfg["message_template"] = {
+                "fields": template_fields,
+                "constants": template_constants,
+            }
+            if template_for_each:
+                cfg["message_template"]["forEach"] = template_for_each
         if result_target:
             cfg["result_target"] = result_target
     elif command_code == "saveTable":
@@ -2448,6 +2660,11 @@ def _initialize_test_command_form(
         )
     elif command_code == "sendMessageQueue":
         queue_id = str(configuration_json.get("queue_id") or "")
+        message_template = _safe_dict(
+            configuration_json.get("message_template")
+            or configuration_json.get("messageTemplate")
+            or {}
+        )
         st.session_state[_command_form_key(key_prefix, dialog_nonce, "send_message_broker_id")] = (
             _find_broker_id_for_queue_id(queue_id, brokers)
         )
@@ -2455,11 +2672,17 @@ def _initialize_test_command_form(
         st.session_state[_command_form_key(key_prefix, dialog_nonce, "send_message_source")] = str(
             configuration_json.get("source") or ""
         )
-        st.session_state[_command_form_key(key_prefix, dialog_nonce, "send_message_template_id")] = str(
-            configuration_json.get("template_id") or ""
+        st.session_state[_command_form_key(key_prefix, dialog_nonce, "send_message_template_enabled")] = bool(
+            message_template
         )
-        st.session_state[_command_form_key(key_prefix, dialog_nonce, "send_message_template_params")] = (
-            _stringify_form_value(configuration_json.get("template_params"))
+        st.session_state[_command_form_key(key_prefix, dialog_nonce, "send_message_template_for_each")] = str(
+            message_template.get("forEach") or message_template.get("for_each") or ""
+        )
+        st.session_state[_command_form_key(key_prefix, dialog_nonce, "send_message_template_fields")] = (
+            _normalize_compare_keys_input(message_template.get("fields"))
+        )
+        st.session_state[_command_form_key(key_prefix, dialog_nonce, "send_message_template_constants_rows")] = (
+            _send_message_template_constant_rows(message_template.get("constants"))
         )
         st.session_state[_command_form_key(key_prefix, dialog_nonce, "send_message_result_target")] = str(
             configuration_json.get("result_target") or ""
@@ -2912,19 +3135,25 @@ def _render_test_command_form(
             key=queue_key,
             disabled=not bool(queue_ids),
         )
+        source_options = _resolve_available_source_constants(
+            draft,
+            item,
+            command_code=command_code,
+            stop_before_index=stop_before_index,
+        )
         _render_source_constant_select(
             label="Source variable",
             key=_command_form_key(key_prefix, dialog_nonce, "send_message_source"),
-            options=_resolve_available_source_constants(
-                draft,
-                item,
-                command_code=command_code,
-                stop_before_index=stop_before_index,
-            ),
+            options=source_options,
             help_text="Visible and compatible variables at this point.",
         )
-        st.text_input("Template id (optional)", key=_command_form_key(key_prefix, dialog_nonce, "send_message_template_id"))
-        st.text_area("Template params (optional)", key=_command_form_key(key_prefix, dialog_nonce, "send_message_template_params"), height=120)
+        _render_send_message_template_section(
+            key_prefix=key_prefix,
+            dialog_nonce=dialog_nonce,
+            source_options=source_options,
+            json_arrays=json_arrays,
+            datasources=datasources,
+        )
         st.text_input("Result variable", key=_command_form_key(key_prefix, dialog_nonce, "send_message_result_target"))
     elif command_code == "saveTable":
         st.text_input("Table name", key=_command_form_key(key_prefix, dialog_nonce, "save_table_name"))
@@ -3233,8 +3462,10 @@ def _build_test_command_draft_with_prefix(
         ("send_message_broker_id", f"suite_add_test_send_message_broker_id_{dialog_nonce}"),
         ("send_message_queue_id", f"suite_add_test_send_message_queue_id_{dialog_nonce}"),
         ("send_message_source", f"suite_add_test_send_message_source_{dialog_nonce}"),
-        ("send_message_template_id", f"suite_add_test_send_message_template_id_{dialog_nonce}"),
-        ("send_message_template_params", f"suite_add_test_send_message_template_params_{dialog_nonce}"),
+        ("send_message_template_enabled", f"suite_add_test_send_message_template_enabled_{dialog_nonce}"),
+        ("send_message_template_for_each", f"suite_add_test_send_message_template_for_each_{dialog_nonce}"),
+        ("send_message_template_fields", f"suite_add_test_send_message_template_fields_{dialog_nonce}"),
+        ("send_message_template_constants_rows", f"suite_add_test_send_message_template_constants_rows_{dialog_nonce}"),
         ("send_message_result_target", f"suite_add_test_send_message_result_target_{dialog_nonce}"),
         ("save_table_name", f"suite_add_test_save_table_name_{dialog_nonce}"),
         ("save_table_source", f"suite_add_test_save_table_source_{dialog_nonce}"),
@@ -3588,195 +3819,6 @@ def _render_inline_typed_test_command_editor(
             st.rerun()
 
 
-def _render_test_editor_operation(item: dict, operation: dict, op_idx: int, draft: dict):
-    item_ui_key = str(item.get("_ui_key") or new_ui_key())
-    item["_ui_key"] = item_ui_key
-    operation_ui_key = str(operation.get("_ui_key") or f"{item_ui_key}_op_{op_idx}")
-    operation["_ui_key"] = operation_ui_key
-    operation_index, current_operation = _find_operation_by_ui_key(item, operation_ui_key)
-    if not isinstance(current_operation, dict):
-        return
-
-    is_editing = _is_inline_test_command_active(operation_ui_key)
-    command_group = _resolve_test_command_group(current_operation.get("configuration_json"))
-    action_label = _command_action_label(current_operation)
-    is_first = operation_index <= 0
-    is_last = operation_index >= len(_operation_list(item)) - 1
-
-    with st.container(border=True):
-        st.markdown(_build_suite_command_markdown(current_operation))
-        description = _command_description_text(current_operation)
-        if description:
-            st.caption(description)
-
-        if is_editing:
-            if command_group and command_group != "fallback-json":
-                _render_inline_typed_test_command_editor(
-                    draft,
-                    item,
-                    current_operation,
-                    operation_index,
-                    command_group,
-                    _inline_test_command_nonce(),
-                )
-            else:
-                _render_inline_generic_test_command_editor(
-                    item,
-                    current_operation,
-                    operation_index,
-                    _inline_test_command_nonce(),
-                )
-            return
-
-        action_cols = st.columns([2, 2, 1, 1, 6], gap="small", vertical_alignment="center")
-        with action_cols[0]:
-            if st.button(
-                "Modify",
-                key=f"test_editor_inline_command_modify_{item_ui_key}_{operation_ui_key}",
-                icon=":material/edit:",
-                type="secondary",
-                help=f"Modify {action_label}",
-                use_container_width=True,
-            ):
-                _open_inline_test_command_editor(operation_ui_key)
-                st.rerun()
-        with action_cols[1]:
-            if st.button(
-                "Delete",
-                key=f"test_editor_inline_command_delete_{item_ui_key}_{operation_ui_key}",
-                icon=":material/delete:",
-                help=f"Delete {action_label}",
-                use_container_width=True,
-            ):
-                if _delete_operation_by_ui_key(item, operation_ui_key):
-                    _close_inline_test_command_editor()
-                    st.session_state[SUITE_FEEDBACK_KEY] = "Command removed."
-                    _persist_changes()
-        with action_cols[2]:
-            if st.button(
-                "Up",
-                key=f"test_editor_inline_command_up_{item_ui_key}_{operation_ui_key}",
-                icon=":material/arrow_upward:",
-                help=f"Move {action_label} up",
-                disabled=is_first,
-                use_container_width=True,
-            ):
-                original_draft = deepcopy(st.session_state.get(TEST_SUITE_DRAFT_KEY, {}))
-                if _move_operation_in_item(item, operation_index, operation_index - 1):
-                    try:
-                        _persist_current_draft(success_message="Commands reordered.", rerun=False)
-                    except Exception as exc:
-                        st.session_state[TEST_SUITE_DRAFT_KEY] = original_draft
-                        _render_persist_error(exc)
-                        return
-                    _close_inline_test_command_editor()
-                    st.rerun()
-        with action_cols[3]:
-            if st.button(
-                "Down",
-                key=f"test_editor_inline_command_down_{item_ui_key}_{operation_ui_key}",
-                icon=":material/arrow_downward:",
-                help=f"Move {action_label} down",
-                disabled=is_last,
-                use_container_width=True,
-            ):
-                original_draft = deepcopy(st.session_state.get(TEST_SUITE_DRAFT_KEY, {}))
-                if _move_operation_in_item(item, operation_index, operation_index + 1):
-                    try:
-                        _persist_current_draft(success_message="Commands reordered.", rerun=False)
-                    except Exception as exc:
-                        st.session_state[TEST_SUITE_DRAFT_KEY] = original_draft
-                        _render_persist_error(exc)
-                        return
-                    _close_inline_test_command_editor()
-                    st.rerun()
-
-
-def _render_test_editor_item(test: dict, index: int, draft: dict, execution_state: dict):
-    current_test = _ensure_test_item(test, index)
-    operations = current_test.get("operations") or []
-    if operations:
-        for op_idx, operation in enumerate(operations):
-            _render_test_editor_operation(current_test, operation, op_idx, draft)
-    else:
-        st.caption("Nessun command configurato.")
-
-    current_test_id = str(current_test.get("id") or "").strip()
-    selected_suite_id = str(st.session_state.get(SELECTED_TEST_SUITE_ID_KEY) or "").strip()
-    can_run_single_test = bool(current_test_id and selected_suite_id)
-
-    add_cols = st.columns([1, 3, 3, 3, 1, 1, 1, 1], gap="small", vertical_alignment="center")
-    with add_cols[1]:
-        if st.button(
-            "+ Variable",
-            key=f"suite_editor_add_test_constant_{current_test.get('_ui_key')}",
-            icon=":material/add:",
-            use_container_width=True,
-        ):
-            _open_test_command_dialog_for_item(str(current_test.get("_ui_key") or ""), "constant")
-            st.rerun()
-    with add_cols[2]:
-        if st.button(
-            "+ Action",
-            key=f"suite_editor_add_test_action_{current_test.get('_ui_key')}",
-            icon=":material/add:",
-            use_container_width=True,
-        ):
-            _open_test_command_dialog_for_item(str(current_test.get("_ui_key") or ""), "action")
-            st.rerun()
-    with add_cols[3]:
-        if st.button(
-            "+ Assert",
-            key=f"suite_editor_add_test_assert_{current_test.get('_ui_key')}",
-            icon=":material/add:",
-            use_container_width=True,
-        ):
-            _open_test_command_dialog_for_item(str(current_test.get("_ui_key") or ""), "assert")
-            st.rerun()
-    with add_cols[4]:
-        if st.button(
-            "",
-            key=f"suite_editor_run_test_{current_test.get('_ui_key')}",
-            icon=":material/play_arrow:",
-            help="Run this test"
-            if can_run_single_test
-            else "Save suite before running this test",
-            type="primary",
-            disabled=not can_run_single_test,
-            use_container_width=True,
-        ):
-            response = execute_test_by_id(selected_suite_id, current_test_id)
-            execution_id = str(response.get("execution_id") or "").strip()
-            if execution_id:
-                st.session_state[TEST_SUITE_LAST_EXECUTION_ID_KEY] = execution_id
-                st.session_state[PENDING_TEST_SUITE_EXECUTION_SELECTION_KEY] = execution_id
-                register_execution_listener(execution_id, selected_suite_id)
-                st.rerun()
-    with add_cols[5]:
-        if st.button(
-            "",
-            key=f"suite_editor_edit_test_{current_test.get('_ui_key')}",
-            icon=":material/edit:",
-            help="Modify test",
-            type="tertiary",
-            use_container_width=True,
-        ):
-            _open_edit_test_dialog(str(current_test.get("_ui_key") or ""))
-            st.rerun()
-    with add_cols[6]:
-        if st.button(
-            "",
-            key=f"suite_editor_delete_test_{current_test.get('_ui_key')}",
-            icon=":material/delete:",
-            help="Delete test",
-            type="tertiary",
-            use_container_width=True,
-        ):
-            draft = st.session_state.get(TEST_SUITE_DRAFT_KEY, {})
-            if isinstance(draft, dict):
-                _delete_test_by_ui_key(draft, str(current_test.get("_ui_key") or ""))
-
-
 def _render_test_item(test: dict, index: int, execution_state: dict):
     current_test = _ensure_test_item(test, index)
     with st.expander(_test_label(current_test, index), expanded=False):
@@ -3803,146 +3845,6 @@ def _render_test_item(test: dict, index: int, execution_state: dict):
                 draft = st.session_state.get(TEST_SUITE_DRAFT_KEY, {})
                 if isinstance(draft, dict):
                     _delete_test_by_ui_key(draft, str(current_test.get("_ui_key") or ""))
-
-
-@st.dialog("Add hook command", width="large")
-def _render_add_hook_command_dialog(draft: dict):
-    dialog_nonce = int(st.session_state.get(HOOK_ADD_COMMAND_DIALOG_NONCE_KEY, 0))
-    hook_ui_key = str(st.session_state.get(HOOK_ADD_COMMAND_DIALOG_TARGET_UI_KEY) or "").strip()
-    command_group = str(st.session_state.get(HOOK_ADD_COMMAND_DIALOG_GROUP_KEY) or "context").strip().lower()
-    hook_item = find_draft_test_by_ui_key(draft, hook_ui_key)
-    command_intro_label = _command_group_intro_label(command_group, mode="add")
-    primary_action_label = _command_group_primary_action_label(command_group, mode="add")
-
-    if not isinstance(hook_item, dict):
-        st.error("Hook di destinazione non trovato.")
-        if st.button("Cancel", key=f"suite_hook_add_command_missing_cancel_{dialog_nonce}", use_container_width=True):
-            _close_hook_command_dialog()
-            st.rerun()
-        return
-
-    load_test_editor_context(force=False)
-    load_database_connections(force=False)
-
-    json_arrays = _safe_list(st.session_state.get(TEST_EDITOR_JSON_ARRAYS_KEY, []))
-    datasources = _safe_list(st.session_state.get(TEST_EDITOR_DATABASE_DATASOURCES_KEY, []))
-    brokers = _safe_list(st.session_state.get(TEST_EDITOR_BROKERS_KEY, []))
-    connections = _safe_list(st.session_state.get(DATABASE_CONNECTIONS_KEY, []))
-    default_context = _default_context_for_item(hook_item)
-    st.markdown(f"**{command_intro_label}**")
-    command_code = _render_hook_command_form(
-        dialog_nonce,
-        command_group,
-        json_arrays,
-        datasources,
-        brokers,
-        connections,
-        draft,
-        hook_item,
-        stop_before_index=len(_operation_list(hook_item)),
-        default_context=default_context,
-        key_prefix="suite_hook_command",
-    )
-
-    action_cols = st.columns([1, 1], gap="small", vertical_alignment="center")
-    with action_cols[0]:
-        if st.button(
-            primary_action_label,
-            key=f"suite_add_hook_command_save_{dialog_nonce}",
-            icon=":material/add_circle:",
-            type="secondary",
-            use_container_width=True,
-        ):
-            operation_item, validation_error = _build_hook_command_draft_with_prefix(
-                dialog_nonce,
-                command_code,
-                key_prefix="suite_hook_command",
-            )
-            if validation_error:
-                st.error(validation_error)
-                return
-            append_operation_to_test(hook_item, operation_item or {})
-            _close_hook_command_dialog()
-            st.session_state[SUITE_FEEDBACK_KEY] = _command_group_added_feedback(command_group)
-            _persist_changes()
-    with action_cols[1]:
-        if st.button(
-            "Cancel",
-            key=f"suite_add_hook_command_cancel_{dialog_nonce}",
-            use_container_width=True,
-        ):
-            _close_hook_command_dialog()
-            st.rerun()
-
-
-@st.dialog("Add test command", width="large")
-def _render_add_test_command_dialog(draft: dict):
-    dialog_nonce = int(st.session_state.get(TEST_ADD_COMMAND_DIALOG_NONCE_KEY, 0))
-    test_ui_key = str(st.session_state.get(TEST_ADD_COMMAND_DIALOG_TARGET_UI_KEY) or "").strip()
-    command_group = str(st.session_state.get(TEST_ADD_COMMAND_DIALOG_GROUP_KEY) or "constant").strip().lower()
-    test_item = _find_test_by_ui_key(draft, test_ui_key)
-    command_intro_label = _command_group_intro_label(command_group, mode="add")
-    primary_action_label = _command_group_primary_action_label(command_group, mode="add")
-
-    if not isinstance(test_item, dict):
-        st.error("Test di destinazione non trovato.")
-        if st.button("Cancel", key=f"suite_test_add_command_missing_cancel_{dialog_nonce}", use_container_width=True):
-            _close_test_command_dialog()
-            st.rerun()
-        return
-
-    load_test_editor_context(force=False)
-    load_database_connections(force=False)
-
-    json_arrays = _safe_list(st.session_state.get(TEST_EDITOR_JSON_ARRAYS_KEY, []))
-    datasources = _safe_list(st.session_state.get(TEST_EDITOR_DATABASE_DATASOURCES_KEY, []))
-    brokers = _safe_list(st.session_state.get(TEST_EDITOR_BROKERS_KEY, []))
-    connections = _safe_list(st.session_state.get(DATABASE_CONNECTIONS_KEY, []))
-
-    st.markdown(f"**{command_intro_label}**")
-    command_ui_code = _render_test_command_form(
-        dialog_nonce,
-        command_group,
-        json_arrays,
-        datasources,
-        brokers,
-        connections,
-        draft,
-        test_item,
-        stop_before_index=len(_operation_list(test_item)),
-        key_prefix="suite_test_command",
-    )
-
-    action_cols = st.columns([1, 1], gap="small", vertical_alignment="center")
-    with action_cols[0]:
-        if st.button(
-            primary_action_label,
-            key=f"suite_add_test_command_save_{dialog_nonce}",
-            icon=":material/add_circle:",
-            type="secondary",
-            use_container_width=True,
-        ):
-            operation_item, validation_error = _build_test_command_draft_with_prefix(
-                dialog_nonce,
-                command_ui_code,
-                key_prefix="suite_test_command",
-            )
-            if validation_error:
-                st.error(validation_error)
-                return
-            append_operation_to_test(test_item, operation_item or {})
-            _close_test_command_dialog()
-            st.session_state[SUITE_FEEDBACK_KEY] = _command_group_added_feedback(command_group)
-            _persist_changes()
-    with action_cols[1]:
-        if st.button(
-            "Cancel",
-            key=f"suite_add_test_command_cancel_{dialog_nonce}",
-            use_container_width=True,
-        ):
-            _close_test_command_dialog()
-            st.rerun()
-
 
 def _render_generic_command_edit_dialog(item: dict, operation: dict, operation_index: int, dialog_nonce: int):
     description_key = _command_form_key("suite_generic_command_edit", dialog_nonce, "description")
@@ -4215,252 +4117,3 @@ def _render_edit_command_dialog(draft: dict):
         if st.button("Cancel", key=f"suite_edit_command_cancel_{dialog_nonce}", use_container_width=True):
             _close_edit_command_dialog()
             st.rerun()
-
-
-@st.dialog("Modify test", width="medium")
-def _render_edit_test_dialog(draft: dict):
-    dialog_nonce = int(st.session_state.get(TEST_EDIT_DIALOG_NONCE_KEY, 0))
-    test_ui_key = str(st.session_state.get(TEST_EDIT_DIALOG_TARGET_UI_KEY) or "").strip()
-    test_item = _find_test_by_ui_key(draft, test_ui_key)
-
-    if not isinstance(test_item, dict):
-        st.error("Test non trovato.")
-        if st.button("Cancel", key=f"suite_edit_test_missing_cancel_{dialog_nonce}", use_container_width=True):
-            _close_edit_test_dialog()
-            st.rerun()
-        return
-
-    description_key = f"suite_edit_test_description_{dialog_nonce}"
-    st.text_input(
-        "Description",
-        key=description_key,
-        value=str(test_item.get("description") or ""),
-    )
-
-    action_cols = st.columns([1, 1, 1], gap="small", vertical_alignment="center")
-    with action_cols[0]:
-        if st.button(
-            "Save",
-            key=f"suite_edit_test_save_{dialog_nonce}",
-            icon=":material/save:",
-            type="secondary",
-            use_container_width=True,
-        ):
-            description = str(st.session_state.get(description_key) or "").strip()
-            if not description:
-                st.error("Il campo Description e' obbligatorio.")
-                return
-            test_item["description"] = description
-            _close_edit_test_dialog()
-            _persist_changes()
-    with action_cols[1]:
-        if st.button(
-            "Delete",
-            key=f"suite_edit_test_delete_{dialog_nonce}",
-            icon=":material/delete:",
-            type="secondary",
-            use_container_width=True,
-        ):
-            test_index = _find_test_index_by_ui_key(draft, test_ui_key)
-            tests = draft.get("tests") or []
-            if isinstance(tests, list) and 0 <= test_index < len(tests):
-                tests.pop(test_index)
-            _close_edit_test_dialog()
-            st.session_state[SUITE_FEEDBACK_KEY] = "Test rimosso."
-            _persist_changes()
-    with action_cols[2]:
-        if st.button(
-            "Cancel",
-            key=f"suite_edit_test_cancel_{dialog_nonce}",
-            use_container_width=True,
-        ):
-            _close_edit_test_dialog()
-            st.rerun()
-
-
-@st.dialog("Add operation", width="large")
-def _render_add_operation_dialog(draft: dict):
-    render_add_test_operation_dialog(
-        draft,
-        _close_add_operation_dialog,
-        persist_suite_changes_fn=_persist_changes,
-    )
-
-
-@st.dialog("Add test", width="medium")
-def _render_add_test_dialog(draft: dict):
-    dialog_nonce = int(st.session_state.get(ADD_TEST_DIALOG_NONCE_KEY, 0))
-    description_key = f"test_suite_add_test_description_{dialog_nonce}"
-    st.text_input(
-        "Description",
-        key=description_key,
-        placeholder="Test description",
-    )
-
-    action_cols = st.columns([1, 1], gap="small", vertical_alignment="center")
-    with action_cols[0]:
-        if st.button(
-            "Save",
-            key=f"test_suite_add_test_save_{dialog_nonce}",
-            icon=":material/save:",
-            type="secondary",
-            use_container_width=True,
-        ):
-            description = str(st.session_state.get(description_key) or "").strip()
-            if not description:
-                st.error("Il campo Description del test e' obbligatorio.")
-                return
-            tests = draft.setdefault("tests", [])
-            if not isinstance(tests, list):
-                tests = []
-                draft["tests"] = tests
-
-            tests.append(
-                {
-                    **_new_suite_item("test"),
-                    "description": description,
-                    "position": len(tests) + 1,
-                }
-            )
-            _close_add_test_dialog()
-            _persist_changes()
-    with action_cols[1]:
-        if st.button(
-            "Cancel",
-            key=f"test_suite_add_test_cancel_{dialog_nonce}",
-            use_container_width=True,
-        ):
-            _close_add_test_dialog()
-            st.rerun()
-
-
-def render_suite_editor_page():
-    load_test_editor_context(force=False)
-
-    suites = _load_test_suites(force=False)
-    if not suites:
-        st.info("No test suites configured.")
-        return
-
-    selected_suite_id = _ensure_selected_suite_id(suites)
-    if not selected_suite_id:
-        st.info("Select a test suite from the suites page.")
-        return
-
-    draft = _resolve_editor_draft(selected_suite_id)
-    executions = _load_execution_history(selected_suite_id)
-
-    suite_description = str(draft.get("description") or "").strip() or "Test suite"
-    execution_options = [str(item.get("id")) for item in executions if item.get("id")]
-    history_options = execution_options or [""]
-    selected_execution_id = str(st.session_state.get(SELECTED_TEST_SUITE_EXECUTION_ID_KEY) or "").strip()
-
-    header_cols = st.columns([4, 3, 1], gap="small", vertical_alignment="bottom")
-    with header_cols[0]:
-        st.markdown(f"### {suite_description}")
-    with header_cols[1]:
-        st.selectbox(
-            "Execution history",
-            options=history_options,
-            index=history_options.index(selected_execution_id) if selected_execution_id in history_options else 0,
-            format_func=lambda execution_id: (
-                "No executions"
-                if not execution_id
-                else _format_execution_label(
-                    next(
-                        (
-                            execution
-                            for execution in executions
-                            if str(execution.get("id") or "").strip() == execution_id
-                        ),
-                        {"id": execution_id},
-                    )
-                )
-            ),
-            key=SELECTED_TEST_SUITE_EXECUTION_ID_KEY,
-            disabled=not bool(execution_options),
-            label_visibility="collapsed",
-        )
-    with header_cols[2]:
-        if st.button(
-            "Run",
-            key="run_suite",
-            icon=":material/play_arrow:",
-            type="primary",
-            use_container_width=True,
-        ):
-            response = execute_test_suite_by_id(selected_suite_id)
-            execution_id = str(response.get("execution_id") or "").strip()
-            if execution_id:
-                st.session_state[TEST_SUITE_LAST_EXECUTION_ID_KEY] = execution_id
-                st.session_state[PENDING_TEST_SUITE_EXECUTION_SELECTION_KEY] = execution_id
-                register_execution_listener(execution_id, selected_suite_id)
-                st.rerun()
-
-    execution_state = get_execution_state(str(st.session_state.get(TEST_SUITE_LAST_EXECUTION_ID_KEY) or ""))
-    if execution_state:
-        st.info(
-            "Test suite running: "
-            f"{execution_state.get('executed_tests', 0)}/{execution_state.get('total_tests', 0)} tests executed "
-            f"[{execution_state.get('status') or 'running'}]"
-        )
-
-    _render_operation_feedback()
-    _render_execution_summary(_find_selected_execution(executions))
-
-    execution_state_map = execution_state if isinstance(execution_state, dict) else {}
-    tests = draft.get("tests") or []
-    phase_labels = {phase: label for phase, label in SUITE_SECTION_PHASES}
-    active_section = st.segmented_control(
-        "Suite sections",
-        options=[phase for phase, _ in SUITE_SECTION_PHASES],
-        default=st.session_state.get(ACTIVE_SUITE_SECTION_KEY) or SUITE_SECTION_PHASES[0][0],
-        format_func=lambda phase: phase_labels.get(str(phase), str(phase)),
-        key=ACTIVE_SUITE_SECTION_KEY,
-        label_visibility="collapsed",
-    )
-    active_phase = str(active_section or SUITE_SECTION_PHASES[0][0])
-    active_label = phase_labels.get(active_phase, active_phase)
-
-    if active_phase == "tests":
-        if tests:
-            for index, test in enumerate(tests, start=1):
-                _render_test_item(test, index, execution_state_map)
-        else:
-            st.caption("Nessun test configurato.")
-        
-        add_cols = st.columns([8, 2], gap="small", vertical_alignment="center")
-        with add_cols[1]:
-            if st.button(
-                "",
-                key="suite_editor_add_test",
-                icon=":material/add:",
-                use_container_width=True,
-            ):
-                _open_add_test_dialog()
-                st.rerun()
-    else:
-        hook = _get_hook_item(draft, active_phase)
-        operations = hook.get("operations") if isinstance(hook, dict) else []
-        total_operations = len(operations or [])
-        summary = f"{total_operations} operation configurate." if total_operations else ""
-        _render_section_summary(summary)
-        _render_hook_section(draft, active_phase, active_label, execution_state_map)
-
-    if _consume_add_operation_dialog_request():
-        _render_add_operation_dialog(draft)
-
-    if _consume_hook_command_dialog_request():
-        _render_add_hook_command_dialog(draft)
-
-    if _consume_test_command_dialog_request():
-        _render_add_test_command_dialog(draft)
-
-    if _consume_edit_command_dialog_request():
-        _render_edit_command_dialog(draft)
-
-    if _consume_edit_test_dialog_request():
-        _render_edit_test_dialog(draft)
-
-    if bool(st.session_state.get(ADD_TEST_DIALOG_OPEN_KEY, False)):
-        _render_add_test_dialog(draft)

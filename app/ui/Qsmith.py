@@ -129,14 +129,13 @@ for server in mock_servers if isinstance(mock_servers, list) else []:
         ):
             st.session_state[SELECTED_MOCK_SERVER_ID_KEY] = server_id
             st.switch_page("pages/MockServerEditor.py")
-st.sidebar.subheader("Logs & Tools")
+st.sidebar.subheader("Logs")
 _sidebar_nav_button(
     label="Logs",
     page_path="pages/Logs.py",
     key="nav_logs_page",
     icon=":material/article:",
 )
-_sidebar_nav_button(label="Tools", page_path="pages/Tools.py", key="nav_tools_page")
 
 
 pg = st.navigation(

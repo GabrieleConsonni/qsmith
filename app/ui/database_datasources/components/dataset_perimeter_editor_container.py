@@ -13,6 +13,8 @@ from database_datasources.services.data_loader_service import (
 )
 from database_datasources.services.perimeter_service import (
     PERIMETER_OPERATORS,
+    PERIMETER_PARAMETER_DEFAULT_FUNCTION_OPTIONS,
+    PERIMETER_PARAMETER_DEFAULT_MODE_OPTIONS,
     PERIMETER_PARAMETER_TYPES,
     build_connection_label,
     build_dataset_summary,
@@ -25,6 +27,7 @@ from database_datasources.services.perimeter_service import (
     default_sort_rows,
     normalize_filter_condition,
     normalize_filter_items,
+    normalize_parameter_editor_rows,
     normalize_parameter_rows,
     normalize_filter_rows,
     normalize_sort_rows,
@@ -41,6 +44,10 @@ FILTER_LOGIC_OPTIONS = ["AND", "OR"]
 NULL_FILTER_OPERATORS = {"is_null", "is_not_null"}
 SORT_DIRECTION_OPTIONS = ["asc", "desc"]
 FILTER_VALUE_MODE_OPTIONS = ["literal", "parameter"]
+
+
+def _set_selected_columns(scope_key: str, columns: list[str]):
+    st.session_state[f"{scope_key}_selected_columns"] = list(columns)
 
 
 def _show_feedback():
@@ -95,21 +102,23 @@ def _render_selected_columns_editor(
 
     action_cols = st.columns(2, gap="small")
     with action_cols[0]:
-        if st.button(
+        st.button(
             "Select all columns",
             key=f"{scope_key}_select_all_columns_btn",
             type="secondary",
             use_container_width=True,
-        ):
-            st.session_state[selected_columns_key] = list(available_columns)
+            on_click=_set_selected_columns,
+            args=(scope_key, list(available_columns)),
+        )
     with action_cols[1]:
-        if st.button(
+        st.button(
             "Reset columns",
             key=f"{scope_key}_reset_columns_btn",
             type="secondary",
             use_container_width=True,
-        ):
-            st.session_state[selected_columns_key] = []
+            on_click=_set_selected_columns,
+            args=(scope_key, []),
+        )
     return list(st.session_state.get(selected_columns_key) or selected_columns or [])
 
 
@@ -267,11 +276,11 @@ def _build_filter_editor_config(available_columns: list[str]) -> dict:
 
 def _available_parameter_names(scope_key: str) -> list[str]:
     parameters_key = f"{scope_key}_parameters"
-    parameter_rows = normalize_parameter_rows(st.session_state.get(parameters_key) or [])
+    parameter_rows = normalize_parameter_editor_rows(st.session_state.get(parameters_key) or [])
     st.session_state[parameters_key] = parameter_rows
     return [
         str(item.get("name") or "").strip()
-        for item in parameter_rows
+        for item in normalize_parameter_rows(parameter_rows)
         if str(item.get("name") or "").strip()
     ]
 
@@ -749,8 +758,8 @@ def _render_parameters_editor(scope_key: str, perimeter: dict | None) -> list[di
 
     edited_rows = st.data_editor(
         pd.DataFrame(
-            normalize_parameter_rows(st.session_state.get(parameters_key) or []),
-            columns=["name", "type", "required", "default_value", "description"],
+            normalize_parameter_editor_rows(st.session_state.get(parameters_key) or []),
+            columns=["name", "type", "default_mode", "default_value", "default_function", "description"],
         ),
         key=f"{scope_key}_parameters_editor",
         num_rows="dynamic",
@@ -758,12 +767,19 @@ def _render_parameters_editor(scope_key: str, perimeter: dict | None) -> list[di
         column_config={
             "name": st.column_config.TextColumn("Name"),
             "type": st.column_config.SelectboxColumn("Type", options=PERIMETER_PARAMETER_TYPES),
-            "required": st.column_config.CheckboxColumn("Required"),
+            "default_mode": st.column_config.SelectboxColumn(
+                "Default mode",
+                options=PERIMETER_PARAMETER_DEFAULT_MODE_OPTIONS,
+            ),
             "default_value": st.column_config.TextColumn("Default value"),
+            "default_function": st.column_config.SelectboxColumn(
+                "Default function",
+                options=PERIMETER_PARAMETER_DEFAULT_FUNCTION_OPTIONS,
+            ),
             "description": st.column_config.TextColumn("Description"),
         },
     )
-    normalized_parameters = normalize_parameter_rows(edited_rows)
+    normalized_parameters = normalize_parameter_editor_rows(edited_rows)
     st.session_state[parameters_key] = normalized_parameters
     return normalized_parameters
 
@@ -1019,7 +1035,7 @@ def render_dataset_perimeter_editor_container():
         selected_columns = _render_selected_columns_editor(scope_key, available_columns, perimeter)
     with parameters_tab:
         parameter_rows = _render_parameters_editor(scope_key, perimeter)
-        st.caption("Use parameters to bind dataset filters at runtime.")
+        st.caption("Use parameters to bind dataset filters at runtime with None, Literal or Function defaults.")
     available_parameter_names = _available_parameter_names(scope_key)
     with filters_tab:
         filter_logic, filter_items = _render_filters_editor(

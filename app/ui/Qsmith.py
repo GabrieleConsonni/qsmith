@@ -20,7 +20,7 @@ json_array = st.Page("pages/JsonArray.py", title="Json Array")
 datasets_page = st.Page("pages/Datasets.py", title="Datasets")
 dataset_perimeter_editor = st.Page("pages/DatasetPerimeterEditor.py", title="Dataset perimeter editor")
 test_suites = st.Page("pages/TestSuites.py", title="Test Suites")
-suite_editor = st.Page("pages/SuiteEditor.py", title="Suite editor")
+test_editor = st.Page("pages/TestEditor.py", title="Test editor")
 advanced_suite_editor_settings = st.Page(
     "pages/AdvancedSuiteEditorSettings.py",
     title="Advanced suite editor settings",
@@ -147,7 +147,7 @@ pg = st.navigation(
         "Data Sources": [json_array, datasets_page, dataset_perimeter_editor],
         "Test Suites": [
             test_suites,
-            suite_editor,
+            test_editor,
             advanced_suite_editor_settings,
             test_suite_schedules,
         ],

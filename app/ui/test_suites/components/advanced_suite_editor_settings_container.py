@@ -5,7 +5,7 @@ from test_suites.components import suite_editor_component as shared
 from test_suites.services.state_keys import (
     ADVANCED_SUITE_EDITOR_RETURN_LABEL_KEY,
     ADVANCED_SUITE_EDITOR_RETURN_PAGE_KEY,
-    SUITE_EDITOR_PAGE_PATH,
+    TEST_SUITES_PAGE_PATH,
 )
 
 HOOK_SECTIONS = [
@@ -17,10 +17,10 @@ HOOK_SECTIONS = [
 
 
 def _go_back():
-    return_page = str(st.session_state.get(ADVANCED_SUITE_EDITOR_RETURN_PAGE_KEY) or SUITE_EDITOR_PAGE_PATH).strip()
+    return_page = str(st.session_state.get(ADVANCED_SUITE_EDITOR_RETURN_PAGE_KEY) or TEST_SUITES_PAGE_PATH).strip()
     st.session_state.pop(ADVANCED_SUITE_EDITOR_RETURN_PAGE_KEY, None)
     st.session_state.pop(ADVANCED_SUITE_EDITOR_RETURN_LABEL_KEY, None)
-    st.switch_page(return_page or SUITE_EDITOR_PAGE_PATH)
+    st.switch_page(return_page or TEST_SUITES_PAGE_PATH)
 
 
 def render_advanced_suite_editor_settings_container():

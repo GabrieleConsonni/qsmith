@@ -1,6 +1,7 @@
 import importlib
 import os
 import sys
+from datetime import date, datetime, timedelta
 
 import pytest
 from docker.errors import DockerException
@@ -301,7 +302,6 @@ def test_dataset_api_preview_supports_parameter_defaults(monkeypatch, alembic_co
                     {
                         "name": "statusParam",
                         "type": "string",
-                        "required": True,
                         "default_value": "READY",
                     }
                 ],
@@ -329,7 +329,105 @@ def test_dataset_api_preview_supports_parameter_defaults(monkeypatch, alembic_co
     ]
 
 
-def test_dataset_api_preview_fails_when_required_parameter_is_not_resolved(
+def test_dataset_api_preview_supports_date_parameter_filters(
+    monkeypatch,
+    alembic_container,
+    external_postgres_container,
+):
+    table_name = "dataset_api_users_birth_date"
+    external_engine = create_engine(external_postgres_container.get_connection_url())
+    try:
+        with external_engine.begin() as conn:
+            conn.execute(text(f"DROP TABLE IF EXISTS {table_name}"))
+            conn.execute(
+                text(
+                    f"""
+                    CREATE TABLE {table_name} (
+                        id INTEGER,
+                        nome TEXT,
+                        data_di_nascita DATE
+                    )
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    f"""
+                    INSERT INTO {table_name} (id, nome, data_di_nascita)
+                    VALUES
+                        (1, 'Anna', DATE '1975-03-10'),
+                        (2, 'Luca', DATE '1985-07-21'),
+                        (3, 'Marta', DATE '1992-12-01')
+                    """
+                )
+            )
+    finally:
+        external_engine.dispose()
+
+    app = _load_main_app(monkeypatch)
+    client = TestClient(app)
+    connection_response = client.post(
+        "/database/connection",
+        json={
+            "description": "api dataset date params connection",
+            "payload": {
+                "database_type": "postgres",
+                "host": external_postgres_container.get_container_host_ip(),
+                "port": int(external_postgres_container.get_exposed_port(5432)),
+                "database": external_postgres_container.dbname,
+                "db_schema": "public",
+                "user": external_postgres_container.username,
+                "password": external_postgres_container.password,
+            },
+        },
+    )
+    connection_id = connection_response.json()["id"]
+
+    dataset_response = client.post(
+        "/data-source/database",
+        json={
+            "description": "users-birth-date-parameterized",
+            "payload": {
+                "connection_id": connection_id,
+                "schema": "public",
+                "object_name": table_name,
+                "object_type": "table",
+            },
+            "perimeter": {
+                "selected_columns": ["id", "nome"],
+                "parameters": [
+                    {
+                        "name": "dataDiNascita",
+                        "type": "date",
+                        "default_value": "1980-01-01",
+                    }
+                ],
+                "filter": {
+                    "logic": "AND",
+                    "conditions": [
+                        {
+                            "field": "data_di_nascita",
+                            "operator": "gte",
+                            "value": {"kind": "parameter", "name": "dataDiNascita"},
+                        }
+                    ],
+                },
+                "sort": [{"field": "id", "direction": "asc"}],
+            },
+        },
+    )
+    assert dataset_response.status_code == 200
+    dataset_id = dataset_response.json()["id"]
+
+    preview_response = client.get(f"/data-source/database/{dataset_id}/preview")
+    assert preview_response.status_code == 200
+    assert preview_response.json()["rows"] == [
+        {"id": 2, "nome": "Luca"},
+        {"id": 3, "nome": "Marta"},
+    ]
+
+
+def test_dataset_api_preview_allows_missing_parameter_without_default(
     monkeypatch,
     alembic_container,
     external_postgres_container,
@@ -396,7 +494,6 @@ def test_dataset_api_preview_fails_when_required_parameter_is_not_resolved(
                     {
                         "name": "pipelineId",
                         "type": "string",
-                        "required": True,
                     }
                 ],
                 "filter": {
@@ -415,5 +512,321 @@ def test_dataset_api_preview_fails_when_required_parameter_is_not_resolved(
     dataset_id = dataset_response.json()["id"]
 
     preview_response = client.get(f"/data-source/database/{dataset_id}/preview")
-    assert preview_response.status_code == 500
-    assert "DATASET_PARAMETER_RESOLUTION_FAILED" in preview_response.json()["detail"]
+    assert preview_response.status_code == 200
+    assert preview_response.json()["rows"] == []
+
+
+def test_dataset_api_preview_supports_datetime_builtin_default_now(
+    monkeypatch,
+    alembic_container,
+    external_postgres_container,
+):
+    table_name = "dataset_api_events_now_default"
+    reference_time = datetime.now().replace(microsecond=0)
+    external_engine = create_engine(external_postgres_container.get_connection_url())
+    try:
+        with external_engine.begin() as conn:
+            conn.execute(text(f"DROP TABLE IF EXISTS {table_name}"))
+            conn.execute(
+                text(
+                    f"""
+                    CREATE TABLE {table_name} (
+                        id INTEGER,
+                        happened_at TIMESTAMP
+                    )
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    f"""
+                    INSERT INTO {table_name} (id, happened_at)
+                    VALUES
+                        (:id_1, :ts_1),
+                        (:id_2, :ts_2)
+                    """
+                ),
+                {
+                    "id_1": 1,
+                    "ts_1": reference_time - timedelta(days=1),
+                    "id_2": 2,
+                    "ts_2": reference_time + timedelta(days=1),
+                },
+            )
+    finally:
+        external_engine.dispose()
+
+    app = _load_main_app(monkeypatch)
+    client = TestClient(app)
+    connection_response = client.post(
+        "/database/connection",
+        json={
+            "description": "api dataset now default connection",
+            "payload": {
+                "database_type": "postgres",
+                "host": external_postgres_container.get_container_host_ip(),
+                "port": int(external_postgres_container.get_exposed_port(5432)),
+                "database": external_postgres_container.dbname,
+                "db_schema": "public",
+                "user": external_postgres_container.username,
+                "password": external_postgres_container.password,
+            },
+        },
+    )
+    connection_id = connection_response.json()["id"]
+
+    dataset_response = client.post(
+        "/data-source/database",
+        json={
+            "description": "events-now-default",
+            "payload": {
+                "connection_id": connection_id,
+                "schema": "public",
+                "object_name": table_name,
+                "object_type": "table",
+            },
+            "perimeter": {
+                "selected_columns": ["id"],
+                "parameters": [
+                    {
+                        "name": "snapshotAt",
+                        "type": "datetime",
+                        "default_binding": {
+                            "kind": "built_in",
+                            "resolver": "$now",
+                        },
+                    }
+                ],
+                "filter": {
+                    "logic": "AND",
+                    "conditions": [
+                        {
+                            "field": "happened_at",
+                            "operator": "lte",
+                            "value": {"kind": "parameter", "name": "snapshotAt"},
+                        }
+                    ],
+                },
+                "sort": [{"field": "id", "direction": "asc"}],
+            },
+        },
+    )
+    assert dataset_response.status_code == 200
+    dataset_id = dataset_response.json()["id"]
+
+    preview_response = client.get(f"/data-source/database/{dataset_id}/preview")
+    assert preview_response.status_code == 200
+    assert preview_response.json()["rows"] == [{"id": 1}]
+
+
+def test_dataset_api_preview_supports_date_builtin_default_today(
+    monkeypatch,
+    alembic_container,
+    external_postgres_container,
+):
+    table_name = "dataset_api_events_today_default"
+    current_day = date.today()
+    external_engine = create_engine(external_postgres_container.get_connection_url())
+    try:
+        with external_engine.begin() as conn:
+            conn.execute(text(f"DROP TABLE IF EXISTS {table_name}"))
+            conn.execute(
+                text(
+                    f"""
+                    CREATE TABLE {table_name} (
+                        id INTEGER,
+                        event_day DATE
+                    )
+                    """
+                )
+            )
+            conn.execute(
+                text(
+                    f"""
+                    INSERT INTO {table_name} (id, event_day)
+                    VALUES
+                        (:id_1, :day_1),
+                        (:id_2, :day_2),
+                        (:id_3, :day_3)
+                    """
+                ),
+                {
+                    "id_1": 1,
+                    "day_1": current_day - timedelta(days=1),
+                    "id_2": 2,
+                    "day_2": current_day,
+                    "id_3": 3,
+                    "day_3": current_day + timedelta(days=1),
+                },
+            )
+    finally:
+        external_engine.dispose()
+
+    app = _load_main_app(monkeypatch)
+    client = TestClient(app)
+    connection_response = client.post(
+        "/database/connection",
+        json={
+            "description": "api dataset today default connection",
+            "payload": {
+                "database_type": "postgres",
+                "host": external_postgres_container.get_container_host_ip(),
+                "port": int(external_postgres_container.get_exposed_port(5432)),
+                "database": external_postgres_container.dbname,
+                "db_schema": "public",
+                "user": external_postgres_container.username,
+                "password": external_postgres_container.password,
+            },
+        },
+    )
+    connection_id = connection_response.json()["id"]
+
+    dataset_response = client.post(
+        "/data-source/database",
+        json={
+            "description": "events-today-default",
+            "payload": {
+                "connection_id": connection_id,
+                "schema": "public",
+                "object_name": table_name,
+                "object_type": "table",
+            },
+            "perimeter": {
+                "selected_columns": ["id"],
+                "parameters": [
+                    {
+                        "name": "eventDay",
+                        "type": "date",
+                        "default_binding": {
+                            "kind": "built_in",
+                            "resolver": "$today",
+                        },
+                    }
+                ],
+                "filter": {
+                    "logic": "AND",
+                    "conditions": [
+                        {
+                            "field": "event_day",
+                            "operator": "gte",
+                            "value": {"kind": "parameter", "name": "eventDay"},
+                        }
+                    ],
+                },
+                "sort": [{"field": "id", "direction": "asc"}],
+            },
+        },
+    )
+    assert dataset_response.status_code == 200
+    dataset_id = dataset_response.json()["id"]
+
+    preview_response = client.get(f"/data-source/database/{dataset_id}/preview")
+    assert preview_response.status_code == 200
+    assert preview_response.json()["rows"] == [{"id": 2}, {"id": 3}]
+
+
+def test_dataset_api_rejects_parameter_with_both_default_value_and_default_binding(
+    monkeypatch,
+    alembic_container,
+    external_postgres_container,
+):
+    app = _load_main_app(monkeypatch)
+    client = TestClient(app, raise_server_exceptions=False)
+    connection_response = client.post(
+        "/database/connection",
+        json={
+            "description": "api invalid default connection",
+            "payload": {
+                "database_type": "postgres",
+                "host": external_postgres_container.get_container_host_ip(),
+                "port": int(external_postgres_container.get_exposed_port(5432)),
+                "database": external_postgres_container.dbname,
+                "db_schema": "public",
+                "user": external_postgres_container.username,
+                "password": external_postgres_container.password,
+            },
+        },
+    )
+    connection_id = connection_response.json()["id"]
+
+    response = client.post(
+        "/data-source/database",
+        json={
+            "description": "invalid default dataset",
+            "payload": {
+                "connection_id": connection_id,
+                "schema": "public",
+                "object_name": "missing_table",
+                "object_type": "table",
+            },
+            "perimeter": {
+                "parameters": [
+                    {
+                        "name": "snapshotAt",
+                        "type": "datetime",
+                        "default_value": "2026-03-21T09:00:00",
+                        "default_binding": {
+                            "kind": "built_in",
+                            "resolver": "$now",
+                        },
+                    }
+                ]
+            },
+        },
+    )
+
+    assert response.status_code == 500
+    assert "cannot declare both default_value and default_binding" in response.json()["detail"]
+
+
+def test_dataset_api_rejects_invalid_default_binding_resolver(
+    monkeypatch,
+    alembic_container,
+    external_postgres_container,
+):
+    app = _load_main_app(monkeypatch)
+    client = TestClient(app, raise_server_exceptions=False)
+    connection_response = client.post(
+        "/database/connection",
+        json={
+            "description": "api invalid resolver connection",
+            "payload": {
+                "database_type": "postgres",
+                "host": external_postgres_container.get_container_host_ip(),
+                "port": int(external_postgres_container.get_exposed_port(5432)),
+                "database": external_postgres_container.dbname,
+                "db_schema": "public",
+                "user": external_postgres_container.username,
+                "password": external_postgres_container.password,
+            },
+        },
+    )
+    connection_id = connection_response.json()["id"]
+
+    response = client.post(
+        "/data-source/database",
+        json={
+            "description": "invalid resolver dataset",
+            "payload": {
+                "connection_id": connection_id,
+                "schema": "public",
+                "object_name": "missing_table",
+                "object_type": "table",
+            },
+            "perimeter": {
+                "parameters": [
+                    {
+                        "name": "snapshotAt",
+                        "type": "datetime",
+                        "default_binding": {
+                            "kind": "built_in",
+                            "resolver": "$utc_now",
+                        },
+                    }
+                ]
+            },
+        },
+    )
+
+    assert response.status_code == 500
+    assert "resolver must be one of: $now, $today" in response.json()["detail"]

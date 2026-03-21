@@ -11,6 +11,7 @@ DATASET_PARAMETER_TYPE_NAMES = {
     "date",
     "datetime",
 }
+SUPPORTED_DATASET_BUILT_IN_RESOLVERS = ("$now", "$today")
 
 
 class DatasetParameterResolutionError(ValueError):
@@ -87,11 +88,11 @@ class DatasetParameterResolver:
     @classmethod
     def resolve_builtin(cls, resolver_name: str) -> Any:
         normalized_resolver = str(resolver_name or "").strip()
+        if normalized_resolver not in SUPPORTED_DATASET_BUILT_IN_RESOLVERS:
+            raise ValueError(f"Unsupported dataset built-in resolver '{normalized_resolver}'.")
         if normalized_resolver == "$now":
             return datetime.now()
-        if normalized_resolver == "$today":
-            return date.today()
-        raise ValueError(f"Unsupported dataset built-in resolver '{normalized_resolver}'.")
+        return date.today()
 
     @classmethod
     def coerce_value(cls, parameter_type: object, value: Any) -> Any:
@@ -135,7 +136,6 @@ class DatasetParameterResolver:
     ) -> Any:
         parameter_name = str(definition.get("name") or "").strip()
         parameter_type = definition.get("type")
-        required = bool(definition.get("required"))
 
         if "default_value" in definition:
             default_value = definition.get("default_value")
@@ -144,13 +144,15 @@ class DatasetParameterResolver:
                     return cls.coerce_value(parameter_type, default_value)
                 except ValueError as exc:
                     raise DatasetParameterResolutionError(dataset_id, parameter_name, str(exc)) from exc
-
-        if required:
-            raise DatasetParameterResolutionError(
-                dataset_id,
-                parameter_name,
-                "Parameter required but not resolved.",
-            )
+        default_binding = definition.get("default_binding")
+        if default_binding is not None:
+            try:
+                resolved_value = cls.resolve_builtin(
+                    str((default_binding or {}).get("resolver") or "").strip()
+                )
+                return cls.coerce_value(parameter_type, resolved_value)
+            except ValueError as exc:
+                raise DatasetParameterResolutionError(dataset_id, parameter_name, str(exc)) from exc
         return None
 
     @staticmethod

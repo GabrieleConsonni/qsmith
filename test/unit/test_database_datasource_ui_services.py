@@ -36,8 +36,9 @@ def test_build_perimeter_payload_omits_blank_values_and_keeps_null_operators():
             {
                 "name": "statusParam",
                 "type": "string",
-                "required": True,
+                "default_mode": "Literal",
                 "default_value": '"READY"',
+                "default_function": "",
                 "description": "status",
             }
         ],
@@ -63,7 +64,6 @@ def test_build_perimeter_payload_omits_blank_values_and_keeps_null_operators():
             {
                 "name": "statusParam",
                 "type": "string",
-                "required": True,
                 "default_value": "READY",
                 "description": "status",
             }
@@ -115,6 +115,68 @@ def test_build_dataset_summary_maps_connection_and_object_metadata():
         "object_name": "orders_view",
         "object_label": "VIEW orders_view",
     }
+
+
+def test_build_perimeter_payload_serializes_function_defaults():
+    payload = perimeter_service.build_perimeter_payload(
+        ["created_at"],
+        [
+            {
+                "name": "snapshotAt",
+                "type": "datetime",
+                "default_mode": "Function",
+                "default_value": "",
+                "default_function": "Now",
+                "description": "runtime snapshot",
+            }
+        ],
+        "AND",
+        [],
+        [],
+    )
+
+    assert payload == {
+        "selected_columns": ["created_at"],
+        "parameters": [
+            {
+                "name": "snapshotAt",
+                "type": "datetime",
+                "default_binding": {
+                    "kind": "built_in",
+                    "resolver": "$now",
+                },
+                "description": "runtime snapshot",
+            }
+        ],
+    }
+
+
+def test_default_parameter_rows_round_trip_function_defaults():
+    rows = perimeter_service.default_parameter_rows(
+        {
+            "parameters": [
+                {
+                    "name": "currentDay",
+                    "type": "date",
+                    "default_binding": {
+                        "kind": "built_in",
+                        "resolver": "$today",
+                    },
+                }
+            ]
+        }
+    )
+
+    assert rows == [
+        {
+            "name": "currentDay",
+            "type": "date",
+            "default_mode": "Function",
+            "default_value": None,
+            "default_function": "Today",
+            "description": None,
+        }
+    ]
 
 
 def test_toggle_database_datasource_preview_updates_selected_and_open_state():

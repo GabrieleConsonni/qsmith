@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, MetaData, String, Table
 
 import pytest
 
+from app.data_sources.services.dataset_parameter_resolver import DatasetParameterResolver
 from app.data_sources.services.dataset_perimeter_compiler import DatasetPerimeterCompiler
 
 
@@ -79,7 +80,6 @@ def test_dataset_perimeter_compiler_supports_parameter_references():
                 {
                     "name": "statusParam",
                     "type": "string",
-                    "required": True,
                 }
             ],
             "filter": {
@@ -112,7 +112,6 @@ def test_dataset_perimeter_compiler_rejects_unknown_parameter_references():
                     {
                         "name": "statusParam",
                         "type": "string",
-                        "required": True,
                     }
                 ],
                 "filter": {
@@ -128,3 +127,99 @@ def test_dataset_perimeter_compiler_rejects_unknown_parameter_references():
             },
             resolved_parameters={"statusParam": "READY"},
         )
+
+
+def test_dataset_perimeter_compiler_normalizes_default_binding():
+    normalized = DatasetPerimeterCompiler.normalize(
+        {
+            "parameters": [
+                {
+                    "name": "snapshotAt",
+                    "type": "datetime",
+                    "default_binding": {
+                        "kind": "built_in",
+                        "resolver": "$now",
+                    },
+                }
+            ]
+        }
+    )
+
+    assert normalized == {
+        "parameters": [
+            {
+                "name": "snapshotAt",
+                "type": "datetime",
+                "description": None,
+                "default_binding": {
+                    "kind": "built_in",
+                    "resolver": "$now",
+                },
+            }
+        ]
+    }
+
+
+def test_dataset_perimeter_compiler_rejects_parameter_with_both_default_value_and_default_binding():
+    with pytest.raises(ValueError, match="cannot declare both default_value and default_binding"):
+        DatasetPerimeterCompiler.normalize(
+            {
+                "parameters": [
+                    {
+                        "name": "snapshotAt",
+                        "type": "datetime",
+                        "default_value": "2026-03-21T09:00:00",
+                        "default_binding": {
+                            "kind": "built_in",
+                            "resolver": "$now",
+                        },
+                    }
+                ]
+            }
+        )
+
+
+def test_dataset_perimeter_compiler_rejects_invalid_default_binding_resolver():
+    with pytest.raises(ValueError, match="resolver must be one of: \\$now, \\$today"):
+        DatasetPerimeterCompiler.normalize(
+            {
+                "parameters": [
+                    {
+                        "name": "snapshotAt",
+                        "type": "datetime",
+                        "default_binding": {
+                            "kind": "built_in",
+                            "resolver": "$utc_now",
+                        },
+                    }
+                ]
+            }
+        )
+
+
+def test_dataset_parameter_resolver_supports_builtin_defaults():
+    resolved = DatasetParameterResolver.resolve(
+        {
+            "parameters": [
+                {
+                    "name": "snapshotAt",
+                    "type": "datetime",
+                    "default_binding": {
+                        "kind": "built_in",
+                        "resolver": "$now",
+                    },
+                },
+                {
+                    "name": "currentDay",
+                    "type": "date",
+                    "default_binding": {
+                        "kind": "built_in",
+                        "resolver": "$today",
+                    },
+                },
+            ]
+        }
+    )
+
+    assert resolved["snapshotAt"].__class__.__name__ == "datetime"
+    assert resolved["currentDay"].__class__.__name__ == "date"

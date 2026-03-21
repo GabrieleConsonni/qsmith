@@ -25,6 +25,16 @@ PERIMETER_PARAMETER_TYPES = [
     "date",
     "datetime",
 ]
+PERIMETER_PARAMETER_DEFAULT_MODE_OPTIONS = ["None", "Literal", "Function"]
+PERIMETER_PARAMETER_DEFAULT_FUNCTION_OPTIONS = ["", "Now", "Today"]
+PERIMETER_PARAMETER_DEFAULT_FUNCTION_TO_RESOLVER = {
+    "Now": "$now",
+    "Today": "$today",
+}
+PERIMETER_PARAMETER_RESOLVER_TO_DEFAULT_FUNCTION = {
+    resolver: label
+    for label, resolver in PERIMETER_PARAMETER_DEFAULT_FUNCTION_TO_RESOLVER.items()
+}
 
 
 def build_connection_label(connection_item: dict) -> str:
@@ -210,22 +220,110 @@ def normalize_sort_rows(rows: object) -> list[dict]:
     return normalized_rows
 
 
-def normalize_parameter_definition(parameter: object) -> dict | None:
+def _normalize_parameter_default_mode(value: object) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized in {"none", "literal", "function"}:
+        return normalized
+    return ""
+
+
+def _normalize_parameter_default_function(value: object) -> str:
+    normalized = str(value or "").strip().title()
+    if normalized in PERIMETER_PARAMETER_DEFAULT_FUNCTION_TO_RESOLVER:
+        return normalized
+    return ""
+
+
+def normalize_parameter_editor_row(parameter: object) -> dict | None:
     if not isinstance(parameter, dict):
         return None
     name = str(parameter.get("name") or "").strip()
     parameter_type = str(parameter.get("type") or "").strip().lower()
-    if not name and not parameter_type and normalize_editor_value(parameter.get("default_value")) is None:
+    default_value = normalize_editor_value(parameter.get("default_value"))
+    default_binding = parameter.get("default_binding") if isinstance(parameter.get("default_binding"), dict) else None
+    default_mode = _normalize_parameter_default_mode(parameter.get("default_mode"))
+    default_function = _normalize_parameter_default_function(parameter.get("default_function"))
+    if default_binding:
+        default_mode = "function"
+        default_function = (
+            PERIMETER_PARAMETER_RESOLVER_TO_DEFAULT_FUNCTION.get(
+                str(default_binding.get("resolver") or "").strip()
+            )
+            or "Now"
+        )
+        default_value = None
+    elif default_value is not None:
+        default_mode = "literal"
+    elif not default_mode:
+        default_mode = "none"
+    if default_mode == "function" and not default_function:
+        default_function = "Now"
+    if default_mode != "literal":
+        default_value = None
+    if (
+        not name
+        and not parameter_type
+        and default_value is None
+        and not default_binding
+        and not str(parameter.get("description") or "").strip()
+    ):
         return None
     if not name or parameter_type not in PERIMETER_PARAMETER_TYPES:
         return None
     return {
         "name": name,
         "type": parameter_type,
-        "required": bool(parameter.get("required")),
-        "default_value": normalize_editor_value(parameter.get("default_value")),
+        "default_mode": {
+            "none": "None",
+            "literal": "Literal",
+            "function": "Function",
+        }[default_mode],
+        "default_value": default_value,
+        "default_function": default_function,
         "description": str(parameter.get("description") or "").strip() or None,
     }
+
+
+def normalize_parameter_definition(parameter: object) -> dict | None:
+    editor_row = normalize_parameter_editor_row(parameter)
+    if not editor_row:
+        return None
+    name = str(editor_row.get("name") or "").strip()
+    parameter_type = str(editor_row.get("type") or "").strip().lower()
+    if not name or parameter_type not in PERIMETER_PARAMETER_TYPES:
+        return None
+    normalized = {
+        "name": name,
+        "type": parameter_type,
+        "description": str(editor_row.get("description") or "").strip() or None,
+    }
+    default_mode = _normalize_parameter_default_mode(editor_row.get("default_mode"))
+    if default_mode == "literal":
+        default_value = normalize_editor_value(editor_row.get("default_value"))
+        if default_value is not None:
+            normalized["default_value"] = default_value
+    elif default_mode == "function":
+        default_function = _normalize_parameter_default_function(editor_row.get("default_function")) or "Now"
+        normalized["default_binding"] = {
+            "kind": "built_in",
+            "resolver": PERIMETER_PARAMETER_DEFAULT_FUNCTION_TO_RESOLVER[default_function],
+        }
+    return normalized
+
+
+def normalize_parameter_editor_rows(rows: object) -> list[dict]:
+    normalized_rows: list[dict] = []
+    seen_names: set[str] = set()
+    for row in coerce_editor_rows(rows):
+        normalized = normalize_parameter_editor_row(row)
+        if not normalized:
+            continue
+        parameter_name = str(normalized.get("name") or "").strip()
+        if parameter_name in seen_names:
+            continue
+        seen_names.add(parameter_name)
+        normalized_rows.append(normalized)
+    return normalized_rows
 
 
 def normalize_parameter_rows(rows: object) -> list[dict]:
@@ -314,7 +412,7 @@ def default_filter_items(perimeter: dict | None) -> list[dict]:
 
 def default_parameter_rows(perimeter: dict | None) -> list[dict]:
     payload = perimeter if isinstance(perimeter, dict) else {}
-    return normalize_parameter_rows(payload.get("parameters") or [])
+    return normalize_parameter_editor_rows(payload.get("parameters") or [])
 
 
 def default_sort_rows(perimeter: dict | None) -> list[dict]:

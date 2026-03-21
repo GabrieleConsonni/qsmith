@@ -1,12 +1,8 @@
-Perfetto, ti preparo un **markdown operativo per Codex** focalizzato solo sulla gestione **json + rimozione campi**, coerente con tutto il modello che stai costruendo.
-
----
-
 # 📄 QSM – SendMessageQueue: JSON Field Filtering
 
 ## 🎯 Obiettivo
 
-Permettere all’utente di utilizzare una variabile di tipo `json` come source per `sendMessageQueue` e **decidere quali campi rimuovere** dal payload prima dell’invio.
+Permettere all’utente di utilizzare un template per filtrare il source per `sendMessageQueue` e **decidere quali campi utilizzare** per il payload prima dell’invio.
 
 Questo approccio:
 
@@ -16,142 +12,171 @@ Questo approccio:
 
 ---
 
-## 🧩 UX – Form
+## 🧩 UX – Form per comando di tipo sendMessageQueue
 
-### Quando `source = json`
+### Quando `action = sendMessageQueue`
 
 Mostrare una nuova sezione:
 
-### **Message filtering (optional)**
+### **Message template (optional)**
 
-* Tipo: toggle (ON/OFF)
+Radio toggle 
 
-Se ON:
+#### se OFF(default)
+ - non viene impostato e utilizzato un template
 
-#### Modalità filtro
+#### Se ON 
+**sezione Message extract Preview e forEach** json + text field per root con validazione
 
-Radio:
+forEach è obbligatorio se Message template attivo e tipo sorgente json\jsonArray, il default è $.
+Se source è dataset è non attivo o invisibile 
 
-* `Remove fields` (default)
-* `Keep only fields` (future, opzionale)
+Formattazione:  
+ - $.path -> object\array
+**Es path**
+  field1.field2.field3
+**Es di field semplice** 
+  - text <- properties
+  - text[*] <- array
+**Es di path complesso (matrice)** 
+  - field[*].nested[*]
 
----
+**sezione Message to send preview** template json + preview template
 
-### 🔹 Remove fields (prima versione)
+Multiselect con i fields selezionati
 
-UI:
+Bottoni:
+* `add all fields` -> aggiunge tutti i fields  
+* `remove all fields` -> rimuove tutti i fields
 
-| Field path      | Action |
-| --------------- | ------ |
-| [text / select] | ❌      |
+Field costanti:
+  Pulsante add che aggiunge:
+    textfield nome | tipo | valore
+    selectbox per scelta tipo che può essere : str, number, date, datetime, variabile, function
+      textfield se tipo str, number, date, datetime
+      selectbox se tipo variabile con variabile di contesto
+      selectbox se tipo funcion con `now`, `today`
 
-* `+ Add field` per aggiungere altri campi
-
----
-
-## 🧠 Field path
-
-Supportare:
-
-* campi root:
-
-  ```
-  id
-  name
-  ```
-
-* campi nested (dot notation):
-
-  ```
-  customer.id
-  metadata.token
-  ```
-
-👉 coerente con best practice standard JSON filtering ([JSONViewerTool][1])
-
----
-
-## ⚙️ Comportamento runtime
+## Example
 
 ### Input
 
 ```json
 {
-  "id": 1,
-  "customer": {
-    "id": "C01",
-    "name": "Mario"
-  },
-  "metadata": {
-    "token": "abc",
-    "ip": "127.0.0.1"
+  "body":{
+    "envelope":{
+      "campaign":"west"
+    },
+    "payload":[
+      {
+        "id":"xxx",
+        "desc": "desc"
+      }
+    ]
   }
 }
 ```
 
-### Config
+### Config forEach e template
 
-```json
-{
-  "removeFields": [
-    "metadata.token",
-    "customer.name"
-  ]
-}
-```
+forEach: "$.body"
+
+fields:
+- payload
 
 ### Output
 
 ```json
 {
-  "id": 1,
-  "customer": {
-    "id": "C01"
-  },
-  "metadata": {
-    "ip": "127.0.0.1"
-  }
+  "payload":[
+      {
+        "id":"xxx",
+        "desc": "desc"
+      }
+  ]
+}
+```
+---
+
+## ⚙️ Comportamento runtime
+
+### Flusso `sendMessageQueue` se Message template configurato
+
+#### sorgente json
+Dalla sorgente recuperare la porzione a partire da forEach
+Se forEach è array la porzione estratta viene divisa in n json
+Se forEach è composto la porzione viene esplosa seguendo la concatenazione del path
+Es:
+
+**Input**
+```json
+{
+  "payload":[
+      {
+        "field":"xxx",
+        "nested":[
+          {
+            "field2":"yyy"
+          },
+          {
+            "field2":"zzz" 
+          }
+        ]
+      },
+      {
+        "field":"aaa",
+        "nested":[
+          {
+            "field2":"bbb"
+          },
+          {
+            "field2":"ccc" 
+          }
+        ]
+      }
+  ]
 }
 ```
 
----
+forEach: "$.payload[*].nested[*]
 
-## 🧱 Backend – funzione di filtro
+**Output**
+```json
+[
+  {
+  "payload.field":"xxx",
+  "field2":"yyy"
+  },
+  {
+  "payload.field":"xxx",
+  "field2":"zzz"
+  },
+  {
+  "payload.field":"aaa",
+  "field2":"bbb"
+  },
+  {
+  "payload.field":"aaa",
+  "field2":"ccc"
+  }
+]
 
-### Python (pseudo)
-
-```python
-def remove_fields(data: dict, paths: list[str]) -> dict:
-    for path in paths:
-        keys = path.split(".")
-        current = data
-
-        for key in keys[:-1]:
-            if key not in current:
-                current = None
-                break
-            current = current[key]
-
-        if current and keys[-1] in current:
-            del current[keys[-1]]
-
-    return data
 ```
 
----
+Costruire un json semplice a partire dai fields e costanti configurati
+Valorizzare:
+  - i fields con i valori del sorgente 
+  - le costanti con i valori immessi e le funzioni calcolate
 
-## 🔁 Integrazione con command
+#### sorgente jsonArray
+Dalla sorgente recuperare ogni elemento dell'array ed eseguire le stesse operazioni del json
 
-### Flusso `sendMessageQueue`
-
-```python
-payload = source_json
-
-if remove_fields_config:
-    payload = remove_fields(payload, remove_fields_config)
-
-send(payload)
-```
+#### sorgente dataset
+Dalla sorgente recuperare le righe a chunk e per ognuna delle righe del chunk construire
+un json semplice a partire dai fields e costanti configurati
+Valorizzare:
+  - i fields con i valori del sorgente 
+  - le costanti con i valori immessi e le funzioni calcolate
 
 ---
 
@@ -165,13 +190,4 @@ send(payload)
 
 ---
 
-## 🧪 Validazione UI
-
-* evitare text libero puro (in futuro)
-* miglioramento suggerito:
-
-  * parser JSON → mostra struttura
-  * select guidata dei campi
-
----
 

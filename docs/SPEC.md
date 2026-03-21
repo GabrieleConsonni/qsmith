@@ -110,8 +110,9 @@ Obiettivi:
 - supporto a dataset parametrizzabili tramite `perimeter.parameters`
 - i filtri del perimeter possono usare valori literal oppure riferimenti espliciti a parametri `{ "kind": "parameter", "name": "..." }`
 - i parametri supportano i tipi `string`, `integer`, `number`, `boolean`, `date`, `datetime`
-- i parametri dataset supportano solo `default_value` come default statico; non e previsto `default_resolver`
-- la preview dataset non accetta input manuali dei parametri: funziona solo se i parametri richiesti hanno un `default_value`; in caso contrario fallisce con errore `DATASET_PARAMETER_RESOLUTION_FAILED`
+- i parametri dataset supportano `default_value` per literal statici oppure `default_binding` con shape `{ "kind": "built_in", "resolver": "$now|$today" }`; i due campi sono mutuamente esclusivi
+- i built-in dei parametri dataset vengono ricalcolati a ogni preview/esecuzione usando il clock del processo applicativo
+- la preview dataset non accetta input manuali dei parametri: i parametri non valorizzati restano `null`
 
 ### 4.7 Test Suites
 Obiettivi:

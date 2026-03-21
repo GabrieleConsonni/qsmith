@@ -25,9 +25,16 @@ Il `perimeter` supporta una nuova sezione `parameters`:
     {
       "name": "pipelineId",
       "type": "string",
-      "required": true,
       "default_value": null,
       "description": "Pipeline da filtrare"
+    },
+    {
+      "name": "snapshotAt",
+      "type": "datetime",
+      "default_binding": {
+        "kind": "built_in",
+        "resolver": "$now"
+      }
     }
   ]
 }
@@ -46,6 +53,17 @@ I filtri possono usare:
 
 - un valore literal
 - un riferimento a parametro nella forma `{ "kind": "parameter", "name": "<param>" }`
+
+Per i default del parametro:
+
+- `default_value` per valori statici
+- `default_binding` per function runtime built-in
+
+Regole:
+
+- `default_value` e `default_binding` sono mutuamente esclusivi
+- in V1 `default_binding.kind` supporta solo `built_in`
+- in V1 `default_binding.resolver` supporta solo `"$now"` e `"$today"`
 
 Esempio:
 
@@ -79,12 +97,14 @@ Ordine di precedenza per ogni parametro:
 
 1. override esplicito passato dal command
 2. `default_value`
-3. errore se `required = true`
-4. `null` se opzionale
+3. `default_binding`
+4. `null`
 
 Gli errori di risoluzione usano il prefisso deterministico `DATASET_PARAMETER_RESOLUTION_FAILED`.
 
-La preview `GET /data-source/database/{id}/preview` non accetta binding in input: funziona solo se i parametri richiesti si risolvono via `default_value`.
+La preview `GET /data-source/database/{id}/preview` non accetta binding in input: i parametri non valorizzati restano `null`.
+
+I built-in dei parametri dataset vengono ricalcolati a ogni richiesta preview o esecuzione runtime.
 
 ## Contratto Command
 
@@ -122,6 +142,8 @@ Se i binding sono presenti, nel run context viene salvato:
 `DatasetPerimeterEditor`:
 
 - sezione `Parameters`
+- default guidato con modalita `None` / `Literal` / `Function`
+- dropdown `Now` / `Today` quando il default e di tipo `Function`
 - filtro con toggle `Literal` / `Parameter`
 - dropdown guidata dei parametri dichiarati
 

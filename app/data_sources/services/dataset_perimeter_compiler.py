@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import and_, or_, select
@@ -8,6 +9,7 @@ from sqlalchemy.sql.schema import Table
 from data_sources.services.dataset_parameter_resolver import (
     DATASET_PARAMETER_TYPE_NAMES,
     DatasetParameterResolver,
+    SUPPORTED_DATASET_BUILT_IN_RESOLVERS,
 )
 
 
@@ -37,6 +39,14 @@ class DatasetQueryCompilation:
 
 
 class DatasetPerimeterCompiler:
+    @staticmethod
+    def _serialize_parameter_default_value(value: Any) -> Any:
+        if isinstance(value, datetime):
+            return value.isoformat()
+        if isinstance(value, date):
+            return value.isoformat()
+        return value
+
     @classmethod
     def normalize(cls, perimeter_json: dict | None) -> dict | None:
         if perimeter_json in (None, {}):
@@ -350,22 +360,48 @@ class DatasetPerimeterCompiler:
         parameter_type = str(raw_parameter.get("type") or "").strip().lower()
         if parameter_type not in DATASET_PARAMETER_TYPE_NAMES:
             raise ValueError(f"{path}.type '{parameter_type}' is not supported.")
+        has_default_value = "default_value" in raw_parameter
+        raw_default_binding = raw_parameter.get("default_binding")
+        if has_default_value and raw_default_binding is not None:
+            raise ValueError(f"{path} cannot declare both default_value and default_binding.")
         normalized = {
             "name": name,
             "type": parameter_type,
-            "required": bool(raw_parameter.get("required")),
             "description": str(raw_parameter.get("description") or "").strip() or None,
-            "default_value": raw_parameter.get("default_value"),
         }
-        if normalized["default_value"] is not None:
+        if has_default_value:
+            normalized["default_value"] = raw_parameter.get("default_value")
+        if normalized.get("default_value") is not None:
             try:
-                normalized["default_value"] = DatasetParameterResolver.coerce_value(
+                coerced_default = DatasetParameterResolver.coerce_value(
                     parameter_type,
                     normalized["default_value"],
                 )
             except ValueError as exc:
                 raise ValueError(f"{path}.default_value {str(exc).rstrip('.')}.".replace("..", ".")) from exc
+            normalized["default_value"] = cls._serialize_parameter_default_value(coerced_default)
+        if raw_default_binding is not None:
+            normalized["default_binding"] = cls._normalize_parameter_default_binding(
+                raw_default_binding,
+                path=f"{path}.default_binding",
+            )
         return normalized
+
+    @classmethod
+    def _normalize_parameter_default_binding(cls, raw_default_binding: Any, path: str) -> dict[str, str]:
+        if not isinstance(raw_default_binding, dict):
+            raise ValueError(f"{path} must be an object.")
+        kind = str(raw_default_binding.get("kind") or "").strip().lower()
+        if kind != "built_in":
+            raise ValueError(f"{path}.kind must be 'built_in'.")
+        resolver = str(raw_default_binding.get("resolver") or "").strip()
+        if resolver not in SUPPORTED_DATASET_BUILT_IN_RESOLVERS:
+            supported = ", ".join(SUPPORTED_DATASET_BUILT_IN_RESOLVERS)
+            raise ValueError(f"{path}.resolver must be one of: {supported}.")
+        return {
+            "kind": kind,
+            "resolver": resolver,
+        }
 
     @classmethod
     def _normalize_filter_value(

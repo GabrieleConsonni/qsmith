@@ -1,6 +1,9 @@
 from enum import Enum
 
 from pydantic import BaseModel, Field, model_validator
+from data_sources.services.dataset_parameter_resolver import (
+    SUPPORTED_DATASET_BUILT_IN_RESOLVERS,
+)
 
 
 class CommandType(str, Enum):
@@ -106,8 +109,9 @@ class DatasetParameterBindingDto(BaseModel):
             return self
         if self.kind == "built_in":
             self.resolver = _normalize_token(self.resolver)
-            if self.resolver not in {"$now", "$today"}:
-                raise ValueError("resolver must be one of: $now, $today.")
+            if self.resolver not in SUPPORTED_DATASET_BUILT_IN_RESOLVERS:
+                supported = ", ".join(SUPPORTED_DATASET_BUILT_IN_RESOLVERS)
+                raise ValueError(f"resolver must be one of: {supported}.")
             self.definitionId = None
             return self
         raise ValueError("dataset parameter binding kind must be one of: constant_ref, built_in.")

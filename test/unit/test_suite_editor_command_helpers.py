@@ -865,7 +865,7 @@ def test_resolve_export_dataset_mapping_key_options_for_json_json_array_and_data
     assert dataset_keys == ["id", "status"]
 
 
-def test_test_item_single_run_button_is_disabled_for_unsaved_test():
+def test_test_item_summary_view_only_exposes_modify_button():
     _reset_session_state()
     current_test = {
         "_ui_key": "test-ui-1",
@@ -901,8 +901,14 @@ def test_test_item_single_run_button_is_disabled_for_unsaved_test():
         def caption(self, *args, **kwargs):
             return None
 
+        def markdown(self, *args, **kwargs):
+            return None
+
         def button(self, *args, **kwargs):
-            self.button_calls.append(kwargs)
+            payload = dict(kwargs)
+            if args:
+                payload["label"] = args[0]
+            self.button_calls.append(payload)
             return False
 
         def rerun(self):
@@ -910,17 +916,116 @@ def test_test_item_single_run_button_is_disabled_for_unsaved_test():
 
     stub = StreamlitStub()
     original_st = suite_editor_component.st
-    original_render_suite_item_operation = suite_editor_component._render_suite_item_operation
     try:
         suite_editor_component.st = stub
-        suite_editor_component._render_suite_item_operation = lambda *args, **kwargs: None
         suite_editor_component._render_test_item(current_test, 1, {})
     finally:
         suite_editor_component.st = original_st
-        suite_editor_component._render_suite_item_operation = original_render_suite_item_operation
 
-    run_button_call = next(
-        call for call in stub.button_calls if call.get("key") == "suite_editor_run_test_test-ui-1"
+    modify_button_call = next(
+        call for call in stub.button_calls if call.get("key") == "test_suite_open_test_editor_test-ui-1"
     )
-    assert run_button_call["disabled"] is True
-    assert run_button_call["help"] == "Save suite before running this test"
+    assert modify_button_call["label"] == "Modify"
+    assert len(stub.button_calls) == 1
+
+
+def test_ensure_selected_test_position_clamps_to_last_available():
+    _reset_session_state()
+    sys.modules["streamlit"].session_state[suite_editor_component.SELECTED_TEST_POSITION_KEY] = 5
+    draft = {
+        "tests": [
+            {"description": "First", "position": 1},
+            {"description": "Second", "position": 2},
+        ]
+    }
+
+    assert suite_editor_component._ensure_selected_test_position(draft) == 2
+    assert sys.modules["streamlit"].session_state[suite_editor_component.SELECTED_TEST_POSITION_KEY] == 2
+
+
+def test_move_operation_in_item_swaps_and_resequences():
+    item = {
+        "operations": [
+            {"_ui_key": "op-1", "order": 1, "description": "first"},
+            {"_ui_key": "op-2", "order": 2, "description": "second"},
+        ]
+    }
+
+    assert suite_editor_component._move_operation_in_item(item, 0, 1) is True
+    assert [operation["_ui_key"] for operation in item["operations"]] == ["op-2", "op-1"]
+    assert [operation["order"] for operation in item["operations"]] == [1, 2]
+
+
+def test_test_editor_item_read_mode_exposes_inline_command_actions():
+    _reset_session_state()
+    current_test = {
+        "_ui_key": "test-ui-1",
+        "description": "Editable test",
+        "operations": [
+            {
+                "_ui_key": "op-ui-1",
+                "description": "cleanup",
+                "configuration_json": {
+                    "commandCode": "dropTable",
+                    "commandType": "action",
+                    "table_name": "orders_tmp",
+                },
+            }
+        ],
+    }
+    draft = {"tests": [current_test]}
+
+    class StreamlitStub:
+        def __init__(self):
+            self.session_state = sys.modules["streamlit"].session_state
+            self.button_calls = []
+
+        def container(self, *args, **kwargs):
+            class _Ctx:
+                def __enter__(self_inner):
+                    return None
+
+                def __exit__(self_inner, exc_type, exc, tb):
+                    return False
+
+            return _Ctx()
+
+        def columns(self, spec, **kwargs):
+            class _Col:
+                def __enter__(self_inner):
+                    return None
+
+                def __exit__(self_inner, exc_type, exc, tb):
+                    return False
+
+            return [_Col() for _ in spec]
+
+        def caption(self, *args, **kwargs):
+            return None
+
+        def markdown(self, *args, **kwargs):
+            return None
+
+        def button(self, *args, **kwargs):
+            payload = dict(kwargs)
+            if args:
+                payload["label"] = args[0]
+            self.button_calls.append(payload)
+            return False
+
+        def rerun(self):
+            raise AssertionError("rerun should not be called")
+
+    stub = StreamlitStub()
+    original_st = suite_editor_component.st
+    try:
+        suite_editor_component.st = stub
+        suite_editor_component._render_test_editor_item(current_test, 1, draft, {})
+    finally:
+        suite_editor_component.st = original_st
+
+    keys = {call.get("key") for call in stub.button_calls}
+    assert "test_editor_inline_command_modify_test-ui-1_op-ui-1" in keys
+    assert "test_editor_inline_command_delete_test-ui-1_op-ui-1" in keys
+    assert "test_editor_inline_command_up_test-ui-1_op-ui-1" in keys
+    assert "test_editor_inline_command_down_test-ui-1_op-ui-1" in keys

@@ -1,3 +1,6 @@
+import math
+from datetime import datetime
+
 from fastapi import APIRouter, Query
 
 from _alembic.models.suite_item_execution_entity import SuiteItemExecutionEntity
@@ -104,6 +107,46 @@ async def find_all_test_suite_executions_api(
             )
             for execution in executions
         ]
+
+
+@router.get("/test-suite-execution/search")
+async def search_test_suite_executions_api(
+    test_suite_id: str | None = Query(default=None),
+    status: str | None = Query(default=None, pattern="^(success|running|error)$"),
+    started_from: datetime | None = Query(default=None),
+    started_to: datetime | None = Query(default=None),
+    page_size: int = Query(default=20, ge=1, le=100),
+    page_number: int = Query(default=1, ge=1),
+):
+    with managed_session() as session:
+        execution_service = TestSuiteExecutionService()
+        item_execution_service = SuiteItemExecutionService()
+        operation_execution_service = SuiteItemOperationExecutionService()
+        executions, total, resolved_page_number = execution_service.search(
+            session,
+            test_suite_id=test_suite_id,
+            status=status,
+            started_from=started_from,
+            started_to=started_to,
+            page_size=page_size,
+            page_number=page_number,
+        )
+        total_pages = max(1, math.ceil(total / page_size)) if page_size else 1
+        return {
+            "items": [
+                _serialize_test_suite_execution(
+                    session,
+                    execution,
+                    item_execution_service,
+                    operation_execution_service,
+                )
+                for execution in executions
+            ],
+            "total": total,
+            "page_size": page_size,
+            "page_number": resolved_page_number,
+            "total_pages": total_pages,
+        }
 
 
 @router.get("/test-suite-execution/{execution_id}")

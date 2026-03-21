@@ -45,57 +45,66 @@ def _render_test_editor_operation(item: dict, operation: dict, op_idx: int, draf
     is_first = operation_index <= 0
     is_last = operation_index >= len(shared._operation_list(item)) - 1
 
-    with st.container(border=True):
-        st.markdown(shared._build_suite_command_markdown(current_operation))
-        description = shared._command_description_text(current_operation)
-        if description:
-            st.caption(description)
+    cmd_col, up_col, down_col = st.columns([20, 1, 1], gap="small", vertical_alignment="center")
+    with cmd_col:
+        with st.container(border=True):
+            columns = st.columns([10,10 , 1, 1], gap="small", vertical_alignment="center")
+            with columns[0]:
+                markdown_label = shared._build_suite_command_markdown(current_operation)
+                
+                st.markdown(markdown_label)
+            
+            with columns[1]:
+                description = shared._command_description_text(current_operation)
+                if description:
+                    st.caption(description)
 
-        if is_editing:
-            if command_group and command_group != "fallback-json":
-                shared._render_inline_typed_test_command_editor(
-                    draft,
-                    item,
-                    current_operation,
-                    operation_index,
-                    command_group,
-                    shared._inline_test_command_nonce(),
-                )
-            else:
-                shared._render_inline_generic_test_command_editor(
-                    item,
-                    current_operation,
-                    operation_index,
-                    shared._inline_test_command_nonce(),
-                )
-            return
+            with columns[2]:
+                if st.button(
+                    "",
+                    key=f"test_editor_inline_command_modify_{item_ui_key}_{operation_ui_key}",
+                    icon=":material/edit:",
+                    type="tertiary",
+                    help=f"Modify {action_label}",
+                    use_container_width=True,
+                ):
+                    shared._open_inline_test_command_editor(operation_ui_key)
+                    st.rerun()
 
-        action_cols = st.columns([6, 1, 1, 1, 1, 6], gap="small", vertical_alignment="center")
-        with action_cols[1]:
-            if st.button(
-                "",
-                key=f"test_editor_inline_command_modify_{item_ui_key}_{operation_ui_key}",
-                icon=":material/edit:",
-                type="tertiary",
-                help=f"Modify {action_label}",
-                use_container_width=True,
-            ):
-                shared._open_inline_test_command_editor(operation_ui_key)
-                st.rerun()
-        with action_cols[2]:
-            if st.button(
-                "",
-                key=f"test_editor_inline_command_delete_{item_ui_key}_{operation_ui_key}",
-                icon=":material/delete:",
-                help=f"Delete {action_label}",
-                use_container_width=True,
-                type="tertiary",
-            ):
-                if shared._delete_operation_by_ui_key(item, operation_ui_key):
-                    shared._close_inline_test_command_editor()
-                    st.session_state[SUITE_FEEDBACK_KEY] = "Command removed."
-                    shared._persist_changes()
-        with action_cols[3]:
+            with columns[3]:
+                if st.button(
+                    "",
+                    key=f"test_editor_inline_command_delete_{item_ui_key}_{operation_ui_key}",
+                    icon=":material/delete:",
+                    help=f"Delete {action_label}",
+                    use_container_width=True,
+                    type="tertiary",
+                ):
+                    if shared._delete_operation_by_ui_key(item, operation_ui_key):
+                        shared._close_inline_test_command_editor()
+                        st.session_state[SUITE_FEEDBACK_KEY] = "Command removed."
+                        shared._persist_changes()
+
+            if is_editing:
+                if command_group and command_group != "fallback-json":
+                    shared._render_inline_typed_test_command_editor(
+                        draft,
+                        item,
+                        current_operation,
+                        operation_index,
+                        command_group,
+                        shared._inline_test_command_nonce(),
+                    )
+                else:
+                    shared._render_inline_generic_test_command_editor(
+                        item,
+                        current_operation,
+                        operation_index,
+                        shared._inline_test_command_nonce(),
+                    )
+                return
+
+        with up_col:
             if st.button(
                 "",
                 key=f"test_editor_inline_command_up_{item_ui_key}_{operation_ui_key}",
@@ -115,7 +124,7 @@ def _render_test_editor_operation(item: dict, operation: dict, op_idx: int, draf
                         return
                     shared._close_inline_test_command_editor()
                     st.rerun()
-        with action_cols[4]:
+        with down_col:
             if st.button(
                 "",
                 key=f"test_editor_inline_command_down_{item_ui_key}_{operation_ui_key}",
@@ -150,7 +159,9 @@ def _render_test_editor_item(test: dict, index: int, draft: dict, execution_stat
     selected_suite_id = str(st.session_state.get(SELECTED_TEST_SUITE_ID_KEY) or "").strip()
     can_run_single_test = bool(current_test_id and selected_suite_id)
 
-    add_cols = st.columns([1, 3, 3, 3, 1, 4], gap="small", vertical_alignment="center")
+    st.divider()
+    
+    add_cols = st.columns([1, 3, 3, 3, 1, 3], gap="small", vertical_alignment="center")
     with add_cols[1]:
         if st.button(
             "+ Variable",
@@ -178,7 +189,7 @@ def _render_test_editor_item(test: dict, index: int, draft: dict, execution_stat
         ):
             shared._open_test_command_dialog_for_item(str(current_test.get("_ui_key") or ""), "assert")
             st.rerun()
-    with add_cols[4]:
+    with add_cols[5]:
         if st.button(
             "",
             key=f"suite_editor_run_test_{current_test.get('_ui_key')}",

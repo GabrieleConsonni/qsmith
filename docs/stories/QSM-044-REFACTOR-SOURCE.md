@@ -88,7 +88,9 @@ Tipi consigliati:
 - `value`
 - `json`
 - output tecnici / result artifacts
-- eventuali strutture runtime future
+- functions
+  - `now`
+  - `today`
 
 Caratteristiche:
 - esistono nel runtime
@@ -525,6 +527,13 @@ Se l’input è un runtime value:
 2. recuperare il valore dal contesto
 3. applicare eventuali validazioni di tipo
 
+## 11.6 Risoluzione di un runtime function
+
+Se l’input è un runtime function:
+
+1. leggere la definition/reference
+2. calcolare il valore della funzione
+
 ---
 
 # 12. Dataset parameters nel nuovo modello
@@ -602,14 +611,15 @@ Può restare solo per veri runtime values:
 
 * `value`
 * `json`
+* `function` (built-in o custom)
 
-Consiglio rename:
+Rinominare:
 
-* `initConstant` -> `setValue`
+* `initConstant` -> `setVariable`
+* `deleteConstant` -> `deleteVariable`
+*  tutti i formati UI `Initialize variable` -> `Set variable`
 
-Se non vuoi rinominarlo subito:
 
-* limitarlo semanticamente ai valori runtime
 
 ## 13.3 Delete runtime value
 
@@ -620,7 +630,8 @@ Se non vuoi rinominarlo subito:
 
 Consiglio rename futuro:
 
-* `deleteConstant` -> `deleteValue`
+* `deleteConstant` -> `deleteVariable`
+* tutti i formati UI `Delete constant` -> `Delete variable`
 
 ---
 
@@ -633,21 +644,29 @@ Input ammessi:
 * source `dataset`
 * source `jsonArray`
 * runtime `json`
-* runtime `value` se compatibile con template
 
 ## 14.2 saveTable
 
 Input ammessi:
 
 * source `dataset`
-* eventuale runtime tabellare futuro
+* source `jsonArray`
+* runtime `json`
+
+La semantica specifica dipende dal tipo di input:
+* dataset: materializza dataset e salva come tabella
+* jsonArray: salva ogni item come riga di tabella
+* json: salva json come singola riga di tabella
+* in caso di json o jsonArray, è necessario specificare anche lo schema della tabella da creare con mappatura dei campi
 
 ## 14.3 exportDataset
 
 Input ammessi:
 
 * source `dataset`
-* eventualmente runtime tabellare strutturato
+* jsonArray: salva ogni item come riga di tabella
+* json: salva json come singola riga di tabella
+* in caso di json o jsonArray, è necessario specificare anche lo schema della tabella da creare con mappatura dei campi
 
 ## 14.4 jsonArrayEquals
 
@@ -882,9 +901,9 @@ Le sources devono essere mostrate come elenco dichiarativo:
 
 Separare la gestione dei valori runtime:
 
-* `Set value`
+* `Set variable`
 * `Set json`
-* `Delete value`
+* `Delete variable`
 
 ## 20.4 Dataset source editor flow
 
@@ -893,9 +912,14 @@ Flow suggerito:
 1. click `Add data source`
 2. scelta tipo `Dataset`
 3. select dataset catalogato
-4. copia automatica del perimeter nella source
-5. apertura editor del perimeter locale
-6. salvataggio source
+4. salvataggio source
+5. copia automatica del perimeter nella source
+
+In fase di modifica del dataset source:
+1. eventuale edit del dataset source
+2. (Edit local perimeter)
+   a. editor del perimeter locale
+   b. salvataggio source
 
 ## 20.5 Azioni dataset source
 
@@ -927,23 +951,10 @@ La source dataset deve mostrare chiaramente:
 
 ## 21.2 Layout suggerito
 
-Header:
+Lo stesso presente in dataset DatasetPerimeterEditor:
 
-* Base dataset: `Orders base dataset`
-* Badge: `Copied from dataset`
-* Badge opzionale: `Customized`
+Azioni aggiuntive: 
 
-Sezioni:
-
-* Selected columns
-* Filters
-* Sort
-* Parameters
-* Parameter bindings
-
-Azioni:
-
-* `Preview`
 * `Reset from dataset`
 * `Save as new dataset`
 

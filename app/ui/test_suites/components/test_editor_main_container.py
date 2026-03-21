@@ -36,7 +36,7 @@ def render_test_editor_main_container():
     ):
         _go_back()
 
-    shared._render_operation_feedback()
+    shared._render_command_feedback()
 
     if not isinstance(selected_test, dict):
         st.markdown("### Test editor")

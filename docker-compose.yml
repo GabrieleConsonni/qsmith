@@ -36,3 +36,4 @@ services:
     volumes:
       - ./app/ui:/qsmith/app/ui
       - ./.streamlit:/qsmith/.streamlit
+      - ./.streamlit:/qsmith/app/ui/.streamlit

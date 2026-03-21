@@ -3,14 +3,14 @@ from copy import deepcopy
 
 import streamlit as st
 
+from datetime import datetime
+
 from database_connections.services.data_loader_service import (
     DATABASE_CONNECTIONS_KEY,
     load_database_connections,
 )
 from elaborations_shared.components.test_command_component import (
-    append_operation_to_test,
     find_draft_test_by_ui_key,
-    render_add_test_operation_dialog,
 )
 from elaborations_shared.services.data_loader_service import (
     load_test_editor_context,
@@ -29,6 +29,7 @@ from test_suites.services.api_service import (
     get_all_test_suites,
     get_test_suite_by_id,
     get_test_suite_executions,
+    preview_send_message_template_rows_via_api,
     update_test_suite,
 )
 from test_suites.services.draft_mapper import (
@@ -94,7 +95,6 @@ TEST_ASSERT_COMMAND_CODES = [
 TEST_ACTION_COMMAND_OPTIONS = [
     ("sendMessageQueue", "sendMessageQueue"),
     ("saveTable", "saveTable"),
-    ("exportTable", "exportTable"),
     ("dropTable", "dropTable"),
     ("cleanTable", "cleanTable"),
     ("exportDataset", "exportDataset"),
@@ -104,7 +104,6 @@ TEST_ACTION_COMMAND_OPTIONS = [
 TEST_ACTION_COMMAND_MAPPING = {
     "sendMessageQueue": "sendMessageQueue",
     "saveTable": "saveTable",
-    "exportTable": "exportDataset",
     "dropTable": "dropTable",
     "cleanTable": "cleanTable",
     "exportDataset": "exportDataset",
@@ -695,7 +694,7 @@ def _apply_visible_constant_effect(active_definitions: list[dict], operation: di
             configuration_json.get("sourceType") or configuration_json.get("source_type") or ""
         ).strip()
         if name and context and source_type:
-            preview_value = configuration_json.get("value") if source_type == "json" else None
+            preview_value = configuration_json.get("value") if source_type in {"json", "raw"} else None
             active_definitions.append(
                 {
                     "name": name,
@@ -980,11 +979,14 @@ def _resolve_send_message_template_preview_rows(
     if source_type not in {"json", "jsonArray"}:
         return [], [], "Message template preview is available only for json, jsonArray and dataset sources."
 
-    preview_rows = preview_send_message_template_rows(
-        preview_source,
-        source_type=source_type,
-        for_each=for_each,
-    )
+    try:
+        preview_rows = preview_send_message_template_rows_via_api(
+            input_data=preview_source,
+            source_type=source_type,
+            for_each=for_each,
+        )
+    except Exception as exc:
+        return [], [], f"Unable to load message template preview: {str(exc)}"
     field_options = sorted(
         {
             str(field_name).strip()
@@ -998,8 +1000,117 @@ def _resolve_send_message_template_preview_rows(
     return preview_rows, field_options, None
 
 
+def _resolve_send_message_preview_payload(
+    *,
+    key_prefix: str,
+    dialog_nonce: int,
+    source_definition: dict | None,
+    json_arrays: list[dict],
+    datasources: list[dict],
+) -> tuple[object | None, str | None]:
+    if not isinstance(source_definition, dict):
+        return None, None
+
+    template_enabled = bool(
+        st.session_state.get(_command_form_key(key_prefix, dialog_nonce, "send_message_template_enabled"))
+    )
+    if template_enabled:
+        preview_rows, _field_options, preview_error = _resolve_send_message_template_preview_rows(
+            source_definition,
+            for_each=st.session_state.get(
+                _command_form_key(key_prefix, dialog_nonce, "send_message_template_for_each")
+            ),
+            json_arrays=json_arrays,
+            datasources=datasources,
+        )
+        if preview_error:
+            return None, preview_error
+
+        preview_constants, constants_error = _parse_message_template_constants(
+            st.session_state.get(
+                _command_form_key(key_prefix, dialog_nonce, "send_message_template_constants_rows")
+            )
+        )
+        if constants_error:
+            return None, constants_error
+
+        preview_payload = {
+            field_name: preview_rows[0].get(field_name)
+            for field_name in _normalize_compare_keys_input(
+                st.session_state.get(
+                    _command_form_key(key_prefix, dialog_nonce, "send_message_template_fields")
+                )
+            )
+            if preview_rows and field_name in preview_rows[0]
+        }
+        for constant in preview_constants:
+            constant_name = str(constant.get("name") or "").strip()
+            if constant_name:
+                preview_payload[constant_name] = constant.get("value")
+        if preview_payload:
+            return preview_payload, None
+        return None, "No message preview available for the configured template."
+
+    source_type = str(source_definition.get("value_type") or "").strip()
+    source_reference_id = str(source_definition.get("source_reference_id") or "").strip()
+    if source_type == "jsonArray":
+        preview_payload, error = _resolve_expected_json_array_payload(json_arrays, source_reference_id)
+        if error:
+            return None, error
+        return preview_payload, None if preview_payload is not None else "Selected json array does not expose a preview."
+    if source_type == "dataset":
+        preview_rows, _field_options, preview_error = _resolve_send_message_template_preview_rows(
+            source_definition,
+            for_each=None,
+            json_arrays=json_arrays,
+            datasources=datasources,
+        )
+        if preview_error:
+            return None, preview_error
+        return preview_rows[0], None if preview_rows else "Selected dataset does not expose a preview."
+
+    preview_payload = source_definition.get("preview_value")
+    if preview_payload is not None:
+        return preview_payload, None
+    return None, "Selected source variable does not expose a preview."
+
+
+def _render_send_message_preview(
+    *,
+    key_prefix: str,
+    dialog_nonce: int,
+    source_options: list[dict],
+    json_arrays: list[dict],
+    datasources: list[dict],
+):
+    source_definition = _resolve_send_message_source_definition(
+        source_options,
+        st.session_state.get(_command_form_key(key_prefix, dialog_nonce, "send_message_source")),
+    )
+    preview_payload, preview_error = _resolve_send_message_preview_payload(
+        key_prefix=key_prefix,
+        dialog_nonce=dialog_nonce,
+        source_definition=source_definition,
+        json_arrays=json_arrays,
+        datasources=datasources,
+    )
+    st.caption("Message send preview")
+    if preview_payload is not None:
+        st.json(preview_payload, expanded=True)
+    elif preview_error:
+        st.info(preview_error)
+
+
 def _send_message_template_constant_rows(value: object) -> list[dict]:
     constants = value if isinstance(value, list) else []
+    if not constants and hasattr(value, "to_dict"):
+        try:
+            constants = value.to_dict(orient="records")
+        except TypeError:
+            try:
+                constants = value.to_dict("records")
+            except TypeError:
+                constants = []
     rows: list[dict] = []
     for constant in constants:
         if not isinstance(constant, dict):
@@ -1028,6 +1139,7 @@ def _render_send_message_template_section(
     for_each_key = _command_form_key(key_prefix, dialog_nonce, "send_message_template_for_each")
     fields_key = _command_form_key(key_prefix, dialog_nonce, "send_message_template_fields")
     constants_key = _command_form_key(key_prefix, dialog_nonce, "send_message_template_constants_rows")
+    constants_editor_key = _command_form_key(key_prefix, dialog_nonce, "send_message_template_constants_editor")
     source_key = _command_form_key(key_prefix, dialog_nonce, "send_message_source")
 
     source_definition = _resolve_send_message_source_definition(
@@ -1059,12 +1171,6 @@ def _render_send_message_template_section(
     st.session_state[fields_key] = [
         field_name for field_name in current_fields if field_name in field_options
     ]
-
-    st.caption("Message extract preview")
-    if preview_rows:
-        st.json(preview_rows[:3], expanded=True)
-    elif preview_error:
-        st.info(preview_error)
 
     if source_type == "dataset":
         st.text_input("forEach", key=for_each_key, disabled=True, help="Not used for dataset sources.")
@@ -1103,9 +1209,9 @@ def _render_send_message_template_section(
             st.rerun()
 
     st.caption("Template constants")
-    st.data_editor(
-        st.session_state.get(constants_key, []),
-        key=constants_key,
+    edited_constant_rows = st.data_editor(
+        _send_message_template_constant_rows(st.session_state.get(constants_key)),
+        key=constants_editor_key,
         num_rows="dynamic",
         hide_index=True,
         use_container_width=True,
@@ -1119,20 +1225,46 @@ def _render_send_message_template_section(
             "value": st.column_config.TextColumn("Value"),
         },
     )
+    st.session_state[constants_key] = _send_message_template_constant_rows(edited_constant_rows)
 
-    preview_constants, _error = _parse_message_template_constants(st.session_state.get(constants_key))
-    preview_payload = {
-        field_name: preview_rows[0].get(field_name)
-        for field_name in st.session_state.get(fields_key, [])
-        if preview_rows and field_name in preview_rows[0]
-    }
-    for constant in preview_constants:
-        constant_name = str(constant.get("name") or "").strip()
-        if constant_name:
-            preview_payload[constant_name] = constant.get("value")
-    if preview_payload:
-        st.caption("Message to send preview")
-        st.json(preview_payload, expanded=True)
+    if preview_rows:
+        st.caption("Template source preview")
+        st.json(preview_rows[:3], expanded=True)
+    elif preview_error:
+        st.info(preview_error)
+
+
+def _render_send_message_template_management(
+    *,
+    key_prefix: str,
+    dialog_nonce: int,
+    source_options: list[dict],
+    json_arrays: list[dict],
+    datasources: list[dict],
+):
+    panel_open_key = _command_form_key(key_prefix, dialog_nonce, "send_message_template_panel_open")
+    template_enabled_key = _command_form_key(key_prefix, dialog_nonce, "send_message_template_enabled")
+    if st.button(
+        "Manage template",
+        key=_command_form_key(key_prefix, dialog_nonce, "send_message_template_manage"),
+        use_container_width=True,
+    ):
+        st.session_state[panel_open_key] = not bool(st.session_state.get(panel_open_key))
+
+    template_status = "enabled" if bool(st.session_state.get(template_enabled_key)) else "disabled"
+    st.caption(f"Message template: {template_status}")
+    if not bool(st.session_state.get(panel_open_key)):
+        return
+
+    with st.container(border=True):
+        st.caption("Template management")
+        _render_send_message_template_section(
+            key_prefix=key_prefix,
+            dialog_nonce=dialog_nonce,
+            source_options=source_options,
+            json_arrays=json_arrays,
+            datasources=datasources,
+        )
 
 
 def _render_source_constant_select(
@@ -1617,15 +1749,16 @@ def _load_execution_history(suite_id: str) -> list[dict]:
 
 
 def _format_execution_label(execution: dict) -> str:
-    execution_id = str(execution.get("id") or "").strip() or "-"
-    requested_item = str(
-        execution.get("requested_test_id")
-        or execution.get("test_suite_description")
-        or execution_id
-    ).strip()
     started_at = str(execution.get("started_at") or "-")
-    status = str(execution.get("status") or "-")
-    return f"{status} | {started_at} | {requested_item}"
+    ## format datetime YYYY-MM-DD HH:MM:SS
+    if started_at != "-":
+        try:
+            parsed = datetime.fromisoformat(started_at)
+            started_at = parsed.strftime("%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            pass
+    status = str(execution.get("status") or "?")
+    return f"Executed at {started_at} - status: {status}"
 
 
 def _find_selected_execution(executions: list[dict]) -> dict | None:
@@ -1724,7 +1857,7 @@ def _render_persist_error(exc: Exception):
     st.error(friendly_message)
 
 
-def _render_operation_feedback():
+def _render_command_feedback():
     suite_feedback = str(st.session_state.pop(TEST_SUITE_FEEDBACK_KEY, "") or "").strip()
     if suite_feedback:
         st.success(suite_feedback)
@@ -1743,6 +1876,65 @@ def _consume_add_operation_dialog_request() -> bool:
     if is_open_requested:
         st.session_state[ADD_TEST_OPERATION_DIALOG_OPEN_KEY] = False
     return is_open_requested
+
+
+@st.dialog("Add new test", width="medium")
+def _render_add_test_dialog(draft: dict):
+    dialog_nonce = int(st.session_state.get(ADD_TEST_DIALOG_NONCE_KEY, 0))
+    description_key = f"suite_add_test_description_{dialog_nonce}"
+    on_failure_key = f"suite_add_test_on_failure_{dialog_nonce}"
+
+    if description_key not in st.session_state:
+        st.session_state[description_key] = ""
+    if on_failure_key not in st.session_state:
+        st.session_state[on_failure_key] = "ABORT"
+
+    st.text_input("Description", key=description_key)
+    st.selectbox(
+        "On failure",
+        options=["ABORT", "CONTINUE"],
+        key=on_failure_key,
+        format_func=lambda value: "Abort suite" if str(value).upper() == "ABORT" else "Continue",
+    )
+
+    action_cols = st.columns([1, 1], gap="small", vertical_alignment="center")
+    with action_cols[0]:
+        if st.button(
+            "Save",
+            key=f"suite_add_test_save_{dialog_nonce}",
+            icon=":material/add_circle:",
+            type="secondary",
+            use_container_width=True,
+        ):
+            original_draft = deepcopy(st.session_state.get(TEST_SUITE_DRAFT_KEY, {}))
+            tests = draft.setdefault("tests", [])
+            if not isinstance(tests, list):
+                tests = []
+                draft["tests"] = tests
+
+            test_item = _new_suite_item("test")
+            test_item["description"] = str(st.session_state.get(description_key) or "").strip()
+            test_item["on_failure"] = str(st.session_state.get(on_failure_key) or "ABORT").strip().upper() or "ABORT"
+            test_item["position"] = len(tests) + 1
+            tests.append(test_item)
+            st.session_state[SELECTED_TEST_POSITION_KEY] = test_item["position"]
+
+            try:
+                _persist_current_draft(success_message="Test added.", rerun=False)
+            except Exception as exc:
+                st.session_state[TEST_SUITE_DRAFT_KEY] = original_draft
+                _render_persist_error(exc)
+                return
+            _close_add_test_dialog()
+            st.rerun()
+    with action_cols[1]:
+        if st.button(
+            "Cancel",
+            key=f"suite_add_test_cancel_{dialog_nonce}",
+            use_container_width=True,
+        ):
+            _close_add_test_dialog()
+            st.rerun()
 
 
 def _open_add_test_dialog():
@@ -2684,6 +2876,7 @@ def _initialize_test_command_form(
         st.session_state[_command_form_key(key_prefix, dialog_nonce, "send_message_template_constants_rows")] = (
             _send_message_template_constant_rows(message_template.get("constants"))
         )
+        st.session_state[_command_form_key(key_prefix, dialog_nonce, "send_message_template_panel_open")] = False
         st.session_state[_command_form_key(key_prefix, dialog_nonce, "send_message_result_target")] = str(
             configuration_json.get("result_target") or ""
         )
@@ -2910,7 +3103,7 @@ def _render_hook_command_form(
             ),
             help_text="Visible and compatible variables at this point.",
         )
-        st.text_input("Result variable", key=_command_form_key(key_prefix, dialog_nonce, "save_table_result_target"))
+        st.text_input("Result variable name", key=_command_form_key(key_prefix, dialog_nonce, "save_table_result_target"))
     elif command_code == "dropTable":
         st.text_input("Table name", key=_command_form_key(key_prefix, dialog_nonce, "drop_table_name"))
     elif command_code == "cleanTable":
@@ -2968,7 +3161,7 @@ def _render_hook_command_form(
             key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_dataset_id"),
         )
         st.text_input("Dataset description (optional)", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_dataset_description"))
-        st.text_input("Result variable", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_result_target"))
+        st.text_input("Result variable name", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_result_target"))
     elif command_code == "dropDataset":
         dataset_ids = [str(item.get("id")) for item in datasources if item.get("id")]
         st.selectbox(
@@ -3110,6 +3303,18 @@ def _render_test_command_form(
             st.number_input("Wait time seconds", min_value=0, value=20, key=_command_form_key(key_prefix, dialog_nonce, "init_constant_wait_time_seconds"))
             st.number_input("Max messages", min_value=1, value=1000, key=_command_form_key(key_prefix, dialog_nonce, "init_constant_max_messages"))
     elif command_code == "sendMessageQueue":
+        source_options = _resolve_available_source_constants(
+            draft,
+            item,
+            command_code=command_code,
+            stop_before_index=stop_before_index,
+        )
+        _render_source_constant_select(
+            label="Source variable",
+            key=_command_form_key(key_prefix, dialog_nonce, "send_message_source"),
+            options=source_options,
+            help_text="Visible and compatible variables at this point.",
+        )
         broker_ids = [str(item.get("id")) for item in brokers if item.get("id")]
         broker_key = _command_form_key(key_prefix, dialog_nonce, "send_message_broker_id")
         current_broker_id = str(st.session_state.get(broker_key) or "").strip()
@@ -3135,26 +3340,21 @@ def _render_test_command_form(
             key=queue_key,
             disabled=not bool(queue_ids),
         )
-        source_options = _resolve_available_source_constants(
-            draft,
-            item,
-            command_code=command_code,
-            stop_before_index=stop_before_index,
-        )
-        _render_source_constant_select(
-            label="Source variable",
-            key=_command_form_key(key_prefix, dialog_nonce, "send_message_source"),
-            options=source_options,
-            help_text="Visible and compatible variables at this point.",
-        )
-        _render_send_message_template_section(
+        st.text_input("Result variable name", key=_command_form_key(key_prefix, dialog_nonce, "send_message_result_target"))
+        _render_send_message_preview(
             key_prefix=key_prefix,
             dialog_nonce=dialog_nonce,
             source_options=source_options,
             json_arrays=json_arrays,
             datasources=datasources,
         )
-        st.text_input("Result variable", key=_command_form_key(key_prefix, dialog_nonce, "send_message_result_target"))
+        _render_send_message_template_management(
+            key_prefix=key_prefix,
+            dialog_nonce=dialog_nonce,
+            source_options=source_options,
+            json_arrays=json_arrays,
+            datasources=datasources,
+        )
     elif command_code == "saveTable":
         st.text_input("Table name", key=_command_form_key(key_prefix, dialog_nonce, "save_table_name"))
         _render_source_constant_select(
@@ -3168,7 +3368,7 @@ def _render_test_command_form(
             ),
             help_text="Visible and compatible variables at this point.",
         )
-        st.text_input("Result variable", key=_command_form_key(key_prefix, dialog_nonce, "save_table_result_target"))
+        st.text_input("Result variable name", key=_command_form_key(key_prefix, dialog_nonce, "save_table_result_target"))
     elif command_code == "dropTable":
         st.text_input("Table name", key=_command_form_key(key_prefix, dialog_nonce, "drop_table_name"))
     elif command_code == "cleanTable":
@@ -3226,7 +3426,7 @@ def _render_test_command_form(
             key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_dataset_id"),
         )
         st.text_input("Dataset description (optional)", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_dataset_description"))
-        st.text_input("Result variable", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_result_target"))
+        st.text_input("Result variable name", key=_command_form_key(key_prefix, dialog_nonce, "export_dataset_result_target"))
     elif command_code == "dropDataset":
         dataset_ids = [str(item.get("id")) for item in datasources if item.get("id")]
         st.selectbox(
@@ -3664,14 +3864,14 @@ def _test_label(test: dict, index: int) -> str:
 
 
 def _render_test_command_summaries(test: dict):
-    operations = test.get("operations") or []
-    if operations:
-        for op_idx, operation in enumerate(operations, start=1):
+    commands = test.get("operations") or []
+    if commands:
+        for op_idx, operation in enumerate(commands, start=1):
+            markdowm_label = f"**{op_idx}. {_command_action_label(operation)}**"
             description = _command_description_text(operation)
             if description:
-                st.caption(description)
-            st.markdown(f"{op_idx}. {_build_suite_command_markdown(operation)}")
-            
+                markdowm_label += f" // {description}"
+            st.markdown(markdowm_label)
     else:
         st.caption("Nessun command configurato.")
 
@@ -3821,7 +4021,9 @@ def _render_inline_typed_test_command_editor(
 
 def _render_test_item(test: dict, index: int, execution_state: dict):
     current_test = _ensure_test_item(test, index)
-    with st.expander(_test_label(current_test, index), expanded=False):
+    selected_test_position = _coerce_test_position(st.session_state.get(SELECTED_TEST_POSITION_KEY))
+    is_selected_test = _test_position(current_test, index) == selected_test_position and selected_test_position > 0
+    with st.expander(_test_label(current_test, index), expanded=is_selected_test):
         _render_test_command_summaries(current_test)
         action_cols = st.columns([20, 1, 1], gap="small", vertical_alignment="center")
         with action_cols[1]:

@@ -79,6 +79,7 @@ Note UI test suite:
 - `app/ui/pages/SuiteEditor.py` resta alias legacy di compatibilita e non deve ricevere nuova logica.
 - Il rendering page-specific del test editor vive in `app/ui/test_suites/components/test_editor_component.py`.
 - `app/ui/test_suites/components/suite_editor_component.py` contiene helper condivisi della feature, non rendering dedicato a una pagina specifica.
+- La UI Streamlit comunica con la logica applicativa backend solo tramite API FastAPI e wrapper `app/ui/**/services/api_service.py`; i componenti UI non devono importare servizi di dominio come `elaborations.services.*`.
 
 ## Router API principali
 - `/broker`
@@ -92,6 +93,7 @@ Note UI test suite:
   - database connections + test + metadata oggetti + preview
 - `/elaborations`
   - test suites
+  - preview template `sendMessageQueue` per editor UI
   - suite_items / suite_item_commands (snapshot)
   - test suite executions
   - SSE runtime: `/elaborations/execution/{execution_id}/events`

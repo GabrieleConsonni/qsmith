@@ -12,6 +12,7 @@ WORKDIR /qsmith/app/ui
 
 COPY app/ui /qsmith/app/ui
 COPY .streamlit /qsmith/.streamlit 
+COPY .streamlit /qsmith/app/ui/.streamlit
 
 EXPOSE 8501
 

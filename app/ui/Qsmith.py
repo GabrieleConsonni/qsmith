@@ -19,7 +19,7 @@ queue_details = st.Page("pages/QueueDetails.py", title="Queue details")
 json_array = st.Page("pages/JsonArray.py", title="Json Array")
 datasets_page = st.Page("pages/Datasets.py", title="Datasets")
 dataset_perimeter_editor = st.Page("pages/DatasetPerimeterEditor.py", title="Dataset perimeter editor")
-test_suites = st.Page("pages/TestSuites.py", title="Test Suites")
+test_suites = st.Page("pages/TestSuites.py", title="Test Suites", url_path="test-suites")
 test_editor = st.Page("pages/TestEditor.py", title="Test editor")
 advanced_suite_editor_settings = st.Page(
     "pages/AdvancedSuiteEditorSettings.py",
@@ -90,7 +90,7 @@ _sidebar_nav_button(
     label="Json Array",
     page_path="pages/JsonArray.py",
     key="nav_json_array_page",
-    icon=":material/file_json:",
+    icon=":material/data_array:",
 )
 _sidebar_nav_button(
     label="Datasets (Beta)",

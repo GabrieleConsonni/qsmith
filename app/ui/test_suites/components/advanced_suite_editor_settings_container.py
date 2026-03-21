@@ -52,7 +52,7 @@ def render_advanced_suite_editor_settings_container():
     st.caption(f"Suite: {suite_description}")
 
     st.divider()
-    shared._render_operation_feedback()
+    shared._render_command_feedback()
 
     for hook_phase, section_title in HOOK_SECTIONS:
         with st.expander(section_title, expanded=True):

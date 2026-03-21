@@ -4,6 +4,9 @@ from _alembic.models.suite_item_entity import SuiteItemEntity
 from _alembic.models.suite_item_command_entity import SuiteItemOperationEntity
 from _alembic.models.test_suite_entity import TestSuiteEntity
 from _alembic.services.session_context_manager import managed_session
+from elaborations.models.dtos.send_message_template_preview_dto import (
+    PreviewSendMessageTemplateRowsDto,
+)
 from elaborations.models.dtos.test_suite_dto import (
     CreateSuiteItemDto,
     CreateSuiteItemCommandDto,
@@ -21,6 +24,9 @@ from elaborations.services.alembic.test_suite_service import TestSuiteService
 from elaborations.services.constants.command_constant_definition_registry import (
     rebuild_suite_constant_definitions,
     validate_suite_constant_graph,
+)
+from elaborations.services.operations.send_message_template_service import (
+    preview_send_message_template_rows,
 )
 from elaborations.services.test_suites.test_suite_executor_service import (
     execute_test_by_id,
@@ -203,6 +209,15 @@ async def delete_test_suite_api(_id: str):
 async def execute_test_suite_api(_id: str):
     execution_id = execute_test_suite_by_id(_id)
     return {"message": "Test suite started", "execution_id": execution_id}
+
+
+@router.post("/test-suite/send-message-template/preview")
+async def preview_send_message_template_rows_api(dto: PreviewSendMessageTemplateRowsDto):
+    return preview_send_message_template_rows(
+        dto.input_data,
+        source_type=dto.source_type,
+        for_each=dto.for_each,
+    )
 
 
 @router.post("/test-suite/{test_suite_id}/test/{suite_item_id}/execute")

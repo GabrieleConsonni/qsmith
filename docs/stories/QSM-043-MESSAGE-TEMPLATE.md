@@ -3,6 +3,7 @@
 ## Stato
 - Stato: Implementato parziale
 - Scope consegnato: DTO/runtime `sendMessageQueue`, UI form base, preview campi, test automatici
+- Vincolo architetturale: la preview usata dalla UI deve passare da endpoint API dedicato; la UI non puo importare direttamente `elaborations.services.operations.send_message_template_service`
 - Note: `template_id` / `template_params` legacy restano supportati; il nuovo `message_template` ha precedenza quando presente
 
 ---

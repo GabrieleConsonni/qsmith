@@ -23,6 +23,7 @@ Regole per layer:
 - `components/`: rendering UI, validazioni leggere, composizione dialog/container.
 - `services/`: accesso API e trasformazioni dati, senza side effects UI.
 - `state_keys.py`: tutte le chiavi `session_state` del modulo.
+- In `app/ui/**` e vietato importare servizi di dominio/backend (`app/*/services/**`, es. `elaborations.services.*`) per eseguire logica applicativa: passare sempre da FastAPI tramite `api_service.py`.
 
 ### 2) Regole bloccanti (PASS/FAIL)
 - Vietato fare chiamate HTTP dirette (`api_get/api_post/api_put/api_delete/requests.*`) nei file `pages/*`.
@@ -54,6 +55,7 @@ Nota compatibilita: in moduli esistenti sono ammessi nomi storici (`dialogs.py`,
 - Il rendering page-specific deve stare nel modulo della pagina/feature corrispondente.
 - Esempio vincolante: il codice del `TestEditor` va in `app/ui/test_suites/components/test_editor_component.py` o nel suo container, non in `suite_editor_component.py`.
 - `suite_editor_component.py` puo contenere solo helper condivisi tra piu pagine della feature oppure logica legacy ancora in fase di split esplicitamente motivata.
+- Gli helper condivisi di `suite_editor_component.py` non devono bypassare il layer API: preview, validazioni o trasformazioni basate su servizi backend passano da endpoint dedicati e wrapper `app/ui/test_suites/services/api_service.py`.
 - `app/ui/pages/SuiteEditor.py` e solo alias compat legacy del `TestEditor`: non introdurre nuova logica dedicata li.
 
 ### 5) Error handling UI

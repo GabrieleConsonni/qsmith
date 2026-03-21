@@ -410,6 +410,38 @@ def test_resolve_available_source_constants_for_send_message_queue_includes_raw_
     ]
 
 
+def test_resolve_available_source_constants_for_send_message_queue_keeps_raw_preview_value():
+    test_item = {
+        "kind": "test",
+        "description": "test",
+        "operations": [
+            {
+                "configuration_json": {
+                    "commandCode": "initConstant",
+                    "commandType": "context",
+                    "name": "messageBody",
+                    "context": "local",
+                    "sourceType": "raw",
+                    "value": '{"hello": "world"}',
+                }
+            }
+        ],
+    }
+    draft = {
+        "hooks": {},
+        "tests": [test_item],
+    }
+
+    options = suite_editor_component._resolve_available_source_constants(
+        draft,
+        test_item,
+        command_code="sendMessageQueue",
+        stop_before_index=1,
+    )
+
+    assert options[0]["preview_value"] == '{"hello": "world"}'
+
+
 def test_resolve_available_source_constants_for_send_message_queue_includes_dataset_constants():
     test_item = {
         "kind": "test",
@@ -538,6 +570,168 @@ def test_build_test_command_draft_for_send_message_queue_includes_message_templa
             {"name": "enabled", "kind": "boolean", "value": "true"},
         ],
     }
+
+
+def test_resolve_send_message_preview_payload_uses_template_configuration():
+    _reset_session_state()
+    streamlit_module = sys.modules["streamlit"]
+    streamlit_module.session_state["suite_add_test_send_message_template_enabled_13"] = True
+    streamlit_module.session_state["suite_add_test_send_message_template_for_each_13"] = "$.body"
+    streamlit_module.session_state["suite_add_test_send_message_template_fields_13"] = ["payload"]
+    streamlit_module.session_state["suite_add_test_send_message_template_constants_rows_13"] = [
+        {"field": "channel", "type": "string", "value": "sms"},
+    ]
+    original_preview_api = suite_editor_component.preview_send_message_template_rows_via_api
+    suite_editor_component.preview_send_message_template_rows_via_api = lambda **kwargs: [
+        {"payload": {"id": 1, "status": "queued"}}
+    ]
+
+    try:
+        preview_payload, preview_error = suite_editor_component._resolve_send_message_preview_payload(
+            key_prefix="suite_add_test",
+            dialog_nonce=13,
+            source_definition={
+                "path": "$.local.constants.payload",
+                "value_type": "json",
+                "preview_value": {"body": {"payload": {"id": 1, "status": "queued"}}},
+            },
+            json_arrays=[],
+            datasources=[],
+        )
+    finally:
+        suite_editor_component.preview_send_message_template_rows_via_api = original_preview_api
+
+    assert preview_error is None
+    assert preview_payload == {
+        "payload": {"id": 1, "status": "queued"},
+        "channel": "sms",
+    }
+
+
+def test_resolve_send_message_preview_payload_uses_raw_source_when_template_is_disabled():
+    _reset_session_state()
+
+    preview_payload, preview_error = suite_editor_component._resolve_send_message_preview_payload(
+        key_prefix="suite_add_test",
+        dialog_nonce=13,
+        source_definition={
+            "path": "$.local.constants.messageBody",
+            "value_type": "raw",
+            "preview_value": '{"hello": "world"}',
+        },
+        json_arrays=[],
+        datasources=[],
+    )
+
+    assert preview_error is None
+    assert preview_payload == '{"hello": "world"}'
+
+
+def test_render_send_message_template_section_uses_distinct_data_editor_widget_key():
+    _reset_session_state()
+    session_state = sys.modules["streamlit"].session_state
+    session_state["suite_add_test_send_message_template_enabled_13"] = True
+    session_state["suite_add_test_send_message_source_13"] = "$.local.constants.payload"
+    session_state["suite_add_test_send_message_template_constants_rows_13"] = [
+        {"field": "channel", "type": "string", "value": "sms"}
+    ]
+
+    class _ColumnConfig:
+        @staticmethod
+        def TextColumn(*args, **kwargs):
+            return {"args": args, "kwargs": kwargs}
+
+        @staticmethod
+        def SelectboxColumn(*args, **kwargs):
+            return {"args": args, "kwargs": kwargs}
+
+    class _Ctx:
+        def __enter__(self):
+            return None
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class StreamlitStub:
+        def __init__(self):
+            self.session_state = session_state
+            self.column_config = _ColumnConfig()
+            self.data_editor_calls = []
+
+        def checkbox(self, *args, **kwargs):
+            return None
+
+        def info(self, *args, **kwargs):
+            return None
+
+        def caption(self, *args, **kwargs):
+            return None
+
+        def json(self, *args, **kwargs):
+            return None
+
+        def text_input(self, *args, **kwargs):
+            return None
+
+        def multiselect(self, *args, **kwargs):
+            return None
+
+        def columns(self, spec, **kwargs):
+            return [_Ctx() for _ in spec]
+
+        def button(self, *args, **kwargs):
+            return False
+
+        def rerun(self):
+            raise AssertionError("rerun should not be called")
+
+        def data_editor(self, data, **kwargs):
+            self.data_editor_calls.append({"data": data, **kwargs})
+            return [{"field": "enabled", "type": "boolean", "value": "true"}]
+
+    stub = StreamlitStub()
+    original_st = suite_editor_component.st
+    original_preview_helper = suite_editor_component._resolve_send_message_template_preview_rows
+    try:
+        suite_editor_component.st = stub
+        suite_editor_component._resolve_send_message_template_preview_rows = (
+            lambda *args, **kwargs: ([{"payload": {"id": 1}}], ["payload"], None)
+        )
+        suite_editor_component._render_send_message_template_section(
+            key_prefix="suite_add_test",
+            dialog_nonce=13,
+            source_options=[{"path": "$.local.constants.payload", "value_type": "json"}],
+            json_arrays=[],
+            datasources=[],
+        )
+    finally:
+        suite_editor_component.st = original_st
+        suite_editor_component._resolve_send_message_template_preview_rows = original_preview_helper
+
+    assert len(stub.data_editor_calls) == 1
+    assert stub.data_editor_calls[0]["data"] == [
+        {"field": "channel", "type": "string", "value": "sms"}
+    ]
+    assert stub.data_editor_calls[0]["key"] == "suite_add_test_send_message_template_constants_editor_13"
+    assert stub.data_editor_calls[0]["key"] != "suite_add_test_send_message_template_constants_rows_13"
+    assert session_state["suite_add_test_send_message_template_constants_rows_13"] == [
+        {"field": "enabled", "type": "boolean", "value": "true"}
+    ]
+
+
+def test_test_action_command_options_do_not_repeat_export_dataset_label():
+    labels = [
+        suite_editor_component._command_ui_label(
+            {
+                "configuration_json": {
+                    "commandCode": suite_editor_component.TEST_ACTION_COMMAND_MAPPING.get(code, code)
+                }
+            }
+        )
+        for code, _label in suite_editor_component.TEST_ACTION_COMMAND_OPTIONS
+    ]
+
+    assert labels.count("Export dataset") == 1
 
 
 def test_append_operation_to_test_allows_empty_description():
@@ -933,6 +1127,9 @@ def test_test_item_summary_view_only_exposes_modify_button():
         def markdown(self, *args, **kwargs):
             return None
 
+        def divider(self, *args, **kwargs):
+            return None
+
         def button(self, *args, **kwargs):
             payload = dict(kwargs)
             if args:
@@ -974,6 +1171,67 @@ def test_ensure_selected_test_position_clamps_to_last_available():
 
     assert suite_editor_component._ensure_selected_test_position(draft) == 2
     assert sys.modules["streamlit"].session_state[suite_editor_component.SELECTED_TEST_POSITION_KEY] == 2
+
+
+def test_render_add_test_dialog_appends_test_and_selects_it():
+    _reset_session_state()
+    streamlit_module = sys.modules["streamlit"]
+    streamlit_module.session_state[suite_editor_component.ADD_TEST_DIALOG_NONCE_KEY] = 7
+    streamlit_module.session_state["suite_add_test_description_7"] = "Smoke test"
+    streamlit_module.session_state["suite_add_test_on_failure_7"] = "CONTINUE"
+    draft = {"id": "suite-1", "tests": []}
+    persist_calls = []
+    close_calls = []
+
+    class StreamlitStub:
+        def __init__(self):
+            self.session_state = streamlit_module.session_state
+
+        def text_input(self, *args, **kwargs):
+            return None
+
+        def selectbox(self, *args, **kwargs):
+            return None
+
+        def columns(self, spec, **kwargs):
+            class _Col:
+                def __enter__(self_inner):
+                    return None
+
+                def __exit__(self_inner, exc_type, exc, tb):
+                    return False
+
+            return [_Col() for _ in spec]
+
+        def button(self, label="", **kwargs):
+            return label == "Save"
+
+        def rerun(self):
+            self.session_state["_rerun_called"] = True
+
+    stub = StreamlitStub()
+    original_st = suite_editor_component.st
+    original_persist = suite_editor_component._persist_current_draft
+    original_close = suite_editor_component._close_add_test_dialog
+    try:
+        suite_editor_component.st = stub
+        suite_editor_component._persist_current_draft = lambda **kwargs: persist_calls.append(kwargs)
+        suite_editor_component._close_add_test_dialog = lambda: close_calls.append(True)
+        suite_editor_component._render_add_test_dialog(draft)
+    finally:
+        suite_editor_component.st = original_st
+        suite_editor_component._persist_current_draft = original_persist
+        suite_editor_component._close_add_test_dialog = original_close
+
+    assert len(draft["tests"]) == 1
+    assert draft["tests"][0]["kind"] == "test"
+    assert draft["tests"][0]["description"] == "Smoke test"
+    assert draft["tests"][0]["on_failure"] == "CONTINUE"
+    assert draft["tests"][0]["position"] == 1
+    assert streamlit_module.session_state[suite_editor_component.SELECTED_TEST_POSITION_KEY] == 1
+    assert persist_calls == [{"success_message": "Test added.", "rerun": False}]
+    assert close_calls == [True]
+    assert streamlit_module.session_state["_rerun_called"] is True
 
 
 def test_move_operation_in_item_swaps_and_resequences():
@@ -1037,6 +1295,9 @@ def test_test_editor_item_read_mode_exposes_inline_command_actions():
             return None
 
         def markdown(self, *args, **kwargs):
+            return None
+
+        def divider(self, *args, **kwargs):
             return None
 
         def button(self, *args, **kwargs):

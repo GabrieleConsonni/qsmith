@@ -78,3 +78,33 @@ def test_removed_suite_endpoints_return_404(monkeypatch):
     assert client.get("/elaborations/suite-execution").status_code == 404
     assert client.get("/elaborations/operation").status_code == 404
     assert client.get("/elaborations/operation/legacy-id").status_code == 404
+
+
+def test_send_message_template_preview_endpoint_returns_rows(monkeypatch):
+    app = _load_main_app(monkeypatch)
+    client = TestClient(app)
+
+    response = client.post(
+        "/elaborations/test-suite/send-message-template/preview",
+        json={
+            "input_data": {
+                "body": {
+                    "payload": {
+                        "id": 1,
+                        "status": "queued",
+                    }
+                }
+            },
+            "source_type": "json",
+            "for_each": "$.body",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "payload": {"id": 1, "status": "queued"},
+            "payload.id": 1,
+            "payload.status": "queued",
+        }
+    ]

@@ -15,6 +15,10 @@ from test_suites.services.draft_mapper import (
     draft_to_test_suite_payload,
 )
 from test_suites.services.execution_stream_service import register_execution_listener
+from test_suites.services.navigation_service import (
+    apply_test_suites_query_params,
+    sync_test_suites_query_params,
+)
 from test_suites.services.state_keys import (
     ADVANCED_SUITE_EDITOR_PAGE_PATH,
     ADVANCED_SUITE_EDITOR_RETURN_LABEL_KEY,
@@ -51,6 +55,12 @@ def _select_test_suite(
         st.session_state.pop(TEST_SUITE_LAST_EXECUTION_ID_KEY, None)
         st.session_state.pop(shared.SELECTED_TEST_SUITE_EXECUTION_ID_KEY, None)
         st.session_state.pop(shared.PENDING_TEST_SUITE_EXECUTION_SELECTION_KEY, None)
+    selected_test_position = (
+        st.session_state.get(SELECTED_TEST_POSITION_KEY)
+        if not clear_test_position
+        else None
+    )
+    sync_test_suites_query_params(suite_id, selected_test_position)
 
 
 def _open_advanced_settings():
@@ -238,56 +248,28 @@ def _render_suite_selector_list(suites: list[dict], selected_suite_id: str):
 
 def _render_suite_detail_panel(selected_suite_id: str):
     draft = shared._resolve_editor_draft(selected_suite_id)
-    executions = shared._load_execution_history(selected_suite_id)
     suite_description = str(draft.get("description") or "").strip() or "Test suite"
-    execution_options = [str(item.get("id")) for item in executions if item.get("id")]
-    history_options = execution_options or [""]
-    selected_execution_id = str(
-        st.session_state.get(shared.SELECTED_TEST_SUITE_EXECUTION_ID_KEY) or ""
-    ).strip()
 
-    
-    st.markdown(f"##### {suite_description}")
-
-    header_cols = st.columns([4, 2, 2], gap="small", vertical_alignment="center")
+    header_cols = st.columns([8, 2, 2], gap="small", vertical_alignment="center")
 
     with header_cols[0]:
-        st.selectbox(
-            "Execution history",
-            options=history_options,
-            index=history_options.index(selected_execution_id)
-            if selected_execution_id in history_options
-            else 0,
-            format_func=lambda execution_id: (
-                "No executions"
-                if not execution_id
-                else shared._format_execution_label(
-                    next(
-                        (
-                            execution
-                            for execution in executions
-                            if str(execution.get("id") or "").strip() == execution_id
-                        ),
-                        {"id": execution_id},
-                    )
-                )
-            ),
-            key=shared.SELECTED_TEST_SUITE_EXECUTION_ID_KEY,
-            disabled=not bool(execution_options),
-            label_visibility="collapsed",
-        )
+        st.markdown(f"##### {suite_description}")
+
     with header_cols[1]:
         if st.button(
             "",
+            help="Advanced settings",
             key="suite_panel_advanced_settings",
             icon=":material/settings:",
             type="secondary",
             use_container_width=True,
         ):
             _open_advanced_settings()
+
     with header_cols[2]:
         if st.button(
             "",
+            help="Run test suite",
             key="run_suite",
             icon=":material/play_arrow:",
             type="primary",
@@ -325,24 +307,61 @@ def _render_suite_detail_panel(selected_suite_id: str):
         shared._render_add_test_dialog(draft)
 
 
+def _render_execution_history_selector(executions: list[dict]):
+    execution_options = [str(item.get("id")) for item in executions if item.get("id")]
+    history_options = execution_options or [""]
+    selected_execution_id = str(
+        st.session_state.get(shared.SELECTED_TEST_SUITE_EXECUTION_ID_KEY) or ""
+    ).strip()
+
+    st.selectbox(
+        "Execution history",
+        options=history_options,
+        index=history_options.index(selected_execution_id)
+        if selected_execution_id in history_options
+        else 0,
+        format_func=lambda execution_id: (
+            "No executions"
+            if not execution_id
+            else shared._format_execution_label(
+                next(
+                    (
+                        execution
+                        for execution in executions
+                        if str(execution.get("id") or "").strip() == execution_id
+                    ),
+                    {"id": execution_id},
+                )
+            )
+        ),
+        key=shared.SELECTED_TEST_SUITE_EXECUTION_ID_KEY,
+        disabled=not bool(execution_options),
+    )
+
+
 def render_test_suites_page():
     load_test_editor_context(force=False)
 
     suites = _load_test_suites(force=False)
+    apply_test_suites_query_params(suites)
     selected_suite_id = shared._ensure_selected_suite_id(suites) if suites else ""
 
-    shared._render_operation_feedback()
+    shared._render_command_feedback()
 
-    layout_cols = st.columns([4, 7], gap="large")
+    layout_cols = st.columns([4, 7], gap="small")
     with layout_cols[0]:
         _render_suite_selector_list(suites, selected_suite_id)
     with layout_cols[1]:
-        with st.container(border=True):
-            if not suites:
+        if not suites:
+            with st.container(border=True):
                 st.markdown("#### Suite")
                 st.info("Create a test suite to configure tests and commands.")
-            elif not selected_suite_id:
+        elif not selected_suite_id:
+            with st.container(border=True):
                 st.markdown("#### Suite")
                 st.info("Select a test suite from the list.")
-            else:
+        else:
+            executions = shared._load_execution_history(selected_suite_id)
+            _render_execution_history_selector(executions)
+            with st.container(border=True):
                 _render_suite_detail_panel(selected_suite_id)

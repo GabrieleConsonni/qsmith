@@ -183,7 +183,7 @@ def dispatch_mock_runtime_request(
         invocation_id=invocation_id,
     )
 
-    pre_response_operations = route.pre_response_operations or []
+    pre_response_operations = route.pre_response_commands or []
     if pre_response_operations:
         execute_mock_operations(
             mock_server_id=runtime_server.id,
@@ -196,26 +196,13 @@ def dispatch_mock_runtime_request(
             raise_errors=True,
         )
 
-    response_operations = route.response_operations or []
-    if response_operations:
-        execute_mock_operations(
-            mock_server_id=runtime_server.id,
-            trigger_id=trigger_id,
-            source_type="api-response",
-            source_ref=route.id,
-            operations=response_operations,
-            data=event_payload,
-            run_context=run_context,
-            raise_errors=True,
-        )
-
     response_status, response_headers, response_body = build_runtime_response_payload(
         route,
         run_context=run_context,
         trigger_id=trigger_id,
     )
 
-    post_response_operations = route.post_response_operations or route.operations
+    post_response_operations = route.post_response_commands or route.commands
     if post_response_operations:
         background_tasks.add_task(
             execute_mock_operations,

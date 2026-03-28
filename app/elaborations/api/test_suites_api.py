@@ -1,25 +1,33 @@
 from fastapi import APIRouter
 
 from _alembic.models.suite_item_entity import SuiteItemEntity
-from _alembic.models.suite_item_operation_entity import SuiteItemOperationEntity
+from _alembic.models.suite_item_command_entity import SuiteItemOperationEntity
 from _alembic.models.test_suite_entity import TestSuiteEntity
 from _alembic.services.session_context_manager import managed_session
-from elaborations.models.dtos.execute_test_dto import ExecuteSuiteTestDto
+from elaborations.models.dtos.send_message_template_preview_dto import (
+    PreviewSendMessageTemplateRowsDto,
+)
 from elaborations.models.dtos.test_suite_dto import (
     CreateSuiteItemDto,
-    CreateSuiteItemOperationDto,
+    CreateSuiteItemCommandDto,
     CreateTestSuiteDto,
     UpdateTestSuiteDto,
 )
 from elaborations.models.enums.hook_phase import HookPhase
 from elaborations.models.enums.on_failure import OnFailure
 from elaborations.models.enums.suite_item_kind import SuiteItemKind
-from elaborations.services.alembic.operation_service import OperationService
-from elaborations.services.alembic.suite_item_operation_service import (
+from elaborations.services.alembic.suite_item_command_service import (
     SuiteItemOperationService,
 )
 from elaborations.services.alembic.suite_item_service import SuiteItemService
 from elaborations.services.alembic.test_suite_service import TestSuiteService
+from elaborations.services.constants.command_constant_definition_registry import (
+    rebuild_suite_constant_definitions,
+    validate_suite_constant_graph,
+)
+from elaborations.services.operations.send_message_template_service import (
+    preview_send_message_template_rows,
+)
 from elaborations.services.test_suites.test_suite_executor_service import (
     execute_test_by_id,
     execute_test_suite_by_id,
@@ -36,39 +44,22 @@ def _normalize_on_failure(value: str | None) -> str:
     return normalized
 
 
-def _build_suite_item_operation_entity(session, dto: CreateSuiteItemOperationDto) -> SuiteItemOperationEntity:
+def _build_suite_item_command_entity(dto: CreateSuiteItemCommandDto) -> SuiteItemOperationEntity:
     entity = SuiteItemOperationEntity()
     entity.order = dto.order
     dto_cfg = dto.cfg.model_dump() if dto.cfg else None
-    dto_type = str((dto.cfg.operationType if dto.cfg else None) or "").strip()
+    dto_type = str((dto.cfg.commandCode if dto.cfg else None) or "").strip()
+    dto_family = str((dto.cfg.commandType if dto.cfg else None) or "").strip()
+    entity.description = str(dto.description or "")
+    entity.operation_type = dto_type
+    if hasattr(entity, "command_code"):
+        entity.command_code = dto_type
+    if hasattr(entity, "command_type"):
+        entity.command_type = dto_family
+    entity.configuration_json = dto_cfg if isinstance(dto_cfg, dict) else {}
 
-    operation_id = str(dto.operation_id or "").strip()
-    if operation_id:
-        source_operation = OperationService().get_by_id(session, operation_id)
-        if not source_operation:
-            raise QsmithAppException(f"No operation found with id [ {operation_id} ]")
-        entity.description = (
-            str(dto.description)
-            if dto.description is not None and str(dto.description).strip()
-            else str(source_operation.description or "")
-        )
-        entity.operation_type = str(dto_type or source_operation.operation_type or "").strip()
-        entity.configuration_json = (
-            dto_cfg
-            if isinstance(dto_cfg, dict)
-            else (
-                source_operation.configuration_json
-                if isinstance(source_operation.configuration_json, dict)
-                else {}
-            )
-        )
-    else:
-        entity.description = str(dto.description or "")
-        entity.operation_type = dto_type
-        entity.configuration_json = dto_cfg if isinstance(dto_cfg, dict) else {}
-
-    if not entity.operation_type:
-        raise QsmithAppException("Operation type is required.")
+    if not dto_type:
+        raise QsmithAppException("Command code is required.")
     return entity
 
 
@@ -83,9 +74,9 @@ def _build_suite_item_entity(test_suite_id: str, dto: CreateSuiteItemDto, positi
     return entity
 
 
-def _insert_suite_item_operations(session, suite_item_id: str, operations: list[CreateSuiteItemOperationDto]):
-    for operation in operations or []:
-        entity = _build_suite_item_operation_entity(session, operation)
+def _insert_suite_item_operations(session, suite_item_id: str, commands: list[CreateSuiteItemCommandDto]):
+    for operation in commands or []:
+        entity = _build_suite_item_command_entity(operation)
         entity.suite_item_id = suite_item_id
         SuiteItemOperationService().insert(session, entity)
 
@@ -114,12 +105,12 @@ def _insert_suite_items(
         seen_hook_phases.add(phase.value)
         suite_item_entity = _build_suite_item_entity(test_suite_id, hook, position=0)
         suite_item_id = SuiteItemService().insert(session, suite_item_entity)
-        _insert_suite_item_operations(session, suite_item_id, hook.operations or [])
+        _insert_suite_item_operations(session, suite_item_id, hook.commands or [])
 
     for position, test in enumerate(tests or [], start=1):
         suite_item_entity = _build_suite_item_entity(test_suite_id, test, position=position)
         suite_item_id = SuiteItemService().insert(session, suite_item_entity)
-        _insert_suite_item_operations(session, suite_item_id, test.operations or [])
+        _insert_suite_item_operations(session, suite_item_id, test.commands or [])
 
 
 def _serialize_operation(operation: SuiteItemOperationEntity) -> dict:
@@ -127,7 +118,8 @@ def _serialize_operation(operation: SuiteItemOperationEntity) -> dict:
         "id": operation.id,
         "suite_item_id": operation.suite_item_id,
         "description": operation.description,
-        "operation_type": operation.operation_type,
+        "command_code": getattr(operation, "command_code", None) or operation.operation_type,
+        "command_type": getattr(operation, "command_type", None),
         "configuration_json": operation.configuration_json,
         "order": int(operation.order),
     }
@@ -143,28 +135,32 @@ def _serialize_item(session, item: SuiteItemEntity) -> dict:
         "description": item.description,
         "position": int(item.position),
         "on_failure": item.on_failure,
-        "operations": [_serialize_operation(operation) for operation in operations],
+        "commands": [_serialize_operation(operation) for operation in operations],
     }
 
 
 @router.post("/test-suite")
 async def insert_test_suite_api(dto: CreateTestSuiteDto):
     with managed_session() as session:
+        validate_suite_constant_graph(dto)
         entity = TestSuiteEntity()
         entity.description = dto.description
         test_suite_id = TestSuiteService().insert(session, entity)
         _insert_suite_items(session, test_suite_id, hooks=dto.hooks or [], tests=dto.tests or [])
+        rebuild_suite_constant_definitions(session, test_suite_id)
     return {"id": test_suite_id, "message": "Test suite added"}
 
 
 @router.put("/test-suite")
 async def update_test_suite_api(dto: UpdateTestSuiteDto):
     with managed_session() as session:
+        validate_suite_constant_graph(dto)
         entity = TestSuiteService().update(session, dto.id, description=dto.description)
         if not entity:
             raise QsmithAppException(f"No test suite found with id [ {dto.id} ]")
         SuiteItemService().delete_by_suite_id(session, dto.id)
         _insert_suite_items(session, dto.id, hooks=dto.hooks or [], tests=dto.tests or [])
+        rebuild_suite_constant_definitions(session, dto.id)
     return {"id": dto.id, "message": "Test suite updated"}
 
 
@@ -215,11 +211,20 @@ async def execute_test_suite_api(_id: str):
     return {"message": "Test suite started", "execution_id": execution_id}
 
 
+@router.post("/test-suite/send-message-template/preview")
+async def preview_send_message_template_rows_api(dto: PreviewSendMessageTemplateRowsDto):
+    return preview_send_message_template_rows(
+        dto.input_data,
+        source_type=dto.source_type,
+        for_each=dto.for_each,
+    )
+
+
 @router.post("/test-suite/{test_suite_id}/test/{suite_item_id}/execute")
-async def execute_test_api(test_suite_id: str, suite_item_id: str, dto: ExecuteSuiteTestDto):
+async def execute_test_api(test_suite_id: str, suite_item_id: str):
     execution_id = execute_test_by_id(
         test_suite_id=test_suite_id,
         suite_item_id=suite_item_id,
-        include_previous=dto.include_previous,
     )
     return {"message": "Test started", "execution_id": execution_id}
+

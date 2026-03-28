@@ -51,9 +51,9 @@ def _serialize_api(api_entry: dict) -> dict:
         "order": int(api_entry.get("order") or 0),
         "description": str(api_entry.get("description") or ""),
         "cfg": cfg,
-        "operations": [
+        "commands": [
             _serialize_operation(item)
-            for item in (api_entry.get("operations") or [])
+            for item in (api_entry.get("commands") or api_entry.get("operations") or [])
             if isinstance(item, dict)
         ],
     }
@@ -70,9 +70,9 @@ def _serialize_queue(queue_entry: dict) -> dict:
         "description": str(queue_entry.get("description") or ""),
         "queue_id": str(queue_entry.get("queue_id") or "").strip(),
         "cfg": configuration_json,
-        "operations": [
+        "commands": [
             _serialize_operation(item)
-            for item in (queue_entry.get("operations") or [])
+            for item in (queue_entry.get("commands") or queue_entry.get("operations") or [])
             if isinstance(item, dict)
         ],
     }

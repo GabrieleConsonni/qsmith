@@ -3,12 +3,23 @@ from typing import Any
 
 
 @dataclass
-class MockOperationSnapshot:
+class MockCommandSnapshot:
     id: str
     description: str
-    operation_type: str
+    command_code: str
+    command_type: str
     configuration_json: dict[str, Any]
     order: int
+    code: str = ""
+    operation_type: str = ""
+
+    def __post_init__(self):
+        if not self.command_code:
+            self.command_code = str(self.operation_type or self.code or "").strip()
+        if not self.code:
+            self.code = self.command_code
+        if not self.operation_type:
+            self.operation_type = self.command_code
 
 
 @dataclass
@@ -26,10 +37,12 @@ class MockApiRoute:
     response_status: Any
     response_headers: dict[str, Any]
     response_body: Any
-    operations: list[MockOperationSnapshot] = field(default_factory=list)
-    pre_response_operations: list[MockOperationSnapshot] = field(default_factory=list)
-    response_operations: list[MockOperationSnapshot] = field(default_factory=list)
-    post_response_operations: list[MockOperationSnapshot] = field(default_factory=list)
+    code: str = ""
+    commands: list[MockCommandSnapshot] = field(default_factory=list)
+    pre_response_commands: list[MockCommandSnapshot] = field(default_factory=list)
+    post_response_commands: list[MockCommandSnapshot] = field(default_factory=list)
+    operations: list[MockCommandSnapshot] = field(default_factory=list)
+    response_operations: list[MockCommandSnapshot] = field(default_factory=list)
 
 
 @dataclass
@@ -40,7 +53,8 @@ class MockQueueBinding:
     queue_id: str
     polling_interval_seconds: int
     max_messages: int
-    operations: list[MockOperationSnapshot] = field(default_factory=list)
+    code: str = ""
+    commands: list[MockCommandSnapshot] = field(default_factory=list)
 
 
 @dataclass
@@ -49,5 +63,10 @@ class MockRuntimeServer:
     description: str
     endpoint: str
     is_active: bool
+    code: str = ""
     apis: list[MockApiRoute] = field(default_factory=list)
     queues: list[MockQueueBinding] = field(default_factory=list)
+
+
+# Backward aliases during the refactor.
+MockOperationSnapshot = MockCommandSnapshot

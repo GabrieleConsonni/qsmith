@@ -7,10 +7,10 @@ from brokers.models.connections.broker_connection_config_types import BrokerConn
 from brokers.services.alembic.broker_connection_service import load_broker_connection
 from brokers.services.alembic.queue_service import QueueService
 from brokers.services.connections.queue.queue_connection_service_factory import QueueConnectionServiceFactory
-from elaborations.models.dtos.configuration_operation_dto import (
+from elaborations.models.dtos.configuration_command_dto import (
     DataFromQueueConfigurationOperationDto,
 )
-from elaborations.services.operations.operation_executor import (
+from elaborations.services.operations.command_executor import (
     ExecutionResultDto,
     OperationExecutor,
 )
@@ -66,3 +66,4 @@ class DataFromQueueOperationExecutor(OperationExecutor):
             data=payload_rows,
             result=[{"message": f"Loaded {len(payload_rows)} row(s) from queue '{queue.code}'."}],
         )
+

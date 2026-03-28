@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from _alembic.models.suite_test_entity import SuiteTestEntity
 from elaborations.models.dtos.configuration_test_dtos import ConfigurationTestDtoTypes
 from elaborations.services.alembic.test_operation_service import TestOperationService
-from elaborations.services.operations.operation_executor_composite import execute_operations
+from elaborations.services.operations.command_executor_composite import execute_operations
 from elaborations.services.suite_runs.execution_event_bus import publish_runtime_log_event
 from elaborations.services.suite_runs.execution_runtime_context import bind_execution_context
 from elaborations.services.suite_runs.run_context import set_context_last
@@ -66,4 +66,5 @@ class TestExecutor(ABC):
         cfg: ConfigurationTestDtoTypes,
     ) -> list[dict[str, str]]:
         raise NotImplementedError
+
 

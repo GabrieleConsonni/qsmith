@@ -1,2 +1,1 @@
-"""Components for database datasources page."""
-
+"""Components for datasets page."""

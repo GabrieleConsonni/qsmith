@@ -15,10 +15,14 @@ from data_sources.api.database_data_source_api import router as database_router
 from data_sources.api.database_table_data_source_api import (
     router as database_table_data_source_router,
 )
-from elaborations.api.operations_api import router as operations_router
 from elaborations.api.execution_events_api import router as execution_events_router
+from elaborations.api.test_suite_schedules_api import router as test_suite_schedules_router
 from elaborations.api.test_suite_executions_api import router as test_suite_executions_router
 from elaborations.api.test_suites_api import router as test_suites_router
+from elaborations.services.test_suite_schedules.scheduler_runtime import (
+    bootstrap_scheduler_runtime,
+    shutdown_scheduler_runtime,
+)
 from json_utils.api.json_utils_api import router as json_utils_router
 from logs.api.logs_api import router as logs_router
 from mock_servers.api.mock_runtime_api import router as mock_runtime_router
@@ -105,8 +109,8 @@ app.include_router(brokers_connection_router)
 app.include_router(json_array_router)
 app.include_router(database_router)
 app.include_router(database_table_data_source_router)
-app.include_router(operations_router)
 app.include_router(test_suites_router)
+app.include_router(test_suite_schedules_router)
 app.include_router(execution_events_router)
 app.include_router(test_suite_executions_router)
 app.include_router(json_utils_router)
@@ -121,3 +125,9 @@ app.add_exception_handler(Exception, generic_exception_handler)
 @app.on_event("startup")
 def bootstrap_mock_servers_runtime():
     MockServerRuntimeRegistry.bootstrap_active_servers()
+    bootstrap_scheduler_runtime()
+
+
+@app.on_event("shutdown")
+def stop_background_runtimes():
+    shutdown_scheduler_runtime()

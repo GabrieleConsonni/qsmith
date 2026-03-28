@@ -21,12 +21,10 @@ def execute_test_suite_by_id(
 def execute_test_by_id(
     test_suite_id: str,
     suite_item_id: str,
-    include_previous: bool = False,
 ):
     executor_thread = TestSuiteExecutorThread(
         test_suite_id=test_suite_id,
         target_suite_item_id=suite_item_id,
-        include_previous=include_previous,
     )
     executor_thread.start()
     return executor_thread.execution_id

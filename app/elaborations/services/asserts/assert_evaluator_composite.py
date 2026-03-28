@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 
-from elaborations.models.dtos.configuration_operation_dto import (
+from elaborations.models.dtos.configuration_command_dto import (
     AssertConfigurationOperationDto,
     AssertEvaluatedObjectType,
     AssertType,
@@ -13,6 +13,7 @@ from elaborations.services.asserts.json_data_assert_evaluators import (
     ContainsDataAssertEvaluator,
     EmptyDataAssertEvaluator,
     EqualsDataAssertEvaluator,
+    JsonArrayContainsDataAssertEvaluator,
     JsonArrayEqualsDataAssertEvaluator,
     NotEmptyDataAssertEvaluator,
     SchemaValidationDataAssertEvaluator,
@@ -39,6 +40,10 @@ _EVALUATOR_MAPPING: dict[tuple[str, str], type[AssertEvaluator]] = {
         AssertEvaluatedObjectType.JSON_DATA.value,
         AssertType.JSON_ARRAY_EQUALS.value,
     ): JsonArrayEqualsDataAssertEvaluator,
+    (
+        AssertEvaluatedObjectType.JSON_DATA.value,
+        AssertType.JSON_ARRAY_CONTAINS.value,
+    ): JsonArrayContainsDataAssertEvaluator,
     (
         AssertEvaluatedObjectType.JSON_DATA.value,
         AssertType.EQUALS.value,
@@ -71,3 +76,4 @@ def evaluate_assert(
             expected=expected,
         )
     )
+

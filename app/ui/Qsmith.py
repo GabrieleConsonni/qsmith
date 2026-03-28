@@ -17,12 +17,15 @@ mock_server_editor_page = st.Page("pages/MockServerEditor.py", title="Mock Serve
 queues_page = st.Page("pages/Queues.py", title="Queues", url_path="queues")
 queue_details = st.Page("pages/QueueDetails.py", title="Queue details")
 json_array = st.Page("pages/JsonArray.py", title="Json Array")
-database_datasources = st.Page(
-    "pages/DatabaseDataSources.py",
-    title="Database Datasources",
+datasets_page = st.Page("pages/Datasets.py", title="Datasets")
+dataset_perimeter_editor = st.Page("pages/DatasetPerimeterEditor.py", title="Dataset perimeter editor")
+test_suites = st.Page("pages/TestSuites.py", title="Test Suites", url_path="test-suites")
+test_editor = st.Page("pages/TestEditor.py", title="Test editor")
+advanced_suite_editor_settings = st.Page(
+    "pages/AdvancedSuiteEditorSettings.py",
+    title="Advanced suite editor settings",
 )
-test_suites = st.Page("pages/TestSuites.py", title="Test Suites")
-suite_editor = st.Page("pages/SuiteEditor.py", title="Suite editor")
+test_suite_schedules = st.Page("pages/TestSuiteSchedules.py", title="Test Suite Scheduler")
 tools = st.Page("pages/Tools.py", title="Tools")
 logs = st.Page("pages/Logs.py", title="Logs")
 
@@ -53,13 +56,13 @@ _sidebar_nav_button(
     icon=":material/cell_tower:",
 )
 _sidebar_nav_button(
-    label="Database connections",
+    label="Database connections (Beta)",
     page_path="pages/DatabaseConnections.py",
     key="nav_database_connections_page",
     icon=":material/database:",
 )
 _sidebar_nav_button(
-    label="Mock servers",
+    label="Mock servers (Beta)",
     page_path="pages/MockServers.py",
     key="nav_mock_servers_page",
     icon=":material/deployed_code:",
@@ -87,22 +90,28 @@ _sidebar_nav_button(
     label="Json Array",
     page_path="pages/JsonArray.py",
     key="nav_json_array_page",
-    icon=":material/file_json:",
+    icon=":material/data_array:",
 )
 _sidebar_nav_button(
-    label="Datasets",
-    page_path="pages/DatabaseDataSources.py",
+    label="Datasets (Beta)",
+    page_path="pages/Datasets.py",
     key="nav_database_datasources_page",
     icon=":material/table:",
 )
 st.sidebar.subheader("Test")
 _sidebar_nav_button(
-    label="Test suites",
+    label="Test suites (Beta)",
     page_path="pages/TestSuites.py",
     key="nav_test_suites_page",
     icon=":material/experiment:",
 )
-st.sidebar.subheader("Mock Servers")
+_sidebar_nav_button(
+    label="Test suite scheduler (Beta)",
+    page_path="pages/TestSuiteSchedules.py",
+    key="nav_test_suite_schedules_page",
+    icon=":material/schedule:",
+)
+st.sidebar.subheader("Mock Servers (Beta)")
 for server in mock_servers if isinstance(mock_servers, list) else []:
     server_id = str(server.get("id") or "").strip()
     endpoint = str(server.get("endpoint") or "").strip()
@@ -120,14 +129,13 @@ for server in mock_servers if isinstance(mock_servers, list) else []:
         ):
             st.session_state[SELECTED_MOCK_SERVER_ID_KEY] = server_id
             st.switch_page("pages/MockServerEditor.py")
-st.sidebar.subheader("Logs & Tools")
+st.sidebar.subheader("Logs")
 _sidebar_nav_button(
     label="Logs",
     page_path="pages/Logs.py",
     key="nav_logs_page",
     icon=":material/article:",
 )
-_sidebar_nav_button(label="Tools", page_path="pages/Tools.py", key="nav_tools_page")
 
 
 pg = st.navigation(
@@ -135,8 +143,13 @@ pg = st.navigation(
         "Home": [home],
         "Configurations": [brokers_page, database_connections_page, mock_servers_page],
         "Brokers & Queues": [queues_page, queue_details],
-        "Data Sources": [json_array, database_datasources],
-        "Test Suites": [test_suites, suite_editor],
+        "Data Sources": [json_array, datasets_page, dataset_perimeter_editor],
+        "Test Suites": [
+            test_suites,
+            test_editor,
+            advanced_suite_editor_settings,
+            test_suite_schedules,
+        ],
         "Mock Servers": [mock_server_editor_page],
         "Logs & Tools": [logs, tools]
     },

@@ -133,8 +133,6 @@ def _render_connection_form(prefix: str, payload: dict | None = None) -> tuple[d
             st.number_input(
                 "Port",
                 min_value=1,
-                value=int(st.session_state.get(port_key, 5432)),
-                test=1,
                 key=port_key,
             )
         )

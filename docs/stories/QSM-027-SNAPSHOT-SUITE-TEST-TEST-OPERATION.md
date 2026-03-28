@@ -14,5 +14,8 @@
 - [x] Suite Editor renderizza dettagli da `suite_tests` / `test_operations`
 - [x] Runtime esecuzione test/operation basato su snapshot suite (senza lookup da anagrafica)
 
+Nota evolutiva:
+- il catalogo condiviso `operations` e' stato poi rimosso; l'aggiunta operation e' ora solo locale al contesto che la contiene.
+
 ## Fonte
 - Estratto da `docs/TASK.md`

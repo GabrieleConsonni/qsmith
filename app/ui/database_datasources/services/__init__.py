@@ -1,2 +1,1 @@
-"""Services for database datasources page."""
-
+"""Services for datasets page."""

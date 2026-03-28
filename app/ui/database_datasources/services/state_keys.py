@@ -1,0 +1,12 @@
+DATABASE_DATASOURCES_KEY = "database_datasources"
+DATABASE_CONNECTIONS_KEY = "database_connections"
+DATABASE_OBJECTS_CACHE_KEY = "database_connection_objects_cache"
+DATABASE_OBJECT_PREVIEW_CACHE_KEY = "database_connection_object_preview_cache"
+DATABASE_DATASOURCE_PREVIEW_CACHE_KEY = "database_datasource_preview_cache"
+
+SELECTED_DATABASE_DATASOURCE_ID_KEY = "selected_database_datasource_id"
+DATABASE_DATASOURCE_OPEN_IDS_KEY = "database_datasource_open_ids"
+DATABASE_DATASOURCE_PREVIEW_VISIBLE_ID_KEY = "database_datasource_preview_visible_id"
+DATABASE_DATASOURCE_PERIMETER_EDIT_ID_KEY = "database_datasource_perimeter_edit_id"
+DATABASE_DATASOURCE_FEEDBACK_KEY = "database_datasource_feedback"
+DATABASE_DATASOURCE_FEEDBACK_LEVEL_KEY = "database_datasource_feedback_level"

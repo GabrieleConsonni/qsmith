@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
-from elaborations.models.dtos.configuration_operation_dto import (
+from elaborations.models.dtos.configuration_command_dto import (
     AssertConfigurationOperationDto,
 )
 
@@ -21,3 +21,4 @@ class AssertEvaluator(ABC):
     @abstractmethod
     def evaluate(self, context: AssertEvaluationContext) -> None:
         raise NotImplementedError
+

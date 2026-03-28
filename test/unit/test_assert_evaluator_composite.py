@@ -1,7 +1,7 @@
 import pytest
 
-from app.elaborations.models.dtos.configuration_operation_dto import (
-    AssertConfigurationOperationDto,
+from app.elaborations.models.dtos.configuration_command_dto import (
+    AssertConfigurationCommandDto,
 )
 from app.elaborations.services.asserts.assert_evaluator import (
     AssertEvaluationContext,
@@ -29,8 +29,9 @@ def test_evaluate_assert_dispatches_to_configured_evaluator(monkeypatch):
     )
     _RecordingEvaluator.calls.clear()
 
-    cfg = AssertConfigurationOperationDto(
-        assert_type="not-empty",
+    cfg = AssertConfigurationCommandDto(
+        commandCode="jsonNotEmpty",
+        commandType="assert",
         evaluated_object_type="json-data",
     )
     evaluate_assert(
@@ -57,8 +58,9 @@ def test_evaluate_assert_dispatches_to_configured_evaluator(monkeypatch):
 def test_evaluate_assert_raises_when_evaluator_is_missing(monkeypatch):
     original = _EVALUATOR_MAPPING.get(("json-data", "not-empty"))
     monkeypatch.delitem(_EVALUATOR_MAPPING, ("json-data", "not-empty"), raising=False)
-    cfg = AssertConfigurationOperationDto(
-        assert_type="not-empty",
+    cfg = AssertConfigurationCommandDto(
+        commandCode="jsonNotEmpty",
+        commandType="assert",
         evaluated_object_type="json-data",
     )
 
@@ -70,3 +72,4 @@ def test_evaluate_assert_raises_when_evaluator_is_missing(monkeypatch):
             ("json-data", "not-empty"),
             original,
         )
+

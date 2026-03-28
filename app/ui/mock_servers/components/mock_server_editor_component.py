@@ -19,12 +19,11 @@ from mock_servers.services.state_keys import (
     MOCK_SERVER_EDITOR_NONCE_KEY,
     SELECTED_MOCK_SERVER_ID_KEY,
 )
-from elaborations_shared.components.test_operation_component import (
+from elaborations_shared.components.test_command_component import (
     render_add_test_operation_dialog,
     render_operation_component,
 )
 from elaborations_shared.services.data_loader_service import (
-    load_operations_catalog,
     load_test_editor_brokers,
     load_test_editor_queues_for_broker,
 )
@@ -32,15 +31,14 @@ from elaborations_shared.services.state_keys import (
     ADD_TEST_OPERATION_DIALOG_NONCE_KEY,
     ADD_TEST_OPERATION_DIALOG_OPEN_KEY,
     ADD_TEST_OPERATION_DIALOG_TARGET_TEST_UI_KEY,
-    OPERATIONS_CATALOG_KEY,
     TEST_EDITOR_BROKERS_KEY,
 )
 
 MOCK_SERVERS_PAGE_PATH = "pages/MockServers.py"
 HTTP_METHOD_OPTIONS = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
-API_PRE_RESPONSE_OPERATIONS_KEY = "pre_response_operations"
+API_PRE_RESPONSE_OPERATIONS_KEY = "pre_response_commands"
 API_RESPONSE_OPERATIONS_KEY = "response_operations"
-API_POST_RESPONSE_OPERATIONS_KEY = "post_response_operations"
+API_POST_RESPONSE_OPERATIONS_KEY = "post_response_commands"
 BODY_TYPE_ANY = "any"
 BODY_TYPE_STRING = "string"
 BODY_TYPE_JSON = "json"
@@ -141,13 +139,15 @@ def _render_kv_rows_container(
     *,
     editor_state_key: str,
     key_prefix: str,
+    use_container: bool = True,
 ):
     rows = st.session_state.get(editor_state_key)
     if not isinstance(rows, list):
         rows = []
         st.session_state[editor_state_key] = rows
 
-    with st.container(border=True):
+    body_container = st.container(border=True) if use_container else st.container()
+    with body_container:
         st.caption(
             'Inserire JSON literal (es: `"abc"`, 1, true, null, {"a":1}, [1,2]).'
         )
@@ -466,7 +466,7 @@ def _api_payload(api_entry: dict) -> dict:
         "order": _safe_int(api_entry.get("order"), 0),
         "description": str(api_entry.get("description") or ""),
         "cfg": cfg,
-        "operations": post_response_operations_payload,
+        "commands": post_response_operations_payload,
     }
 
 
@@ -477,7 +477,7 @@ def _queue_payload(queue_entry: dict) -> dict:
         "description": str(queue_entry.get("description") or ""),
         "queue_id": str(queue_entry.get("queue_id") or "").strip(),
         "cfg": cfg,
-        "operations": [
+        "commands": [
             _operation_payload(item)
             for item in (queue_entry.get("operations") or [])
             if isinstance(item, dict)
@@ -837,8 +837,6 @@ def _find_draft_item_by_ui_key(draft: dict, target_ui_key: str) -> dict | None:
 @st.dialog("Add operation", width="large")
 def _add_operation_dialog(
     draft: dict,
-    operation_catalog: list[dict],
-    operation_labels_by_id: dict[str, str],
 ):
     target_ui_key = str(st.session_state.get(ADD_TEST_OPERATION_DIALOG_TARGET_TEST_UI_KEY) or "").strip()
     target_scope = str(st.session_state.get(MOCK_SERVER_EDITOR_ADD_OPERATION_SCOPE_KEY) or "operations").strip()
@@ -869,8 +867,6 @@ def _add_operation_dialog(
     pseudo_draft = {"tests": [pseudo_target]}
     render_add_test_operation_dialog(
         pseudo_draft,
-        operation_catalog,
-        operation_labels_by_id,
         _close_add_operation_dialog,
         persist_suite_changes_fn=_persist_draft_after_change,
     )
@@ -952,68 +948,6 @@ def _body_editor_dialog(api_entry: dict, api_ui_key: str, nonce: int, scope: str
                     "response_body_type": resolved_type,
                 }
             _persist_draft(should_rerun=True)
-
-
-@st.dialog("Context creation & resolver guide", width="large")
-def _response_resolver_help_dialog():
-    
-    st.markdown("## Context creation & resolver guide")
-    with st.expander("What is the context and how to use resolver?..."):
-        st.markdown("When a request is received, the mock server creates a context")
-        st.markdown("That context can be used to generate dynamic responses based on the incoming data and the operations defined in the suite.")
-        
-        st.markdown("**Resolver overview**")
-        st.markdown("The resolver is a powerful tool that allows you to ")
-        st.markdown("- extract and manipulate data from the incoming request to create dynamic responses.")
-        st.markdown("- share data between different tests/operations within the same suite.")
-
-        st.markdown("**Resolver sintax**")
-        st.markdown("The resolver syntax is based on JSON and supports two main patterns:")
-        st.markdown("- **Field resolver**: used to extract a specific value from the context. Example: `{ \"field\": \"$.event.payload.orderId\" }`")
-        st.markdown("- **Template resolver**: used to create a string by combining static text with dynamic values from the context.")
-        st.markdown("Example: `{ \"template\": \"Order {{ $.event.payload.orderId }} processed\" }`")
-        
-        st.markdown("**Run context roots**")
-        st.markdown("- `$.event` : envelope of the incoming request, with all its properties (`method`, `path`, `headers`, `body`, etc).")
-        st.markdown("- `$.global` : variables shared at suite level.")
-        st.markdown("- `$.local` : variables local to the current test.")
-        st.markdown("- `$.last` : data from the last executed operation.")
-        st.markdown("- `$.artifacts` : artifacts generated during the suite execution.")
-        
-        st.divider()
-        
-        st.markdown("**Envelope API Metadata**")
-        st.markdown("- `$.event.meta.method` : HTTP method of the incoming request.")
-        st.markdown("- `$.event.meta.path` : path of the incoming request.")
-        st.markdown("- `$.event.meta.headers` : headers of the incoming request.")  
-        
-        st.markdown("**Envelope Queue Metadata**")  
-        st.markdown("- `$.event.meta.message_attributes` : attributes of the message received from the queue.")
-        st.markdown("- `$.event.meta.message_id` : ID of the message received from the queue.")
-
-        st.divider()
-        st.markdown("**Create dynamic API responses**")
-        st.markdown("You can use the resolver in  the `status`, `headers` and `body` response")
-        st.markdown("For example, to return a dynamic status code based on the incoming request, you can define an operation with a response like this:")
-        st.code('{ "status": { "field": "$.event.payload.statusCode" }, "body": { "template": "Order {{ $.event.payload.orderId }} processed with status {{ $.event.payload.statusCode }}" } } }',language="json")
-        st.markdown("You can also configure pre-response operations to fetch additional data, store it in the context, and use it later to build a more complex response body.")
-    
-    st.markdown("**Context schema**")
-    st.json('{"run_id": "uuid","event": {},"global": {},"local": {},"last": {"item_id": "","data": []},"artifacts": {}}', expanded=True)
-    
-    st.markdown("**Event Envelope (API / Queue)**")
-    st.json('{ "source": "api|queue","mock_server_id": "","trigger": {"id": "","description": "","method": "","queue_code": ""},"timestamp": "","payload": {},"meta": {}}',   expanded=True)
-
-    with st.expander("**Resolver examples**"):
-        st.code(
-            '{ "field": "$.event.payload.orderId" }',
-        language="json",
-        )
-        st.code(
-            '{ "field": "$.vars.customer_type", "$default": "standard" }',
-            language="json",
-        )
-
 
 @st.dialog("Add API", width="medium")
 def _add_api_dialog():
@@ -1403,23 +1337,53 @@ def _render_api_editor(api_entry: dict, api_idx: int, nonce: int):
                     placeholder="/orders",
                 )
 
-            tab_params, tab_auth, tab_headers, tab_body, tab_response = st.tabs(
-                ["Params", "Authorization", "Headers", "Body", "Response"]
+            pre_operations = _api_operations_list(api_entry, API_PRE_RESPONSE_OPERATIONS_KEY)
+            post_operations = _api_operations_list(api_entry, API_POST_RESPONSE_OPERATIONS_KEY)
+            api_entry[API_PRE_RESPONSE_OPERATIONS_KEY] = pre_operations
+            api_entry[API_RESPONSE_OPERATIONS_KEY] = _api_operations_list(
+                api_entry,
+                API_RESPONSE_OPERATIONS_KEY,
+            )
+            api_entry[API_POST_RESPONSE_OPERATIONS_KEY] = post_operations
+            # Keep legacy field aligned with post-response operations.
+            api_entry["operations"] = post_operations
+
+            (
+                tab_params,
+                tab_auth,
+                tab_headers,
+                tab_body,
+                tab_pre_response,
+                tab_response,
+                tab_post_response,
+            ) = st.tabs(
+                [
+                    "Params",
+                    "Authorization",
+                    "Headers",
+                    "Body",
+                    "Pre-response",
+                    "Response",
+                    "Post-response",
+                ]
             )
             with tab_params:
                 params_rows = _render_kv_rows_container(
                     editor_state_key=params_state_key,
                     key_prefix=f"{params_state_key}_row",
+                    use_container=False,
                 )
             with tab_auth:
                 auth_rows = _render_kv_rows_container(
                     editor_state_key=auth_state_key,
                     key_prefix=f"{auth_state_key}_row",
+                    use_container=False,
                 )
             with tab_headers:
                 headers_rows = _render_kv_rows_container(
                     editor_state_key=headers_state_key,
                     key_prefix=f"{headers_state_key}_row",
+                    use_container=False,
                 )
             with tab_body:
                 expected_type_key, expected_value_key = _body_editor_keys(
@@ -1454,21 +1418,30 @@ def _render_api_editor(api_entry: dict, api_idx: int, nonce: int):
                         disabled=True,
                         height=180,
                     )
-            with tab_response:
-                response_header_cols = st.columns([1, 1], gap="small", vertical_alignment="center")
-                with response_header_cols[0]:
-                    st.markdown("**Response configuration**")
-                with response_header_cols[1]:
+            with tab_pre_response:
+                pre_scope_test = {"operations": pre_operations}
+                for op_idx, operation in enumerate(pre_operations):
+                    render_operation_component(
+                        pre_scope_test,
+                        operation,
+                        op_idx,
+                        f"{api_ui_key}_pre",
+                        nonce,
+                        show_status_indicator=False,
+                        persist_suite_changes_fn=_persist_draft_after_change,
+                    )
+                pre_add_cols = st.columns([8, 2], gap="small", vertical_alignment="center")
+                with pre_add_cols[1]:
                     if st.button(
-                        "How to create dynamic responses with run context and resolver...",
-                        key=f"mock_server_api_response_info_{api_ui_key}_{nonce}",
-                        icon=":material/info:",
-                        help="Resolver guide",
-                        type="tertiary",
+                        "Add operation",
+                        key=f"mock_server_add_api_pre_operation_{api_ui_key}_{nonce}",
+                        icon=":material/add:",
                         use_container_width=True,
                     ):
-                        _response_resolver_help_dialog()
-                    
+                        _open_add_operation_dialog(api_ui_key, API_PRE_RESPONSE_OPERATIONS_KEY)
+                        st.rerun()
+            with tab_response:
+                st.markdown("**Response configuration**")
                 st.number_input(
                     "Response status",
                     min_value=100,
@@ -1512,6 +1485,28 @@ def _render_api_editor(api_entry: dict, api_idx: int, nonce: int):
                         disabled=True,
                         height=180,
                     )
+            with tab_post_response:
+                post_scope_test = {"operations": post_operations}
+                for op_idx, operation in enumerate(post_operations):
+                    render_operation_component(
+                        post_scope_test,
+                        operation,
+                        op_idx,
+                        f"{api_ui_key}_post",
+                        nonce,
+                        show_status_indicator=False,
+                        persist_suite_changes_fn=_persist_draft_after_change,
+                    )
+                post_add_cols = st.columns([8, 2], gap="small", vertical_alignment="center")
+                with post_add_cols[1]:
+                    if st.button(
+                        "Add operation",
+                        key=f"mock_server_add_api_post_operation_{api_ui_key}_{nonce}",
+                        icon=":material/add:",
+                        use_container_width=True,
+                    ):
+                        _open_add_operation_dialog(api_ui_key, API_POST_RESPONSE_OPERATIONS_KEY)
+                        st.rerun()
 
             save_cols = st.columns([4, 2, 2], gap="small", vertical_alignment="center")
             with save_cols[1]:
@@ -1642,86 +1637,6 @@ def _render_api_editor(api_entry: dict, api_idx: int, nonce: int):
                         "response_body_type": response_body_type,
                     }
                     _copy_api_dialog(api_entry, copied_cfg)
-
-            st.divider()
-            st.markdown("**Operations**")
-            pre_operations = _api_operations_list(api_entry, API_PRE_RESPONSE_OPERATIONS_KEY)
-            response_operations = _api_operations_list(api_entry, API_RESPONSE_OPERATIONS_KEY)
-            post_operations = _api_operations_list(api_entry, API_POST_RESPONSE_OPERATIONS_KEY)
-            api_entry[API_PRE_RESPONSE_OPERATIONS_KEY] = pre_operations
-            api_entry[API_RESPONSE_OPERATIONS_KEY] = response_operations
-            api_entry[API_POST_RESPONSE_OPERATIONS_KEY] = post_operations
-            # Keep legacy field aligned with post-response operations.
-            api_entry["operations"] = post_operations
-
-            pre_tab, response_tab, post_tab = st.tabs(
-                ["Pre-response", "Response", "Post-response"]
-            )
-            with pre_tab:
-                pre_scope_test = {"operations": pre_operations}
-                for op_idx, operation in enumerate(pre_operations):
-                    render_operation_component(
-                        pre_scope_test,
-                        operation,
-                        op_idx,
-                        f"{api_ui_key}_pre",
-                        nonce,
-                        persist_suite_changes_fn=_persist_draft_after_change,
-                    )
-                pre_add_cols = st.columns([8, 2], gap="small", vertical_alignment="center")
-                with pre_add_cols[1]:
-                    if st.button(
-                        "Add operation",
-                        key=f"mock_server_add_api_pre_operation_{api_ui_key}_{nonce}",
-                        icon=":material/add:",
-                        use_container_width=True,
-                    ):
-                        _open_add_operation_dialog(api_ui_key, API_PRE_RESPONSE_OPERATIONS_KEY)
-                        st.rerun()
-
-            with response_tab:
-                response_scope_test = {"operations": response_operations}
-                for op_idx, operation in enumerate(response_operations):
-                    render_operation_component(
-                        response_scope_test,
-                        operation,
-                        op_idx,
-                        f"{api_ui_key}_response",
-                        nonce,
-                        persist_suite_changes_fn=_persist_draft_after_change,
-                    )
-                response_add_cols = st.columns([8, 2], gap="small", vertical_alignment="center")
-                with response_add_cols[1]:
-                    if st.button(
-                        "Add operation",
-                        key=f"mock_server_add_api_response_operation_{api_ui_key}_{nonce}",
-                        icon=":material/add:",
-                        use_container_width=True,
-                    ):
-                        _open_add_operation_dialog(api_ui_key, API_RESPONSE_OPERATIONS_KEY)
-                        st.rerun()
-
-            with post_tab:
-                post_scope_test = {"operations": post_operations}
-                for op_idx, operation in enumerate(post_operations):
-                    render_operation_component(
-                        post_scope_test,
-                        operation,
-                        op_idx,
-                        f"{api_ui_key}_post",
-                        nonce,
-                        persist_suite_changes_fn=_persist_draft_after_change,
-                    )
-                post_add_cols = st.columns([8, 2], gap="small", vertical_alignment="center")
-                with post_add_cols[1]:
-                    if st.button(
-                        "Add operation",
-                        key=f"mock_server_add_api_post_operation_{api_ui_key}_{nonce}",
-                        icon=":material/add:",
-                        use_container_width=True,
-                    ):
-                        _open_add_operation_dialog(api_ui_key, API_POST_RESPONSE_OPERATIONS_KEY)
-                        st.rerun()
     with wrapper_cols[1]:
         if st.button(
             "",
@@ -1810,18 +1725,6 @@ def _render_editor():
         _render_feedback()
         return
 
-    load_operations_catalog(force=False)
-    operation_catalog = st.session_state.get(OPERATIONS_CATALOG_KEY, [])
-    if not isinstance(operation_catalog, list):
-        operation_catalog = []
-    operation_labels_by_id = {
-        str(item.get("id")): (
-            str(item.get("description") or item.get("id") or "-")
-        )
-        for item in operation_catalog
-        if isinstance(item, dict) and item.get("id")
-    }
-
     _, queue_by_id = _load_queue_options()
 
     header_cols = st.columns([8, 2], gap="small", vertical_alignment="center")
@@ -1906,10 +1809,11 @@ def _render_editor():
         _render_queue_editor(queue_entry, queue_idx, queue_by_id, nonce)
 
     if st.session_state.get(ADD_TEST_OPERATION_DIALOG_OPEN_KEY, False):
-        _add_operation_dialog(draft, operation_catalog, operation_labels_by_id)
+        _add_operation_dialog(draft)
     _render_feedback()
 
 
 def render_mock_server_editor_page():
     _render_editor()
+
 

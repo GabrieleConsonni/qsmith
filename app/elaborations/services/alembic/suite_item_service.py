@@ -4,7 +4,7 @@ from _alembic.models.base_entity import BaseIdEntity
 from _alembic.models.suite_item_entity import SuiteItemEntity
 from _alembic.services.base_id_service import BaseIdEntityService
 from elaborations.models.enums.suite_item_kind import SuiteItemKind
-from elaborations.services.alembic.suite_item_operation_service import (
+from elaborations.services.alembic.suite_item_command_service import (
     SuiteItemOperationService,
 )
 
@@ -64,3 +64,4 @@ class SuiteItemService(BaseIdEntityService):
 
     def delete_on_cascade(self, session: Session, _id: str):
         SuiteItemOperationService().delete_by_suite_item_id(session, _id)
+

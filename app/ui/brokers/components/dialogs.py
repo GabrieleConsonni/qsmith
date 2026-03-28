@@ -211,14 +211,12 @@ def add_queue_dialog(broker_item: dict):
     default_visibility = st.number_input(
         "Default visibility timeout (sec)",
         min_value=0,
-        test=1,
         value=30,
         key=f"add_queue_visibility_{broker_id}",
     )
     receive_wait = st.number_input(
         "Receive message wait (sec)",
         min_value=0,
-        test=1,
         value=0,
         key=f"add_queue_wait_{broker_id}",
     )
@@ -236,7 +234,6 @@ def add_queue_dialog(broker_item: dict):
         delay = st.number_input(
             "Delay (sec)",
             min_value=0,
-            test=1,
             value=0,
             key=f"add_queue_delay_{broker_id}",
         )

@@ -26,3 +26,10 @@
 | [QSM-033](stories/QSM-033-SUITE-CONTEXT.md) | Contesto mock server | In corso | Backend core completato, UI pending |
 | [QSM-034](stories/QSM-034-SUITE-DI-TEST.md) | Suite di test | In corso | Backend+UI core implementati, test/docs mirati aggiornati |
 | [QSM-035](stories/QSM-035-OPERATIONS.md) | Operations (suite+mock) | In corso | Contratto/policy runtime + mock-response family in avanzamento |
+| [QSM-036](stories/QSM-036-COMMANDS-E-CONSTANTS.md) | Commands e constants | In corso | Hard cut commands + runtime/UI/backend in corso |
+| [QSM-037](stories/QSM-037-SCHEDULER.md) | Scheduler | Completato | 8/8 |
+| [QSM-038](stories/QSM-038-DATASET-PERIMETER.md) | Dataset perimeter | Completato | 8/8 |
+| [QSM-039](stories/QSM-039-DRIVEN-CONSTANTS.md) | Driven constants | In corso | Backend+migrazione+runtime completati, UI guided pending |
+| [QSM-040](stories/QSM-040-REFACTOR-UI-DATASET.md) | Refactor UI Dataset | In corso | Expander list + perimeter editor page implementati, validazione in corso |
+| [QSM-041](stories/QSM-041-REFACTOR-UI-SUITE.md) | Refactor UI Suite | Completato | 7/7 |
+| [QSM-042](stories/QSM-042-QUERY-PARAMETERS.md) | Dataset query parameters | In corso | Backend/runtime/UI core implementati, test+docs in finalizzazione |

@@ -24,6 +24,20 @@ def _normalize_rows(value: object, label: str) -> list[dict]:
     return rows
 
 
+def _normalize_json_object(value: object, label: str) -> dict:
+    if not isinstance(value, dict):
+        raise ValueError(f"{label} must be a JSON object.")
+    return value
+
+
+def _is_empty_json_value(value: object) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, (dict, list, str)):
+        return len(value) == 0
+    return False
+
+
 def _serialize_value(value: object) -> str:
     return json.dumps(value, ensure_ascii=True, sort_keys=True, default=str)
 
@@ -65,16 +79,14 @@ def _load_expected_json_array_rows(context: AssertEvaluationContext) -> list[dic
 
 class NotEmptyDataAssertEvaluator(AssertEvaluator):
     def evaluate(self, context: AssertEvaluationContext) -> None:
-        rows = _normalize_rows(context.data, "Actual data")
-        if len(rows) == 0:
-            raise ValueError("Assert failed: expected data to be not empty.")
+        if _is_empty_json_value(context.actual):
+            raise ValueError("Assert failed: expected actual value to be not empty.")
 
 
 class EmptyDataAssertEvaluator(AssertEvaluator):
     def evaluate(self, context: AssertEvaluationContext) -> None:
-        rows = _normalize_rows(context.data, "Actual data")
-        if len(rows) > 0:
-            raise ValueError("Assert failed: expected data to be empty.")
+        if not _is_empty_json_value(context.actual):
+            raise ValueError("Assert failed: expected actual value to be empty.")
 
 
 class SchemaValidationDataAssertEvaluator(AssertEvaluator):
@@ -98,6 +110,33 @@ class SchemaValidationDataAssertEvaluator(AssertEvaluator):
 
 
 class ContainsDataAssertEvaluator(AssertEvaluator):
+    def evaluate(self, context: AssertEvaluationContext) -> None:
+        compare_keys = list(context.cfg.compare_keys or [])
+        if not compare_keys:
+            raise ValueError("Assert failed: compare_keys is required.")
+        actual_value = _normalize_json_object(context.actual, "Actual value")
+        expected_value = _normalize_json_object(context.expected, "Expected value")
+
+        missing_expected_keys = [key for key in compare_keys if key not in expected_value]
+        if missing_expected_keys:
+            raise ValueError(
+                f"Expected value is missing compare_keys: {missing_expected_keys}"
+            )
+
+        missing_actual_keys = [key for key in compare_keys if key not in actual_value]
+        if missing_actual_keys:
+            raise ValueError(
+                f"Actual value is missing compare_keys: {missing_actual_keys}"
+            )
+
+        for key in compare_keys:
+            if actual_value.get(key) != expected_value.get(key):
+                raise ValueError(
+                    "Assert failed: actual value does not contain expected values."
+                )
+
+
+class JsonArrayContainsDataAssertEvaluator(AssertEvaluator):
     def evaluate(self, context: AssertEvaluationContext) -> None:
         compare_keys = list(context.cfg.compare_keys or [])
         if not compare_keys:

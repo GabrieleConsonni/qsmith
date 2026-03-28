@@ -37,7 +37,8 @@ Pagine disponibili:
     - `Dataset`
 - `Test suites`
     - `Test Suites`
-        - `Suite Editor` 
+        - `Suite Editor`
+        - `Advanced suite settings`
 - `Logs`
 - `Tools`
 
@@ -104,6 +105,14 @@ Obiettivi:
 - CRUD datasource database
 - scelta tabella/view da connessione tramite dialog con tree tables/views
 - preview dati tabella/view configurata
+- UI principale con expander collassati per dataset e preview inline on-demand
+- configurazione del perimeter in pagina dedicata `DatasetPerimeterEditor`
+- supporto a dataset parametrizzabili tramite `perimeter.parameters`
+- i filtri del perimeter possono usare valori literal oppure riferimenti espliciti a parametri `{ "kind": "parameter", "name": "..." }`
+- i parametri supportano i tipi `string`, `integer`, `number`, `boolean`, `date`, `datetime`
+- i parametri dataset supportano `default_value` per literal statici oppure `default_binding` con shape `{ "kind": "built_in", "resolver": "$now|$today" }`; i due campi sono mutuamente esclusivi
+- i built-in dei parametri dataset vengono ricalcolati a ogni preview/esecuzione usando il clock del processo applicativo
+- la preview dataset non accetta input manuali dei parametri: i parametri non valorizzati restano `null`
 
 ### 4.7 Test Suites
 Obiettivi:
@@ -116,20 +125,32 @@ Obiettivi:
 ### 4.8 Suite Editor
 Obiettivi:
 - aggiungere test embedded e operazioni alla suite
-- configurare i 4 hook fissi `beforeAll`, `beforeEach`, `afterEach`, `afterAll`
+- configurare i 4 hook fissi `beforeAll`, `beforeEach`, `afterEach`, `afterAll` dalla pagina dedicata `Advanced suite settings`
 - eseguire singoli test o l'intera suite
 - visualizzare stato ultima esecuzione di hook/test/operazioni (check/error/idle)
 - mostrare avanzamento esecuzione suite in tempo reale (test eseguiti / totali)
-- il dialog `Add operation` supporta:
-  - `Save and add`: salva in anagrafica `operations` e aggiunge snapshot all'item
-  - `Add only`: aggiunge solo snapshot all'item senza salvare nell'anagrafica
-  - campi di contesto per operation:
-    - `target` per operation di input
-    - `result_target` opzionale per operation action/trigger
+- mantenere in header `Execution history`, `Run` e accesso rapido a `Advanced settings`
+- il dialog `Add command` supporta:
+  - un solo submit locale che aggiunge snapshot contestuale all'item
+  - ogni command espone sempre `commandCode` e `commandType`
+  - i command context dichiarano costanti con `definitionId`, `name`, `context` e `sourceType`
+  - i command consumer usano solo referenze guidate `*ConstantRef.definitionId`
+  - i command che producono output tecnici possono dichiarare `resultConstant`
+  - il runtime usa `runEnvelope/global/local/result.constants` come scope risolvibili
+  - le costanti `dataset` restano retrocompatibili: possono salvare il solo `dataset_id` oppure `{ "dataset_id": "...", "parameters": { ... } }`
+  - `initConstant` con `sourceType=dataset` puo dichiarare `parameters` per fare binding espliciti dei parametri dataset
+  - i binding supportati sono: valore literal, `{ "kind": "constant_ref", "definitionId": "..." }`, `{ "kind": "built_in", "resolver": "$now|$today" }`
+  - `sendMessageQueue`, `saveTable` ed `exportDataset` materializzano le righe a runtime applicando il `perimeter` del dataset e gli eventuali binding risolti
 
 Modello dati suite:
-- `test_suites`, `suite_items` e `suite_item_operations` contengono i dettagli funzionali usati in esecuzione.
-- Lo suite non dipende più da `test_id`/`operation_id` in runtime.
+- `test_suites`, `suite_items` e `suite_item_commands` contengono i dettagli funzionali usati in esecuzione.
+- `command_constant_definitions` mantiene la symbol table persistita per suite e mock commands.
+- La suite non dipende piu da `test_id`/`command_id` in runtime e non usa cataloghi condivisi di command.
+
+Pagina `Advanced suite settings`:
+- hidden page raggiungibile dal gear del `Suite Editor`
+- contiene le sezioni hook `Before suite`, `Before each test`, `After each test`, `After suite`
+- riusa lo stesso contratto di command/hook della suite
 
 
 ### 4.9 Logs
@@ -143,15 +164,16 @@ Obiettivi:
 - creare/modificare/cancellare mock server con endpoint dedicato
 - configurare API mock (`method`, `path`, params/headers/body, response)
 - configurare queue binding verso queue esistenti
-- associare operazioni a trigger API e queue (incluso `run-suite`)
+- associare command a trigger API e queue (incluso `runSuite`)
 - attivare/disattivare runtime mock server
 
 Comportamento runtime:
 - route runtime sotto prefisso fisso `/mock/{server_endpoint}/...`
-- pipeline operation API:
-  - `pre_response_operations` (sync, senza side effects)
-  - `response_operations` (costruzione response draft)
-  - `post_response_operations` (async, side effects consentiti)
+- pipeline command API:
+  - `pre_response_commands` (sync, senza side effects)
+  - response statica/dinamica da configurazione route
+  - `post_response_commands` (async, side effects consentiti)
+- i command mock e suite condividono la stessa risoluzione costanti `definitionId -> command_constant_definitions -> scope runtime`
 - risposta API mock immediata, operazioni eseguite in background
 - listener queue avviati solo quando il server e attivo
 - su trigger queue viene eseguito `ACK` sempre (anche in caso errore operazioni)
@@ -174,3 +196,4 @@ Comportamento runtime:
 - Avvio standard via Docker Compose.
 - UI dipende da `QSMITH_API_BASE_URL`.
 - I test backend usano Docker/Testcontainers.
+

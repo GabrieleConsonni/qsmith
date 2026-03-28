@@ -26,19 +26,8 @@ def test_resolve_tests_to_execute_single_test():
     resolved = _resolve_tests_to_execute(
         tests,
         target_suite_item_id="s2",
-        include_previous=False,
     )
     assert [item.id for item in resolved] == ["s2"]
-
-
-def test_resolve_tests_to_execute_with_previous_tests():
-    tests = [_test("s1"), _test("s2"), _test("s3")]
-    resolved = _resolve_tests_to_execute(
-        tests,
-        target_suite_item_id="s2",
-        include_previous=True,
-    )
-    assert [item.id for item in resolved] == ["s1", "s2"]
 
 
 def test_resolve_tests_to_execute_raises_when_missing_target():
@@ -47,7 +36,6 @@ def test_resolve_tests_to_execute_raises_when_missing_target():
         _resolve_tests_to_execute(
             tests,
             target_suite_item_id="missing-test",
-            include_previous=False,
         )
 
 

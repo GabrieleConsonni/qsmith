@@ -1,62 +1,63 @@
 import streamlit as st
 
-from api_client import api_delete, api_post, api_put
+from database_datasources.services.api_service import (
+    create_database_datasource,
+    delete_database_datasource_by_id,
+    update_database_datasource,
+)
 from database_datasources.services.data_loader_service import (
     invalidate_database_datasource_preview,
     load_database_connection_objects,
     load_database_connections,
     load_database_datasources,
 )
+from database_datasources.services.perimeter_service import (
+    build_connection_label,
+    build_dataset_payload,
+)
+from database_datasources.services.state_service import (
+    clear_database_datasource_selection_if_matches,
+    ensure_selected_database_datasource_id,
+    mark_database_datasource_open,
+    set_database_datasource_feedback,
+    set_selected_database_datasource_id,
+)
 
-SELECTED_DATABASE_DATASOURCE_ID_KEY = "selected_database_datasource_id"
+
+def _render_database_object_type_selector(
+    key_prefix: str,
+    current_object_type: str = "table",
+) -> str:
+    options = ["table", "view"]
+    normalized = str(current_object_type or "table").strip().lower()
+    index = options.index(normalized) if normalized in options else 0
+    return st.selectbox(
+        "Database object type",
+        options=options,
+        index=index,
+        key=f"{key_prefix}_object_type_select",
+    )
 
 
-def _connection_label(connection_item: dict) -> str:
-    description = str(connection_item.get("description") or connection_item.get("id") or "-")
-    payload = connection_item.get("payload") or {}
-    connection_type = str(payload.get("database_type") or "-")
-    return f"{description} [{connection_type}]"
-
-
-def _render_objects_tree(
+def _render_database_object_selector(
     objects_payload: dict,
     key_prefix: str,
+    object_type: str,
     current_object_name: str = "",
-    current_object_type: str = "table",
-) -> tuple[str, str]:
-    tables = [str(item) for item in (objects_payload.get("tables") or []) if item]
-    views = [str(item) for item in (objects_payload.get("views") or []) if item]
-
-    selected_table = ""
-    selected_view = ""
-    with st.expander("Tables", expanded=True):
-        table_options = [""] + tables
-        table_index = 0
-        if current_object_type == "table" and current_object_name in tables:
-            table_index = table_options.index(current_object_name)
-        selected_table = st.selectbox(
-            "Select table",
-            options=table_options,
-            index=table_index,
-            key=f"{key_prefix}_table_select",
-        )
-    with st.expander("Views", expanded=True):
-        view_options = [""] + views
-        view_index = 0
-        if current_object_type == "view" and current_object_name in views:
-            view_index = view_options.index(current_object_name)
-        selected_view = st.selectbox(
-            "Select view",
-            options=view_options,
-            index=view_index,
-            key=f"{key_prefix}_view_select",
-        )
-
-    if selected_table:
-        return "table", selected_table
-    if selected_view:
-        return "view", selected_view
-    return "", ""
+) -> str:
+    available_objects = (
+        [str(item) for item in (objects_payload.get("tables") or []) if item]
+        if str(object_type or "table").strip().lower() == "table"
+        else [str(item) for item in (objects_payload.get("views") or []) if item]
+    )
+    options = [""] + available_objects
+    index = options.index(current_object_name) if current_object_name in available_objects else 0
+    return st.selectbox(
+        "Database objects",
+        options=options,
+        index=index,
+        key=f"{key_prefix}_object_name_select",
+    )
 
 
 def _render_connection_selector(
@@ -78,7 +79,7 @@ def _render_connection_selector(
         options=connection_ids,
         index=index,
         key=f"{key_prefix}_connection_select",
-        format_func=lambda conn_id: _connection_label(
+        format_func=lambda conn_id: build_connection_label(
             next(
                 (item for item in connections if str(item.get("id")) == str(conn_id)),
                 {},
@@ -87,10 +88,18 @@ def _render_connection_selector(
     )
 
 
-@st.dialog("Aggiungi database datasource", width="large")
+def _refresh_datasource_state(selected_id: str | None = None):
+    datasources = load_database_datasources(force=True)
+    if selected_id:
+        set_selected_database_datasource_id(selected_id)
+        mark_database_datasource_open(selected_id, is_open=True)
+        return
+    ensure_selected_database_datasource_id(datasources if isinstance(datasources, list) else [])
+
+
+@st.dialog("Aggiungi dataset", width="large")
 def add_database_datasource_dialog():
-    load_database_connections(force=False)
-    connections = st.session_state.get("database_connections", [])
+    connections = load_database_connections(force=False)
     if not connections:
         st.info("Configura prima almeno una connessione database.")
         return
@@ -104,24 +113,22 @@ def add_database_datasource_dialog():
         return
 
     objects_payload = load_database_connection_objects(selected_connection_id, force=False)
-    if st.button(
-        "Refresh tree",
-        key="add_database_datasource_refresh_objects",
-        icon=":material/refresh:",
-        type="secondary",
-    ):
-        objects_payload = load_database_connection_objects(selected_connection_id, force=True)
-
-    selected_object_type, selected_object_name = _render_objects_tree(
+    selected_object_type = _render_database_object_type_selector(
+        f"add_database_datasource_{selected_connection_id}",
+        "table",
+    )
+    selected_object_name = _render_database_object_selector(
         objects_payload,
-        key_prefix=f"add_database_datasource_{selected_connection_id}",
+        key_prefix=f"add_database_datasource_{selected_connection_id}_{selected_object_type}",
+        object_type=selected_object_type,
     )
 
     if not st.button(
-        "Add",
+        "Save",
         key="add_database_datasource_save",
         icon=":material/add:",
         use_container_width=True,
+        disabled=not bool(str(selected_object_name or "").strip()),
     ):
         return
 
@@ -129,46 +136,41 @@ def add_database_datasource_dialog():
         st.error("Il campo Description e' obbligatorio.")
         return
     if not selected_object_name or not selected_object_type:
-        st.error("Seleziona una tabella o una view dal tree.")
+        st.error("Seleziona un database object valido.")
         return
-
-    payload = {
-        "connection_id": selected_connection_id,
-        "schema": objects_payload.get("schema"),
-        "object_name": selected_object_name,
-        "object_type": selected_object_type,
-    }
 
     try:
-        response = api_post(
-            "/data-source/database",
+        response = create_database_datasource(
             {
                 "description": description,
-                "payload": payload,
-            },
+                "payload": build_dataset_payload(
+                    selected_connection_id,
+                    objects_payload.get("schema"),
+                    selected_object_name,
+                    selected_object_type,
+                ),
+            }
         )
     except Exception as exc:
-        st.error(f"Errore salvataggio database datasource: {str(exc)}")
+        st.error(f"Errore salvataggio dataset: {str(exc)}")
         return
 
-    load_database_datasources(force=True)
     invalidate_database_datasource_preview()
-    new_id = response.get("id") if isinstance(response, dict) else None
-    if new_id:
-        st.session_state[SELECTED_DATABASE_DATASOURCE_ID_KEY] = str(new_id)
+    created_id = str((response or {}).get("id") or "").strip()
+    _refresh_datasource_state(created_id or None)
+    set_database_datasource_feedback(response.get("message") or "Dataset creato.", level="success")
     st.rerun()
 
 
-@st.dialog("Modifica database datasource", width="large")
+@st.dialog("Modifica dataset", width="large")
 def edit_database_datasource_dialog(datasource_item: dict):
-    datasource_id = str(datasource_item.get("id") or "")
-    payload = datasource_item.get("payload") or {}
+    datasource_id = str(datasource_item.get("id") or "").strip()
+    payload = datasource_item.get("payload") if isinstance(datasource_item.get("payload"), dict) else {}
     current_connection_id = str(payload.get("connection_id") or "")
     current_object_name = str(payload.get("object_name") or "")
     current_object_type = str(payload.get("object_type") or "table")
 
-    load_database_connections(force=False)
-    connections = st.session_state.get("database_connections", [])
+    connections = load_database_connections(force=False)
     if not connections:
         st.info("Nessuna connessione database disponibile.")
         return
@@ -188,19 +190,15 @@ def edit_database_datasource_dialog(datasource_item: dict):
         return
 
     objects_payload = load_database_connection_objects(selected_connection_id, force=False)
-    if st.button(
-        "Refresh tree",
-        key=f"edit_database_datasource_refresh_objects_{datasource_id}",
-        icon=":material/refresh:",
-        type="secondary",
-    ):
-        objects_payload = load_database_connection_objects(selected_connection_id, force=True)
-
-    selected_object_type, selected_object_name = _render_objects_tree(
-        objects_payload,
-        key_prefix=f"edit_database_datasource_{datasource_id}_{selected_connection_id}",
-        current_object_name=current_object_name,
+    selected_object_type = _render_database_object_type_selector(
+        f"edit_database_datasource_{datasource_id}_{selected_connection_id}",
         current_object_type=current_object_type,
+    )
+    selected_object_name = _render_database_object_selector(
+        objects_payload,
+        key_prefix=f"edit_database_datasource_{datasource_id}_{selected_connection_id}_{selected_object_type}",
+        object_type=selected_object_type,
+        current_object_name=current_object_name if selected_object_type == current_object_type else "",
     )
 
     if not st.button(
@@ -208,6 +206,7 @@ def edit_database_datasource_dialog(datasource_item: dict):
         key=f"edit_database_datasource_save_{datasource_id}",
         icon=":material/save:",
         use_container_width=True,
+        disabled=not bool(str(selected_object_name or "").strip()),
     ):
         return
 
@@ -218,62 +217,65 @@ def edit_database_datasource_dialog(datasource_item: dict):
         st.error("Il campo Description e' obbligatorio.")
         return
     if not selected_object_name or not selected_object_type:
-        st.error("Seleziona una tabella o una view dal tree.")
+        st.error("Seleziona un database object valido.")
         return
 
-    updated_payload = {
-        "connection_id": selected_connection_id,
-        "schema": objects_payload.get("schema"),
-        "object_name": selected_object_name,
-        "object_type": selected_object_type,
-    }
     try:
-        api_put(
-            "/data-source/database",
+        response = update_database_datasource(
             {
                 "id": datasource_id,
                 "description": description,
-                "payload": updated_payload,
-            },
+                "payload": build_dataset_payload(
+                    selected_connection_id,
+                    objects_payload.get("schema"),
+                    selected_object_name,
+                    selected_object_type,
+                ),
+            }
         )
     except Exception as exc:
-        st.error(f"Errore aggiornamento database datasource: {str(exc)}")
+        st.error(f"Errore aggiornamento dataset: {str(exc)}")
         return
 
-    load_database_datasources(force=True)
     invalidate_database_datasource_preview(datasource_id)
-    st.session_state[SELECTED_DATABASE_DATASOURCE_ID_KEY] = datasource_id
+    _refresh_datasource_state(datasource_id)
+    set_database_datasource_feedback(response.get("message") or "Dataset aggiornato.", level="success")
     st.rerun()
 
 
-@st.dialog("Conferma eliminazione")
+@st.dialog("Delete dataset", width="medium")
 def delete_database_datasource_dialog(datasource_item: dict):
-    datasource_id = str(datasource_item.get("id") or "")
-    datasource_label = (
-        datasource_item.get("description")
-        or datasource_id
-        or "-"
-    )
-    st.write(f"Eliminare il database datasource '{datasource_label}'?")
+    datasource_id = str(datasource_item.get("id") or "").strip()
+    datasource_label = str(datasource_item.get("description") or datasource_id or "-").strip()
 
-    col_confirm, col_cancel = st.columns(2)
-    with col_confirm:
-        if st.button("Conferma", key=f"delete_database_datasource_confirm_{datasource_id}"):
+    st.caption(datasource_label)
+    st.write("Delete this dataset?")
+
+    action_cols = st.columns([1, 1], gap="small", vertical_alignment="center")
+    with action_cols[0]:
+        if st.button(
+            "Delete",
+            key=f"delete_database_datasource_confirm_{datasource_id}",
+            icon=":material/delete:",
+            type="secondary",
+            use_container_width=True,
+        ):
             try:
-                api_delete(f"/data-source/database/{datasource_id}")
+                response = delete_database_datasource_by_id(datasource_id)
             except Exception as exc:
-                st.error(f"Errore cancellazione database datasource: {str(exc)}")
+                st.error(f"Errore cancellazione dataset: {str(exc)}")
                 return
 
-            load_database_datasources(force=True)
             invalidate_database_datasource_preview(datasource_id)
-            datasource_list = st.session_state.get("database_datasources", [])
-            if datasource_list:
-                st.session_state[SELECTED_DATABASE_DATASOURCE_ID_KEY] = str(
-                    datasource_list[0].get("id")
-                )
-            else:
-                st.session_state.pop(SELECTED_DATABASE_DATASOURCE_ID_KEY, None)
+            clear_database_datasource_selection_if_matches(datasource_id)
+            datasources = load_database_datasources(force=True)
+            ensure_selected_database_datasource_id(datasources if isinstance(datasources, list) else [])
+            set_database_datasource_feedback(response.get("message") or "Dataset eliminato.", level="success")
             st.rerun()
-    with col_cancel:
-        st.button("Annulla", key=f"delete_database_datasource_cancel_{datasource_id}")
+    with action_cols[1]:
+        if st.button(
+            "Cancel",
+            key=f"delete_database_datasource_cancel_{datasource_id}",
+            use_container_width=True,
+        ):
+            st.rerun()

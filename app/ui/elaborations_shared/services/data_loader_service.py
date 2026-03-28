@@ -4,25 +4,14 @@ from elaborations_shared.services.api_service import (
     get_all_brokers,
     get_all_database_datasources,
     get_all_json_arrays,
-    get_all_operations,
     get_queues_by_broker_id,
 )
 from elaborations_shared.services.state_keys import (
-    OPERATIONS_CATALOG_KEY,
     TEST_EDITOR_BROKERS_KEY,
     TEST_EDITOR_DATABASE_DATASOURCES_KEY,
     TEST_EDITOR_JSON_ARRAYS_KEY,
     TEST_EDITOR_QUEUES_BY_BROKER_KEY,
 )
-
-
-def load_operations_catalog(force: bool = False):
-    if force or OPERATIONS_CATALOG_KEY not in st.session_state:
-        try:
-            st.session_state[OPERATIONS_CATALOG_KEY] = get_all_operations()
-        except Exception:
-            st.session_state[OPERATIONS_CATALOG_KEY] = []
-            st.error("Errore caricamento operations.")
 
 
 def load_test_editor_json_arrays(force: bool = False):

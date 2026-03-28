@@ -1,4 +1,4 @@
-﻿# Qsmith - Contesto Progetto per Codex
+# Qsmith - Contesto Progetto per Codex
 
 ## Panoramica
 Qsmith e un'applicazione per test e orchestrazione di flussi su broker SQS, datasource e test suite.
@@ -59,7 +59,8 @@ Pagine principali:
 - `app/ui/pages/QueueDetails.py`
 - `app/ui/pages/JsonArray.py`
 - `app/ui/pages/TestSuites.py`
-- `app/ui/pages/SuiteEditor.py`
+- `app/ui/pages/TestEditor.py`
+- `app/ui/pages/AdvancedSuiteEditorSettings.py`
 - `app/ui/pages/Logs.py`
 - `app/ui/pages/Tools.py`
 
@@ -73,6 +74,13 @@ Organizzazione UI modulare gia presente in package dedicati:
 - `app/ui/test_suites`
 - `app/ui/queues`
 
+Note UI test suite:
+- `app/ui/pages/TestEditor.py` e la pagina attiva per il dettaglio/edit del singolo test.
+- `app/ui/pages/SuiteEditor.py` resta alias legacy di compatibilita e non deve ricevere nuova logica.
+- Il rendering page-specific del test editor vive in `app/ui/test_suites/components/test_editor_component.py`.
+- `app/ui/test_suites/components/suite_editor_component.py` contiene helper condivisi della feature, non rendering dedicato a una pagina specifica.
+- La UI Streamlit comunica con la logica applicativa backend solo tramite API FastAPI e wrapper `app/ui/**/services/api_service.py`; i componenti UI non devono importare servizi di dominio come `elaborations.services.*`.
+
 ## Router API principali
 - `/broker`
   - connessioni broker
@@ -84,8 +92,9 @@ Organizzazione UI modulare gia presente in package dedicati:
 - `/database`
   - database connections + test + metadata oggetti + preview
 - `/elaborations`
-  - operations, test suites
-  - suite_items / suite_item_operations (snapshot)
+  - test suites
+  - preview template `sendMessageQueue` per editor UI
+  - suite_items / suite_item_commands (snapshot)
   - test suite executions
   - SSE runtime: `/elaborations/execution/{execution_id}/events`
 - `/mock-server`
@@ -98,16 +107,15 @@ Organizzazione UI modulare gia presente in package dedicati:
 ## Modello dati (alto livello)
 - `json_payloads` configurazioni JSON tipizzate
 - `queues` configurazioni queue per broker
-- `operations` anagrafica riusabile
 - `test_suites` anagrafica suite
 - `suite_items` snapshot funzionale di test e hook
-- `suite_item_operations` snapshot funzionale operation sull'item
-- `test_suite_executions`, `suite_item_executions`, `suite_item_operation_executions`
-- `mock_servers`, `mock_server_apis`, `ms_api_operations`
-- `mock_server_queues`, `ms_queue_operations`
+- `suite_item_commands` snapshot funzionale operation sull'item
+- `test_suite_executions`, `suite_item_executions`, `suite_item_command_executions`
+- `mock_servers`, `mock_server_apis`, `ms_api_commands`
+- `mock_server_queues`, `ms_queue_commands`
 - `logs`
 
-Nota: il runtime suite usa gli snapshot (`suite_items`/`suite_item_operations`), non esiste piu il catalogo `tests`.
+Nota: il runtime suite e mock usa snapshot contestuali (`suite_items`/`suite_item_commands`, `ms_api_commands`, `ms_queue_commands`), senza catalogo condiviso `commands`.
 
 ## Configurazione ambiente
 Valori esempio `.env`:
@@ -162,3 +170,4 @@ Quando cambia il comportamento funzionale o il piano di lavoro:
 - aggiornare `docs/stories/QSM-*.md`
 - aggiornare `docs/stories/STORY_INDEX.md` se cambiano le storie
 - aggiornare `docs/CODEX_CONTEXT.md` se cambia il contesto progetto
+

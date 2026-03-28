@@ -1,2 +1,1 @@
-"""Database datasources UI package."""
-
+"""Datasets UI package."""

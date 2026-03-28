@@ -1,16 +1,17 @@
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from elaborations.models.dtos.configuration_operation_dto import ConfigurationOperationTypes
+from elaborations.models.dtos.configuration_command_dto import ConfigurationOperationTypes
 from elaborations.models.enums.hook_phase import HookPhase
 from elaborations.models.enums.on_failure import OnFailure
 from elaborations.models.enums.suite_item_kind import SuiteItemKind
 
 
-class CreateSuiteItemOperationDto(BaseModel):
+class CreateSuiteItemCommandDto(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     order: int
     description: str | None = ""
     cfg: ConfigurationOperationTypes | None = None
-    operation_id: str | None = None
 
 
 class CreateSuiteItemDto(BaseModel):
@@ -18,7 +19,7 @@ class CreateSuiteItemDto(BaseModel):
     hook_phase: str | None = None
     description: str | None = ""
     on_failure: str | None = OnFailure.ABORT.value
-    operations: list[CreateSuiteItemOperationDto] = Field(default_factory=list)
+    commands: list[CreateSuiteItemCommandDto] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_item(self):
@@ -51,3 +52,8 @@ class CreateTestSuiteDto(BaseModel):
 
 class UpdateTestSuiteDto(CreateTestSuiteDto):
     id: str
+
+
+# Backward aliases during the refactor.
+CreateSuiteItemOperationDto = CreateSuiteItemCommandDto
+

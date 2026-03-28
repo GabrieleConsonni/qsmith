@@ -3,7 +3,7 @@ from sqlalchemy.orm import InstrumentedAttribute, Session
 from _alembic.models.base_entity import BaseIdEntity
 from _alembic.models.mock_server_api_entity import MockServerApiEntity
 from _alembic.services.base_id_service import BaseIdEntityService
-from mock_servers.services.alembic.ms_api_operation_service import MsApiOperationService
+from mock_servers.services.alembic.ms_api_command_service import MsApiOperationService
 
 
 class MockServerApiService(BaseIdEntityService):
@@ -36,3 +36,4 @@ class MockServerApiService(BaseIdEntityService):
 
     def delete_on_cascade(self, session: Session, _id: str):
         MsApiOperationService().delete_by_api_id(session, _id)
+

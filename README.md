@@ -48,6 +48,15 @@ docker-run-dev.bat
 - OpenAPI JSON: `http://localhost:9082/openapi.json`
 - Debugpy: `localhost:5678` (container `qsmith`)
 
+## Tema Streamlit
+La configurazione tema viene letta da `.streamlit/config.toml` nella directory da cui esegui `streamlit run`.
+
+In questo progetto la UI parte da `app/ui`, quindi in Docker la cartella `.streamlit` del repo viene montata anche in `app/ui/.streamlit` per rendere il tema effettivo.
+
+Se avvii la UI in locale, usa uno di questi approcci:
+- esegui `streamlit run app/ui/Qsmith.py` dalla root del repo;
+- oppure mantieni anche `app/ui/.streamlit/config.toml` allineato al file in root.
+
 ### Installazione in locale
 
 ## Environment Python

@@ -9,30 +9,65 @@ from elaborations.models.enums.suite_item_kind import SuiteItemKind
 @dataclass
 class RunContext:
     run_id: str
-    event: dict[str, Any] = field(default_factory=dict)
-    global_vars: dict[str, Any] = field(default_factory=dict)
-    local_vars: dict[str, Any] = field(default_factory=dict)
-    last: dict[str, Any] = field(
-        default_factory=lambda: {
-            "item_id": "",
-            "data": [],
-        }
-    )
-    artifacts: dict[str, Any] = field(default_factory=dict)
-    response_draft: dict[str, Any] = field(
-        default_factory=lambda: {
-            "status": None,
-            "headers": {},
-            "body": None,
-        }
-    )
+    run_envelope: dict[str, Any] = field(default_factory=dict)
+    global_scope: dict[str, Any] = field(default_factory=dict)
+    local_scope: dict[str, Any] = field(default_factory=dict)
+    result_scope: dict[str, Any] = field(default_factory=dict)
     invocation_id: str | None = None
     current_item_kind: str = SuiteItemKind.HOOK.value
     current_hook_phase: str | None = None
+    last: dict[str, Any] = field(default_factory=lambda: {"item_id": "", "data": None})
+
+    @property
+    def event(self) -> dict[str, Any]:
+        event = self.run_envelope.get("event")
+        return event if isinstance(event, dict) else {}
+
+    @property
+    def global_vars(self) -> dict[str, Any]:
+        constants = self.global_scope.get("constants")
+        return constants if isinstance(constants, dict) else {}
+
+    @property
+    def local_vars(self) -> dict[str, Any]:
+        constants = self.local_scope.get("constants")
+        return constants if isinstance(constants, dict) else {}
+
+    @property
+    def artifacts(self) -> dict[str, Any]:
+        artifacts = self.result_scope.get("artifacts")
+        return artifacts if isinstance(artifacts, dict) else {}
 
     @property
     def vars(self) -> dict[str, Any]:
         return self.global_vars
+
+
+def _build_run_context_payload(
+    *,
+    run_id: str,
+    event: dict[str, Any] | None,
+    initial_vars: dict[str, Any] | None,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    run_envelope = {
+        "run_id": str(run_id or "").strip(),
+        "event": event if isinstance(event, dict) else {},
+        "constants": initial_vars if isinstance(initial_vars, dict) else {},
+    }
+    global_scope = {
+        "runEnvelope": run_envelope,
+        "constants": {},
+    }
+    local_scope = {
+        "global": global_scope,
+        "constants": {},
+    }
+    result_scope = {
+        "artifacts": {},
+        "commands": {},
+        "constants": {},
+    }
+    return run_envelope, global_scope, local_scope, result_scope
 
 
 _RUN_CONTEXT: ContextVar[RunContext | None] = ContextVar("run_context", default=None)
@@ -45,10 +80,17 @@ def create_run_context(
     initial_vars: dict[str, Any] | None = None,
     invocation_id: str | None = None,
 ) -> RunContext:
+    run_envelope, global_scope, local_scope, result_scope = _build_run_context_payload(
+        run_id=run_id,
+        event=event,
+        initial_vars=initial_vars,
+    )
     return RunContext(
         run_id=str(run_id or "").strip(),
-        event=event if isinstance(event, dict) else {},
-        global_vars=initial_vars if isinstance(initial_vars, dict) else {},
+        run_envelope=run_envelope,
+        global_scope=global_scope,
+        local_scope=local_scope,
+        result_scope=result_scope,
         invocation_id=str(invocation_id or "").strip() or None,
     )
 
@@ -80,25 +122,25 @@ def bind_suite_item_context(
 
     previous_kind = context.current_item_kind
     previous_hook_phase = context.current_hook_phase
-    previous_local_vars = context.local_vars
+    previous_local_vars = context.local_scope.get("constants")
     try:
         context.current_item_kind = str(item_kind or previous_kind).strip().lower()
         context.current_hook_phase = str(hook_phase or "").strip().lower() or None
         if local_vars is not None:
-            context.local_vars = local_vars
+            context.local_scope["constants"] = local_vars
         yield context
     finally:
         context.current_item_kind = previous_kind
         context.current_hook_phase = previous_hook_phase
-        context.local_vars = previous_local_vars
+        context.local_scope["constants"] = previous_local_vars if isinstance(previous_local_vars, dict) else {}
 
 
 def reset_local_context():
     context = get_run_context()
     if context is None:
         return
-    context.local_vars = {}
-    context.last = {"item_id": "", "data": []}
+    context.local_scope["constants"] = {}
+    context.last = {"item_id": "", "data": None}
 
 
 def set_context_last(item_id: str, data: Any):
@@ -111,39 +153,36 @@ def set_context_last(item_id: str, data: Any):
     }
 
 
-def set_context_var(key: str, value: Any, scope: str = "auto"):
+def set_context_var(key: str, value: Any, scope: str = "local"):
     context = get_run_context()
     if context is None:
         return
     normalized_key = str(key or "").strip()
     if not normalized_key:
         raise ValueError("Context variable key is required.")
-    normalized_scope = str(scope or "auto").strip().lower()
+    normalized_scope = str(scope or "local").strip()
     if normalized_scope == "auto":
         normalized_scope = (
             "local"
             if context.current_item_kind == SuiteItemKind.TEST.value
             else "global"
         )
-    if normalized_scope == "global":
-        if context.current_item_kind == SuiteItemKind.TEST.value:
-            raise ValueError("Global context is immutable during test execution.")
-        context.global_vars[normalized_key] = value
-        return
-    if normalized_scope != "local":
-        raise ValueError(f"Unsupported context scope '{scope}'")
-    context.local_vars[normalized_key] = value
+    write_context_path(f"$.{normalized_scope}.constants.{normalized_key}", value)
 
 
 def append_assert_artifact(artifact: dict[str, Any]):
     context = get_run_context()
     if context is None:
         return
-    artifacts = context.artifacts.get("asserts")
-    if not isinstance(artifacts, list):
-        artifacts = []
-        context.artifacts["asserts"] = artifacts
-    artifacts.append(artifact)
+    artifacts = context.result_scope.get("artifacts")
+    if not isinstance(artifacts, dict):
+        artifacts = {}
+        context.result_scope["artifacts"] = artifacts
+    assert_items = artifacts.get("asserts")
+    if not isinstance(assert_items, list):
+        assert_items = []
+        artifacts["asserts"] = assert_items
+    assert_items.append(artifact)
 
 
 def _normalize_target_path(path: str) -> str:
@@ -199,23 +238,31 @@ def extract_context_root(path: str) -> str | None:
     tokens = _path_tokens(path)
     if not tokens:
         return None
-    root = str(tokens[0] or "").strip().lower()
+    root = str(tokens[0] or "").strip()
     if root == "vars":
         return "global"
-    if root in {"global", "local", "artifacts", "response"}:
+    if root == "response":
+        return "response"
+    if root in {"runEnvelope", "global", "local", "result"}:
         return root
     return None
 
 
 def _target_from_root(context: RunContext, root: str):
+    if root == "runEnvelope":
+        return context.run_envelope
     if root == "global":
-        return context.global_vars
+        return context.global_scope
     if root == "local":
-        return context.local_vars
-    if root == "artifacts":
-        return context.artifacts
+        return context.local_scope
+    if root == "result":
+        return context.result_scope
     if root == "response":
-        return context.response_draft
+        commands = context.result_scope.get("commands")
+        if not isinstance(commands, dict):
+            commands = {}
+            context.result_scope["commands"] = commands
+        return commands
     raise ValueError(f"Unsupported context root '{root}'.")
 
 
@@ -269,6 +316,30 @@ def _assign_nested_value(target: Any, tokens: Iterable[str], value: Any):
         current = next_value
 
 
+def _remove_nested_value(target: Any, tokens: Iterable[str]):
+    path_tokens = list(tokens)
+    if not path_tokens:
+        return
+    current = target
+    for idx, token in enumerate(path_tokens):
+        is_last = idx == len(path_tokens) - 1
+        list_index = _to_index(token)
+        if list_index is not None:
+            if not isinstance(current, list) or list_index >= len(current):
+                return
+            if is_last:
+                current.pop(list_index)
+                return
+            current = current[list_index]
+            continue
+        if not isinstance(current, dict) or token not in current:
+            return
+        if is_last:
+            current.pop(token, None)
+            return
+        current = current[token]
+
+
 def write_context_path(path: str, value: Any):
     context = get_run_context()
     if context is None:
@@ -276,137 +347,120 @@ def write_context_path(path: str, value: Any):
 
     root = extract_context_root(path)
     if root is None:
-        raise ValueError(
-            "Unsupported target path. Use one of $.global, $.local, $.artifacts, $.response."
-        )
-
+        raise ValueError("Unsupported target path. Use $.runEnvelope, $.global, $.local or $.result.")
     if root == "global" and context.current_item_kind == SuiteItemKind.TEST.value:
         raise ValueError("Global context is immutable during test execution.")
+    if root == "runEnvelope" and context.current_item_kind == SuiteItemKind.TEST.value:
+        raise ValueError("RunEnvelope context is immutable during test execution.")
 
     tokens = _path_tokens(path)
-    root_token = tokens[0].lower()
-    if root_token == "vars":
-        root_token = "global"
+    if tokens and tokens[0] == "vars":
+        tokens[0] = "global"
     target_tokens = tokens[1:]
-    target = _target_from_root(context, root_token)
-
+    if root in {"runEnvelope", "global", "local"} and target_tokens:
+        if target_tokens[0] not in {"constants", "event", "run_id", "runEnvelope", "global"}:
+            target_tokens = ["constants", *target_tokens]
+    target = _target_from_root(context, root)
     if not target_tokens:
         if not isinstance(value, dict):
             raise ValueError("Root assignment requires a JSON object value.")
-        if root_token == "global":
-            context.global_vars = value
-        elif root_token == "local":
-            context.local_vars = value
-        elif root_token == "artifacts":
-            context.artifacts = value
-        else:
-            context.response_draft = value
+        target.clear()
+        target.update(value)
         return
-
     _assign_nested_value(target, target_tokens, value)
 
 
-def set_response_status(value: Any):
-    write_context_path("$.response.status", value)
-
-
-def set_response_header(header_name: str, header_value: Any):
+def remove_context_path(path: str):
     context = get_run_context()
     if context is None:
         return
-    normalized_header_name = str(header_name or "").strip()
-    if not normalized_header_name:
-        raise ValueError("Response header name is required.")
-    headers = context.response_draft.get("headers")
-    if not isinstance(headers, dict):
-        headers = {}
-        context.response_draft["headers"] = headers
-    headers[normalized_header_name] = header_value
+    root = extract_context_root(path)
+    if root is None:
+        return
+    if root == "global" and context.current_item_kind == SuiteItemKind.TEST.value:
+        raise ValueError("Global context is immutable during test execution.")
+    if root == "runEnvelope" and context.current_item_kind == SuiteItemKind.TEST.value:
+        raise ValueError("RunEnvelope context is immutable during test execution.")
+    tokens = _path_tokens(path)
+    if tokens and tokens[0] == "vars":
+        tokens[0] = "global"
+    target_tokens = tokens[1:]
+    if root in {"runEnvelope", "global", "local"} and target_tokens:
+        if target_tokens[0] not in {"constants", "event", "run_id", "runEnvelope", "global"}:
+            target_tokens = ["constants", *target_tokens]
+    target = _target_from_root(context, root)
+    _remove_nested_value(target, target_tokens)
 
 
-def set_response_body(value: Any):
-    write_context_path("$.response.body", value)
+def resolve_constant_value(name: str) -> Any:
+    context = get_run_context()
+    if context is None:
+        return None
+    normalized_name = str(name or "").strip()
+    if not normalized_name:
+        return None
+    for container in (
+        context.local_vars,
+        context.global_vars,
+        context.run_envelope.get("constants") if isinstance(context.run_envelope.get("constants"), dict) else {},
+        context.result_scope.get("constants") if isinstance(context.result_scope.get("constants"), dict) else {},
+    ):
+        if normalized_name in container:
+            return container[normalized_name]
+    return None
 
 
 def build_run_context_scope(run_context: RunContext | None = None) -> dict[str, Any]:
     context = run_context or get_run_context()
     if context is None:
         return {
-            "event": {},
-            "global": {},
-            "local": {},
-            "vars": {},
-            "last": {},
-            "artifacts": {},
-            "response": {
-                "status": None,
-                "headers": {},
-                "body": None,
-            },
+            "runEnvelope": {"run_id": "", "event": {}, "constants": {}},
+            "global": {"runEnvelope": {"run_id": "", "event": {}, "constants": {}}, "constants": {}},
+            "local": {"global": {"runEnvelope": {"run_id": "", "event": {}, "constants": {}}, "constants": {}}, "constants": {}},
+            "result": {"artifacts": {}, "commands": {}, "constants": {}},
+            "response": {},
         }
     return {
-        "event": context.event if isinstance(context.event, dict) else {},
-        "global": context.global_vars if isinstance(context.global_vars, dict) else {},
-        "local": context.local_vars if isinstance(context.local_vars, dict) else {},
-        "vars": context.global_vars if isinstance(context.global_vars, dict) else {},
-        "last": context.last if isinstance(context.last, dict) else {},
-        "artifacts": context.artifacts if isinstance(context.artifacts, dict) else {},
-        "response": (
-            context.response_draft if isinstance(context.response_draft, dict) else {}
-        ),
+        "runEnvelope": context.run_envelope,
+        "global": context.global_scope,
+        "local": context.local_scope,
+        "result": context.result_scope,
+        "vars": context.global_vars,
+        "response": context.result_scope.get("commands") if isinstance(context.result_scope.get("commands"), dict) else {},
     }
 
 
 def serialize_run_context(run_context: RunContext) -> dict[str, Any]:
     return {
         "run_id": str(run_context.run_id or "").strip(),
-        "event": run_context.event if isinstance(run_context.event, dict) else {},
-        "global": (
-            run_context.global_vars if isinstance(run_context.global_vars, dict) else {}
-        ),
-        "local": run_context.local_vars if isinstance(run_context.local_vars, dict) else {},
-        "vars": run_context.global_vars if isinstance(run_context.global_vars, dict) else {},
-        "last": run_context.last if isinstance(run_context.last, dict) else {},
-        "artifacts": (
-            run_context.artifacts if isinstance(run_context.artifacts, dict) else {}
-        ),
-        "response": (
-            run_context.response_draft
-            if isinstance(run_context.response_draft, dict)
-            else {"status": None, "headers": {}, "body": None}
-        ),
+        "runEnvelope": run_context.run_envelope,
+        "global": run_context.global_scope,
+        "local": run_context.local_scope,
+        "result": run_context.result_scope,
         "invocation_id": str(run_context.invocation_id or "").strip() or None,
+        "last": run_context.last,
     }
 
 
 def deserialize_run_context(payload: dict[str, Any] | None) -> RunContext:
     source = payload if isinstance(payload, dict) else {}
+    run_envelope = source.get("runEnvelope") if isinstance(source.get("runEnvelope"), dict) else {}
+    initial_vars = run_envelope.get("constants") if isinstance(run_envelope.get("constants"), dict) else {}
     context = create_run_context(
-        run_id=str(source.get("run_id") or "").strip(),
-        event=source.get("event") if isinstance(source.get("event"), dict) else {},
-        initial_vars=(
-            source.get("global")
-            if isinstance(source.get("global"), dict)
-            else (
-                source.get("vars")
-                if isinstance(source.get("vars"), dict)
-                else {}
-            )
-        ),
+        run_id=str(source.get("run_id") or run_envelope.get("run_id") or "").strip(),
+        event=run_envelope.get("event") if isinstance(run_envelope.get("event"), dict) else {},
+        initial_vars=initial_vars,
         invocation_id=str(source.get("invocation_id") or "").strip() or None,
     )
-    context.local_vars = source.get("local") if isinstance(source.get("local"), dict) else {}
-    context.last = (
-        source.get("last")
-        if isinstance(source.get("last"), dict)
-        else {"item_id": "", "data": []}
+    global_payload = source.get("global") if isinstance(source.get("global"), dict) else {}
+    local_payload = source.get("local") if isinstance(source.get("local"), dict) else {}
+    result_payload = source.get("result") if isinstance(source.get("result"), dict) else {}
+    context.global_scope["constants"] = (
+        global_payload.get("constants") if isinstance(global_payload.get("constants"), dict) else {}
     )
-    context.artifacts = (
-        source.get("artifacts") if isinstance(source.get("artifacts"), dict) else {}
+    context.local_scope["constants"] = (
+        local_payload.get("constants") if isinstance(local_payload.get("constants"), dict) else {}
     )
-    context.response_draft = (
-        source.get("response")
-        if isinstance(source.get("response"), dict)
-        else {"status": None, "headers": {}, "body": None}
-    )
+    context.result_scope = result_payload or {"artifacts": {}, "commands": {}, "constants": {}}
+    context.last = source.get("last") if isinstance(source.get("last"), dict) else {"item_id": "", "data": None}
     return context

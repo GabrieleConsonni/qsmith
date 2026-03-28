@@ -3,11 +3,11 @@ from sqlalchemy.orm import Session
 from _alembic.models.suite_item_entity import SuiteItemEntity
 from elaborations.models.enums.hook_phase import HookPhase
 from elaborations.models.enums.suite_item_kind import SuiteItemKind
-from elaborations.services.alembic.suite_item_operation_service import (
+from elaborations.services.alembic.suite_item_command_service import (
     SuiteItemOperationService,
 )
-from elaborations.services.operations.operation_executor_composite import execute_operations
-from elaborations.services.operations.operation_scope import (
+from elaborations.services.operations.command_executor_composite import execute_operations
+from elaborations.services.operations.command_scope import (
     SCOPE_HOOK_AFTER_ALL,
     SCOPE_HOOK_AFTER_EACH,
     SCOPE_HOOK_BEFORE_ALL,
@@ -46,3 +46,4 @@ def execute_suite_item(session: Session, suite_item: SuiteItemEntity) -> list[di
         )
     set_context_last(str(suite_item.id or ""), execution_result.data)
     return execution_result.result
+
